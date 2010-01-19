@@ -1,0 +1,359 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use IO::Socket;
+use Storable qw(nfreeze thaw);
+use Term::ANSIColor;
+
+use constant {
+  _SERVER  => 'deliveryweb.sonyericsson.net',
+  _PORT    => 9098,
+  _VERSION => 'P.1',
+  _TPL     => '__UNDEF__', # change this to use a permanent Query Template
+  _QUERY   => '__UNDEF__', # change this to use a permanent output file
+  _UNDEF   => '__UNDEF__',
+  _ON      => 1,
+  _OFF     => 0,
+  _USE_COLOR => 1,
+};
+
+#----------------------------------------------------------------
+#  Send request to server
+#----------------------------------------------------------------
+sub dms_query { 
+  my(@aRequest) = @_;
+  # setup connection
+  my $oSocket = IO::Socket::INET->new( Proto    => 'tcp', 
+                                       PeerAddr => _SERVER,
+                                       PeerPort => _PORT,
+                                       Timeout  => 5 ); 
+  return(1, 'Unable to connect to Server') if (!$oSocket);
+  
+  unshift(@aRequest, 'dms_query');
+  my $result = nfreeze(\@aRequest);
+  # escape newlines, CR and %
+  $result =~ s/([%\r\n])/sprintf("%%%02X", ord($1))/ge;
+  $result .= "\n";
+
+  eval {
+    local $SIG{ALRM} = sub {die "TIMEOUT\n"}; # Note: \n required
+    alarm(30);
+
+    print $oSocket $result;
+    $result = <$oSocket>;
+
+    alarm(0);
+  };
+  if ($@ && $@ eq "TIMEOUT\n") {
+    # timed out
+    close $oSocket; 
+    return(1, 'Server Timeout');
+  }
+  else {
+    close $oSocket; 
+    # reverse escaped newline, CR and %
+    $result =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/ge;
+    my @aResult = @{thaw($result)}; 
+    return(@aResult);
+  }
+}
+
+sub init_parser {
+  my($ph, $p) = @_;
+  $$ph{$p}{dms} = {} unless (exists $$ph{$p}{dms});
+  $$ph{$p}{file} = {} unless (exists $$ph{$p}{file});
+  $$ph{$p}{no_commit} = 1;
+
+  foreach ('no_dms', 'commit') {
+    $$ph{$p}{$_} = 0 unless (exists $$ph{$p}{$_});
+  }
+  foreach ('count', 'inserted', 'deleted', 'binary') {
+    $$ph{$p}{file}{$_} = 0 unless (exists $$ph{$p}{file}{$_});
+  }
+}
+
+#----------------------------------------------------------------
+#  Parse Git log
+#----------------------------------------------------------------
+sub parse_git_log {
+  my($data, $option, $result) = @_;
+  my @Data = (ref $data ? @$data : ($data));
+  return($result) unless (@Data);
+  
+  my $project = _UNDEF;
+  init_parser($result, $project);
+  my $list_project = ($$option{'show-p'} || $$option{'show-stat-p'});
+  my $no_dms = 1;
+  foreach (@Data) {
+    if ($list_project && /^project\s(.+\/)$/o) {
+      $$result{$project}{no_dms} += $no_dms unless ($$result{$project}{no_commit});
+      $project = $1;
+      $no_dms = 1;
+      init_parser($result, $project);
+    }
+    elsif (/^commit/o) {
+      $$result{$project}{no_dms} += $no_dms unless ($$result{$project}{no_commit});
+      $$result{$project}{commit}++;
+      $no_dms = 1;
+      undef $$result{$project}{no_commit}; 
+    }
+    elsif (/^(\-|\d+)\s+(\-|\d+)\s+(.+)/o) { 
+      if (!exists $$result{$project}{file}{$3}) {
+        $$result{$project}{file}{$3} = 1;
+        $$result{$project}{file}{count}++; 
+        $$result{$project}{file}{binary}++ if ($1 eq '-') ; 
+      }
+      $$result{$project}{file}{inserted} += $1 unless ($1 eq '-'); 
+      $$result{$project}{file}{deleted} += $2 unless ($2 eq '-'); 
+    }
+    elsif ($$option{slurp} && /DMS\d{8}/o) {
+      $no_dms = 0; 
+      foreach (/DMS\d{8}/g) {
+        $$result{$project}{dms}{$_} = {} unless(exists $$result{$project}{dms}{$_}); 
+      }
+    }
+    elsif (/^\s*[Ff][Ii][Xx]\=(DMS\d{8})/o) {
+      my $issue = $1;
+      $no_dms = 0; 
+      $$result{$project}{dms}{$issue} = {}  unless(exists $$result{$project}{dms}{$1});
+      $$result{$project}{dms}{$issue}{main} = $1 if (/^\s*[Ff][Ii][Xx]\=DMS\d{8}\sMAIN\=(DMS\d{8})/o);
+      $$result{$project}{dms}{$issue}{title} = $1 if (/DMS\d{8}\s*(.+)/o);
+    }
+  } 
+  # catch the last commit
+  $$result{$project}{no_dms} += $no_dms unless ($$result{$project}{no_commit});
+
+  return($result);
+}
+
+#----------------------------------------------------------------
+#  Display help message
+#----------------------------------------------------------------
+sub help {
+my($name) = $0 =~/.*\/(.*)$/;
+  return <<END
+\033[1m NAME\033[0m
+\033[32m   $name\033[0m - Create a DMS Query for import to DMS(ClearQuest)
+
+\033[1m SYNOPSIS\033[0m
+\033[32m   $name\033[0m \033[33m--<option>\033[0m [\033[33m-<option>\033[0m <value>] [\033[33m-<option>\033[0m <value>]...
+
+\033[1m DESCRIPTION\033[0m
+    Parse indata for DMS Issues and create a DMS Query for import to DMS(ClearQuest)
+    or display a list of DMS Issues.
+           
+    Display statistics over commits, DMS Issues and changes.
+    (only in combination with the option --numstat in git-log)
+    
+    It is possible to setup a default Query template and output file.  
+
+\033[1m OPTIONS\033[0m
+\033[33m   --help\033[0m   : display this help
+\033[33m   --main\033[0m   : use Main Issue if present(FIX=DMSnnnnnnnn MAIN=DMSnnnnnnnn)
+\033[33m   --slurp\033[0m  : parse indata for all DMS Issues(default only FIX=DMSnnnnnnnn is parsed)
+\033[33m   --show\033[0m   : only list the parsed result
+\033[33m   --show-p\033[0m : list result by project
+\033[33m   --show-t\033[0m : include the Issue title
+\033[33m   --show-stat\033[0m   : list statistics of commits, dms Issues etc.
+\033[33m   --show-stat-p\033[0m : list statistics per project
+
+\033[33m   -qry\033[0m <filename>   : output file (.qry will be added if missing)
+\033[33m   -tpl\033[0m <query file> : Query to use as template
+\033[33m   -add\033[0m <string|filename> : string or file to parse for DMS Issues
+
+\033[1m EXAMPLES\033[0m
+\033[32m   $name\033[0m \033[33m-qry\033[0m  my_query \033[33m-add\033[0m  data.txt
+\033[32m   $name\033[0m \033[33m-qry\033[0m  my_query \033[33m-add\033[0m  'DMS00000123, DMS00044126'
+
+\033[1m PIPE EXAMPLES\033[0m
+   git log | \033[32m$name\033[0m \033[33m--show\033[0m
+   git log | \033[32m$name\033[0m \033[33m-tpl\033[0m my_template.qry >my_query.qry
+   repo forall -cvp 'git log --no-merges HEAD..\$REPO_RREV' | \033[32m$name\033[0m \033[33m-qry\033[0m my_query
+   repo forall -cvp 'git log --no-merges --numstat --since="2 weeks ago"' | \033[32m$name\033[0m \033[33m--show-stat-p\033[0m
+
+END
+
+}
+
+#----------------------------------------------------------------
+# -- Main --
+#----------------------------------------------------------------
+if (grep(/\-+help/, @ARGV)) {
+  my $help = help();
+  $help =~s/\033.+?m//g if (!_USE_COLOR || !-t STDOUT);
+  print $help;
+  exit;
+}
+
+my($name) = $0 =~/.*\/(.*)$/;
+
+my %Option = (
+  tpl   => _TPL, 
+  qry   => _QUERY,
+  add   => _UNDEF, 
+  slurp => _OFF,
+  main  => _OFF,
+  help  => _OFF,
+  show  => _OFF,
+  'show-t' => _OFF,
+  'show-p' => _OFF,
+  'show-stat'   => _OFF,
+  'show-stat-p' => _OFF,
+);
+
+# validate arguments
+while (my $par = shift) {
+  my $orig = $par; 
+  $par =~s/^[\-]+//;
+
+  if (exists $Option{$par}) {
+    if ($Option{$par} eq _UNDEF) {
+      $Option{$par} = shift;
+    }
+    else {
+      $Option{$par} = _ON;
+      $Option{show} = _ON if ($par =~/^show\-/);
+      $Option{'show-stat'} = _ON if ($par =~/^show\-stat\-/);
+    }     
+  }
+  else {
+    print STDERR color('red', 'bold') if (_USE_COLOR);
+    print STDERR 'Unknown option: ';
+    print STDERR color('reset') if (_USE_COLOR);
+    print STDERR $orig, "\n";
+    print STDERR 'For help use:  ', $name, ' --help',  "\n";
+    exit; 
+  }
+}
+
+my $qryTemplate;
+if (!$Option{show}) {
+  # output
+  if (-t STDOUT) { # no pipe
+    if ($Option{qry} eq _UNDEF) {
+      print STDERR color('red', 'bold') if (_USE_COLOR);
+      print STDERR 'No output file defined', "\n";
+      print STDERR color('reset') if (_USE_COLOR);
+      print STDERR 'For help use:  ', $name, ' --help',  "\n";
+      exit;
+    }
+    else {
+      $Option{qry} .= '.qry' unless ($Option{qry} =~/\.qry$/);   
+    }
+  }
+  
+  # Query template
+  if ($Option{tpl} ne _UNDEF) {
+    if (open(my $fh, '<', $Option{tpl})) {
+      binmode $fh;
+      $qryTemplate = do{local($/); <$fh>};
+      close($fh);
+    }
+    else {
+      print STDERR color('red', 'bold') if (_USE_COLOR);
+      print STDERR 'Unable to open Query template: ';
+      print STDERR $Option{tpl}, "\n";
+      print STDERR color('reset') if (_USE_COLOR);
+      exit;
+    }
+  }
+}
+
+# indata
+my @inData = ();
+@inData = <STDIN> if (!-t STDIN); # pipe detected
+
+if ($Option{add} ne _UNDEF && open(my $fh, '<', $Option{add})) {
+  push(@inData, (<$fh>));
+  close($fh);
+  $Option{add} = _UNDEF;
+}
+
+
+my %Parsed = ();
+parse_git_log(\@inData, \%Option, \%Parsed);
+
+if ($Option{add} ne _UNDEF){
+  # Note: always slurp string input
+  $Option{slurp} = _ON;
+  parse_git_log($Option{add}, \%Option, \%Parsed);
+}
+
+
+if ($Option{show}) {
+  if ($Option{'show-t'}) {
+#TODO: get titles from DMS ??    
+
+  }
+  
+  foreach my $project (sort keys %Parsed) {
+    if ($project ne _UNDEF) {
+      if ($Option{'show-stat'} || scalar(keys %{$Parsed{$project}{dms}})) {
+        print color('green', 'bold') if (-t STDOUT && _USE_COLOR);
+        print $project, "\n";
+        print color('reset') if (-t STDOUT && _USE_COLOR);
+      }
+    }
+    elsif (!$Option{'show-stat'} && !$Option{'show-p'} && !scalar(keys %{$Parsed{$project}{dms}})) {
+      print STDERR color('red', 'bold') if (_USE_COLOR);
+      print STDERR 'No DMS Issues found', "\n"; 
+      print STDERR color('reset') if (_USE_COLOR);
+    }
+    if ($Option{'show-stat'} && $Parsed{$project}{commit}) {
+      print ' ', scalar(keys %{$Parsed{$project}{dms}}), ' DMS Issues';
+      print "\n ", $Parsed{$project}{commit}, ' commits, ', $Parsed{$project}{no_dms}, ' without DMS Issue';
+      if ($Parsed{$project}{file}{count}) {
+        print "\n ", $Parsed{$project}{file}{count}, ' files changed';
+        print '(', $Parsed{$project}{file}{binary}, ' binary)' if ($Parsed{$project}{file}{binary});
+        print ', ', $Parsed{$project}{file}{inserted}, ' insertions, ', $Parsed{$project}{file}{deleted}, ' deletions';
+      }
+      print "\n\n";
+    }
+    else {
+      foreach (sort keys %{$Parsed{$project}{dms}}) {
+        print color('blue', 'bold') if (-t STDOUT && _USE_COLOR);
+        print ' ', ($Option{'main'} && $Parsed{$project}{dms}{$_}{main} ? $Parsed{$project}{dms}{$_}{main} : $_);
+        print color('reset') if (-t STDOUT && _USE_COLOR);
+        print ' ', $Parsed{$project}{dms}{$_}{title} if ($Option{'show-t'} && $Parsed{$project}{dms}{$_}{title});
+        print "\n";
+      }
+    }
+  }
+}
+else {
+  my @Issue;
+  foreach my $project (keys %Parsed) {
+    push(@Issue, (keys %{$Parsed{$project}{dms}}));
+  }
+  my %Issue = map({$_ => 1} @Issue);
+  @Issue = sort keys %Issue;
+  
+  # generate DMS query  
+  my($problem, $result) = dms_query(_VERSION, $qryTemplate, @Issue);
+  
+  if ($problem) {
+    print STDERR color('red', 'bold') if (_USE_COLOR);
+    print STDERR 'Failed: '; 
+    print STDERR color('reset') if (_USE_COLOR);
+    print STDERR $result, "\n";
+  }
+  elsif (!-t STDOUT) { # pipe to file
+    print $result; 
+  }
+  elsif (open(my $fh, '>', $Option{qry})) {
+    binmode $fh;
+    print $fh $result;
+    close($fh);
+  }
+  else {
+    print STDERR color('red', 'bold') if (_USE_COLOR);
+    print STDERR "Failed: ";
+    print STDERR color('reset') if (_USE_COLOR);
+    print STDERR 'Unable to write to file: ', $Option{qry}, "\n";
+  }
+}
+exit;
+__END__
+
