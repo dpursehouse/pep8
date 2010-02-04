@@ -6,6 +6,7 @@ use warnings;
 use IO::Socket;
 use Storable qw(nfreeze thaw);
 use Term::ANSIColor;
+use List::Util;
 
 use constant {
   _SERVER  => 'deliveryweb.sonyericsson.net',
@@ -22,8 +23,8 @@ use constant {
 #----------------------------------------------------------------
 #  Send request to server
 #----------------------------------------------------------------
-sub dms_query { 
-  my(@aRequest) = @_;
+sub server_request { 
+  my($request, @aRequest) = @_;
   # setup connection
   my $oSocket = IO::Socket::INET->new( Proto    => 'tcp', 
                                        PeerAddr => _SERVER,
@@ -31,7 +32,8 @@ sub dms_query {
                                        Timeout  => 5 ); 
   return(1, 'Unable to connect to Server') if (!$oSocket);
   
-  unshift(@aRequest, 'dms_query');
+  unshift(@aRequest, $request, _VERSION);
+  
   my $result = nfreeze(\@aRequest);
   # escape newlines, CR and %
   $result =~ s/([%\r\n])/sprintf("%%%02X", ord($1))/ge;
@@ -173,8 +175,61 @@ my($name) = $0 =~/.*\/(.*)$/;
    repo forall -cvp 'git log --no-merges HEAD..\$REPO_RREV' | \033[32m$name\033[0m \033[33m-qry\033[0m my_query
    repo forall -cvp 'git log --no-merges --numstat --since="2 weeks ago"' | \033[32m$name\033[0m \033[33m--show-stat-p\033[0m
 
+\033[1m Multiple branches and SW Branch Issues\033[0m
+\033[33m   --swb\033[0m : include all related SW Branch and Main Issues in the Query
+\033[33m   --swb --show\033[0m : list all related  SW Branch and Main Issues.
+
+\033[33m   -fix-for\033[0m <fix-for-tag> : DMS 'Fix for' tag, multiple -fix-for entries supported,
+   '*' at the end of the tag is treated as a wildcard. Use 'NONE' to indicate that
+   untagged Issues are accepted. \033[32m$name\033[0m will select the first related SW Branch
+   or Main Issue with a matching tag. The tags are evaluated in the entered order. 
+
+   To manually select the Issues to include in the Query:
+   1. repo forall -cvp 'git log --no-merges HEAD..\$REPO_RREV' | \033[32m$name\033[0m \033[33m--swb --show\033[0m >dms.txt
+   2. Edit the file dms.txt, remove all lines with undesired DMS Issues and save.
+   3. \033[32m$name\033[0m \033[33m-add\033[0m dms.txt  
+ 
+
 END
 
+}
+
+#----------------------------------------------------------------
+#  Display error message
+#----------------------------------------------------------------
+sub print_error {
+  my %E = (@_);
+  my($name) = $0 =~/.*\/(.*)$/;
+  
+  if ($E{header}) {
+    print STDERR color('red', 'bold') if (_USE_COLOR);
+    print STDERR $E{header};
+    print STDERR color('reset') if (_USE_COLOR);
+    print STDERR $E{problem} if ($E{problem});
+  }
+  if ($E{message}) {
+    print STDERR "\n";
+    print STDERR $E{message};
+  }
+  if ($E{help}) {
+    print STDERR "\n";
+    print STDERR 'For help use:  ' . $name . ' --help';
+  }
+  print STDERR "\n";
+}
+
+sub print_marked {
+  print color('blue', 'bold') if (-t STDOUT && _USE_COLOR);
+  print '*';
+  print color('reset') if (-t STDOUT && _USE_COLOR);
+  return '';
+}
+sub print_problem {
+  my($problem) = @_;
+  return unless($problem);
+  print color('red') if (-t STDOUT && _USE_COLOR);
+  print '! ', $problem;
+  print color('reset') if (-t STDOUT && _USE_COLOR);
 }
 
 #----------------------------------------------------------------
@@ -187,14 +242,14 @@ if (grep(/\-+help/, @ARGV)) {
   exit;
 }
 
-my($name) = $0 =~/.*\/(.*)$/;
-
 my %Option = (
   tpl   => _TPL, 
   qry   => _QUERY,
   add   => _UNDEF, 
+  'fix-for' => [], 
   slurp => _OFF,
   main  => _OFF,
+  swb   => _OFF,
   help  => _OFF,
   show  => _OFF,
   'show-t' => _OFF,
@@ -212,6 +267,9 @@ while (my $par = shift) {
     if ($Option{$par} eq _UNDEF) {
       $Option{$par} = shift;
     }
+    elsif (ref $Option{$par} && ref $Option{$par} eq 'ARRAY') {
+      push(@{$Option{$par}}, shift);
+    }
     else {
       $Option{$par} = _ON;
       $Option{show} = _ON if ($par =~/^show\-/);
@@ -219,11 +277,9 @@ while (my $par = shift) {
     }     
   }
   else {
-    print STDERR color('red', 'bold') if (_USE_COLOR);
-    print STDERR 'Unknown option: ';
-    print STDERR color('reset') if (_USE_COLOR);
-    print STDERR $orig, "\n";
-    print STDERR 'For help use:  ', $name, ' --help',  "\n";
+    print_error( header  => 'Unknown option: ',
+                 problem => $orig,
+                 help    => 1 );
     exit; 
   }
 }
@@ -233,10 +289,8 @@ if (!$Option{show}) {
   # output
   if (-t STDOUT) { # no pipe
     if ($Option{qry} eq _UNDEF) {
-      print STDERR color('red', 'bold') if (_USE_COLOR);
-      print STDERR 'No output file defined', "\n";
-      print STDERR color('reset') if (_USE_COLOR);
-      print STDERR 'For help use:  ', $name, ' --help',  "\n";
+    print_error( header => 'No output file defined',
+                 help   => 1 );
       exit;
     }
     else {
@@ -252,10 +306,8 @@ if (!$Option{show}) {
       close($fh);
     }
     else {
-      print STDERR color('red', 'bold') if (_USE_COLOR);
-      print STDERR 'Unable to open Query template: ';
-      print STDERR $Option{tpl}, "\n";
-      print STDERR color('reset') if (_USE_COLOR);
+      print_error( header  => 'Unable to open Query template: ',
+                   problem => $Option{tpl} );
       exit;
     }
   }
@@ -281,11 +333,192 @@ if ($Option{add} ne _UNDEF){
   parse_git_log($Option{add}, \%Option, \%Parsed);
 }
 
+if ($Option{swb} && scalar(keys %Parsed)) {
+  # Use SW branch Issues
+  my @Issue;
+  foreach (keys %Parsed) {
+    push(@Issue, (keys %{$Parsed{$_}{dms}}));
+  }
 
-if ($Option{show}) {
+  if (@Issue) {
+    my %Issue = map({$_ => 1} @Issue);
+    @Issue = sort keys %Issue;
+
+    # get related Issues from DMS  
+    my @Result = server_request('dms_swb', @Issue);
+    if (shift @Result) {
+      print_error( header  => 'Failed: ',
+                   message => shift @Result );
+    }
+    else {
+      foreach my $I (@Result) {
+        if (@{$Option{'fix-for'}}) {
+          next if ($$I{problem});
+          # find the correct Issue to use
+          $$I{fix_for} ||= 'UNDEF';
+          foreach (@{$Option{'fix-for'}}) {
+            my $regex = '^';
+            if (/\*$/) {
+              my $fix = $_;
+              chop($fix);
+              $regex .= quotemeta($fix);
+            }
+            else {
+              $regex .= quotemeta($_) . '$';
+            }
+            
+            if ($$I{fix_for} =~/$regex/o) {
+              $$I{selected}{$$I{id}} = 1;
+            }
+            else {
+              foreach my $SWB (@{$$I{SWB}}) {
+                next if ($$SWB{problem});
+                $$SWB{fix_for} ||= 'UNDEF';
+                if ($$SWB{fix_for} =~/$regex/o) {
+                  $$I{selected}{$$SWB{swb}} = 1;
+                }
+              }
+            }               
+            # only select the first fix-for match
+            last if ($$I{selected});
+          }
+          $$I{problem} = 'No matching SW Branch Issue' unless ($$I{selected});
+          $$I{problem} = 'Multiple matching SW Branch Issues' if ($$I{selected} && scalar keys %{$$I{selected}} > 1);
+        }
+        else {
+          $$I{selected}{$$I{id}} = 1;
+          foreach (@{$$I{SWB}}) {
+            $$I{selected}{$$_{swb}} = 1 unless ($$_{problem});
+          }
+        }
+      }     
+
+      if ($Option{show}) {
+        my $len_fix_for = 0;
+        my $len_state = 0;
+        foreach my $I (@Result) {
+          $len_fix_for = List::Util::max($len_fix_for, length($$I{fix_for})) if ($$I{fix_for});
+          $len_state = List::Util::max($len_state, length($$I{'state'})) if ($$I{'state'});
+          foreach (@{$$I{SWB}}) {
+            $len_fix_for = List::Util::max(length($$_{fix_for}), $len_fix_for) if ($$_{fix_for});
+            $len_state = List::Util::max($len_state, length($$_{'state'})) if ($$_{'state'});
+          }
+        }
+
+        # list related/matched Issues
+        foreach my $I (@Result) {
+          print ($$I{selected} && $$I{selected}{$$I{id}} ? print_marked() : ' ');
+          print color('blue', 'bold') if (-t STDOUT && _USE_COLOR);
+          print $$I{id}, '  ';
+          print color('reset') if (-t STDOUT && _USE_COLOR);
+          if (!$$I{fix_for} || $$I{fix_for} eq 'UNDEF') {
+            $$I{fix_for} = ''; 
+          }
+          else {
+            print $$I{fix_for};
+          }
+          print ' 'x(2 + $len_fix_for - length($$I{fix_for})), $$I{'state'},
+                      ' 'x(2 + $len_state - length($$I{'state'})) if ($$I{'state'});
+          print_problem($$I{problem});
+          print "\n";
+          foreach (@{$$I{SWB}}) {
+            print ($$I{selected} && $$I{selected}{$$_{swb}} ? print_marked() . ' ' : '  ');
+            print $$_{swb}, ' ';
+            print $$_{fix_for} if ($$_{fix_for});
+            print ' 'x(2 + $len_fix_for - length($$_{fix_for})), $$_{'state'},
+                    ' 'x(2 + $len_state - length($$_{'state'})) if ($$_{'state'});
+            print_problem($$_{problem});
+            print "\n";
+          }
+        }
+      }
+      else {
+        # create DMS Query
+        my @Selected;
+        foreach my $I (@Result) {
+          if (@{$Option{'fix-for'}}) {
+            push(@Selected, keys %{$$I{selected}}) if ($$I{selected});  
+            print_error( header  => 'Failed: No matching DMS Issues found' ) unless (@Selected);
+          } 
+          else {
+            push(@Selected, $$I{id});
+            push(@Selected, map({$$_{swb}} @{$$I{SWB}}));
+          }
+        }
+
+        if (@Selected) {
+          my %Issue = map({$_ => 1} @Selected);
+          @Selected = sort keys %Issue;
+          
+          # generate DMS query  
+          my($problem, $result) = server_request('dms_query', $qryTemplate, @Selected);
+            
+          if ($problem) {
+            print_error( header  => 'Failed: ',
+                         message => $result );
+          }
+          elsif (!-t STDOUT) { # pipe to file
+            print $result; 
+          }
+          else {
+            if (open(my $fh, '>', $Option{qry})) {
+              binmode $fh;
+              print $fh $result;
+              close($fh);
+            }
+            else {
+              print_error( header  => 'Failed: ',
+                           message => 'Unable to write to file: ' . $Option{qry} );
+            }
+          }
+        }
+        
+        # notify user about problems  
+        foreach my $I (@Result) {
+          if ($$I{problem}) {
+            print_error( header  => 'Problem[' . $$I{id} . '] ',
+                         problem => $$I{problem} );
+          }
+          foreach (grep({$$_{problem}} @{$$I{SWB}})) {
+            print_error( header  => 'Problem[' . $$_{swb} . '] ',
+                         problem => $$I{problem} );
+          }
+        } 
+      }
+    }
+  }
+  else {
+    print_error( header => 'No DMS Issues found' );
+  }
+}
+elsif ($Option{show}) {
   if ($Option{'show-t'}) {
-#TODO: get titles from DMS ??    
+    my @Issue;
+    foreach (keys %Parsed) {
+      push(@Issue, (keys %{$Parsed{$_}{dms}}));
+    }
+  
+    if (@Issue) {
+      my %Issue = map({$_ => 1} @Issue);
+      @Issue = sort keys %Issue;
 
+      # get titles from DMS  
+      my(@Result) = server_request('dms_info', @Issue);
+
+      if (shift @Result) {
+        # not critical, list without titles
+        #print_error( header  => 'Failed: ',
+        #             message => shift @Result );
+      }
+      else {
+        %Issue = map({$$_{id} => $_} @Result);
+        foreach my $project (keys %Parsed) {
+          foreach (keys %{$Parsed{$project}{dms}}) {
+            $Parsed{$project}{dms}{$_}{title} = $Issue{$_}{title};
+          }
+        }
+      }
+    }
   }
   
   foreach my $project (sort keys %Parsed) {
@@ -297,9 +530,7 @@ if ($Option{show}) {
       }
     }
     elsif (!$Option{'show-stat'} && !$Option{'show-p'} && !scalar(keys %{$Parsed{$project}{dms}})) {
-      print STDERR color('red', 'bold') if (_USE_COLOR);
-      print STDERR 'No DMS Issues found', "\n"; 
-      print STDERR color('reset') if (_USE_COLOR);
+      print_error( header  => 'No DMS Issues found' );
     }
     if ($Option{'show-stat'} && $Parsed{$project}{commit}) {
       print ' ', scalar(keys %{$Parsed{$project}{dms}}), ' DMS Issues';
@@ -324,34 +555,38 @@ if ($Option{show}) {
 }
 else {
   my @Issue;
-  foreach my $project (keys %Parsed) {
-    push(@Issue, (keys %{$Parsed{$project}{dms}}));
+  foreach (keys %Parsed) {
+    push(@Issue, (keys %{$Parsed{$_}{dms}}));
   }
-  my %Issue = map({$_ => 1} @Issue);
-  @Issue = sort keys %Issue;
   
-  # generate DMS query  
-  my($problem, $result) = dms_query(_VERSION, $qryTemplate, @Issue);
-  
-  if ($problem) {
-    print STDERR color('red', 'bold') if (_USE_COLOR);
-    print STDERR 'Failed: '; 
-    print STDERR color('reset') if (_USE_COLOR);
-    print STDERR $result, "\n";
-  }
-  elsif (!-t STDOUT) { # pipe to file
-    print $result; 
-  }
-  elsif (open(my $fh, '>', $Option{qry})) {
-    binmode $fh;
-    print $fh $result;
-    close($fh);
+  if (@Issue) {
+    my %Issue = map({$_ => 1} @Issue);
+    @Issue = sort keys %Issue;
+    
+    # generate DMS query  
+    my($problem, $result) = server_request('dms_query', $qryTemplate, @Issue);
+      
+    if ($problem) {
+      print_error( header  => 'Failed: ',
+                   message => $result );
+    }
+    elsif (!-t STDOUT) { # pipe to file
+      print $result; 
+    }
+    else {
+      if (open(my $fh, '>', $Option{qry})) {
+        binmode $fh;
+        print $fh $result;
+        close($fh);
+      }
+      else {
+        print_error( header  => 'Failed: ',
+                     message => 'Unable to write to file: ' . $Option{qry} );
+      }
+    }
   }
   else {
-    print STDERR color('red', 'bold') if (_USE_COLOR);
-    print STDERR "Failed: ";
-    print STDERR color('reset') if (_USE_COLOR);
-    print STDERR 'Unable to write to file: ', $Option{qry}, "\n";
+    print_error( header => 'No DMS Issues found' );
   }
 }
 exit;
