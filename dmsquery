@@ -175,6 +175,9 @@ my($name) = $0 =~/.*\/(.*)$/;
    repo forall -cvp 'git log --no-merges HEAD..\$REPO_RREV' | \033[32m$name\033[0m \033[33m-qry\033[0m my_query
    repo forall -cvp 'git log --no-merges --numstat --since="2 weeks ago"' | \033[32m$name\033[0m \033[33m--show-stat-p\033[0m
 
+   Note: When invoked from a script(e.g. Hudson) which has redirected STDOUT to a logfile,
+   the binary query-file could end up in the logfile if no output file is defined.
+
 \033[1m Multiple branches and SW Branch Issues\033[0m
 \033[33m   --swb\033[0m : include all related SW Branch and Main Issues in the Query
 \033[33m   --swb --show\033[0m : list all related  SW Branch and Main Issues.
@@ -189,7 +192,6 @@ my($name) = $0 =~/.*\/(.*)$/;
    2. Edit the file dms.txt, remove all lines with undesired DMS Issues and save.
    3. \033[32m$name\033[0m \033[33m-add\033[0m dms.txt  
  
-
 END
 
 }
@@ -287,15 +289,15 @@ while (my $par = shift) {
 my $qryTemplate;
 if (!$Option{show}) {
   # output
-  if (-t STDOUT) { # no pipe
-    if ($Option{qry} eq _UNDEF) {
-    print_error( header => 'No output file defined',
-                 help   => 1 );
+  if ($Option{qry} eq _UNDEF) {
+    if (-t STDOUT) {
+      print_error( header => 'No output file defined',
+                   help   => 1 );
       exit;
     }
-    else {
-      $Option{qry} .= '.qry' unless ($Option{qry} =~/\.qry$/);   
-    }
+  }
+  else {
+    $Option{qry} .= '.qry' unless ($Option{qry} =~/\.qry$/);   
   }
   
   # Query template
@@ -315,7 +317,7 @@ if (!$Option{show}) {
 
 # indata
 my @inData = ();
-@inData = <STDIN> if (!-t STDIN); # pipe detected
+@inData = <STDIN> if (!-t STDIN);
 
 if ($Option{add} ne _UNDEF && open(my $fh, '<', $Option{add})) {
   push(@inData, (<$fh>));
@@ -457,10 +459,7 @@ if ($Option{swb} && scalar(keys %Parsed)) {
             print_error( header  => 'Failed: ',
                          message => $result );
           }
-          elsif (!-t STDOUT) { # pipe to file
-            print $result; 
-          }
-          else {
+          elsif ($Option{qry} ne _UNDEF) {
             if (open(my $fh, '>', $Option{qry})) {
               binmode $fh;
               print $fh $result;
@@ -470,6 +469,13 @@ if ($Option{swb} && scalar(keys %Parsed)) {
               print_error( header  => 'Failed: ',
                            message => 'Unable to write to file: ' . $Option{qry} );
             }
+          }
+          elsif (!-t STDOUT) {
+            print $result;
+          }
+          else {
+            print_error( header  => 'Failed: ',
+                         message => 'No output file defined' );
           }
         }
         
@@ -565,15 +571,12 @@ else {
     
     # generate DMS query  
     my($problem, $result) = server_request('dms_query', $qryTemplate, @Issue);
-      
+
     if ($problem) {
       print_error( header  => 'Failed: ',
                    message => $result );
     }
-    elsif (!-t STDOUT) { # pipe to file
-      print $result; 
-    }
-    else {
+    elsif ($Option{qry} ne _UNDEF) {
       if (open(my $fh, '>', $Option{qry})) {
         binmode $fh;
         print $fh $result;
@@ -583,6 +586,13 @@ else {
         print_error( header  => 'Failed: ',
                      message => 'Unable to write to file: ' . $Option{qry} );
       }
+    }
+    elsif (!-t STDOUT) {
+      print $result;
+    }
+    else {
+      print_error( header  => 'Failed: ',
+                   message => 'No output file defined' );
     }
   }
   else {
