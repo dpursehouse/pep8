@@ -3,7 +3,20 @@
 import subprocess
 import sys
 import os
-import amara
+import xml.dom.minidom
+import urllib
+
+def miniparse(url):
+    return xml.dom.minidom.parse(urllib.urlopen(url))
+
+def getTextOfFirstTagByName(element, name):
+    rc = ""
+    childElements = element.getElementsByTagName(name)
+    if len(childElements) > 0:
+        for node in childElements[0].childNodes:
+            if node.nodeType == node.TEXT_NODE:
+                rc = rc + node.data
+    return rc.strip()
 
 def main(argv):
 
@@ -30,18 +43,19 @@ def main(argv):
         mainJobUrl = "http://android-ci.sonyericsson.net/job/offbuild_edream1.0-int/api/xml"
 
     if oldJobUrl == "do" or newJobUrl == "do":
-        mainJobXml = amara.parse(mainJobUrl)
-        for build in mainJobXml.freeStyleProject.build:
-            buildJobUrl = urljoin(str(build.url), "api", "xml")
-            buildJobXml = amara.parse(buildJobUrl)
+        mainJobXml = miniparse(mainJobUrl)
+        for build in mainJobXml.getElementsByTagName("build"):
+            buildJobUrl = getTextOfFirstTagByName(build, "url")
+            buildJobXml = miniparse(urljoin(buildJobUrl, "api", "xml"))
             try:
+                text = getTextOfFirstTagByName(buildJobXml, "description")
                 if oldJobUrl == "do":
-                    if buildJobXml.freeStyleBuild.description == oldBuildId:
-                        oldJobUrl = str(build.url)
+                    if text.find(oldBuildId) != -1:
+                        oldJobUrl = buildJobUrl
                         print "Found build job url: %s" % buildJobUrl
                 if newJobUrl == "do":
-                    if buildJobXml.freeStyleBuild.description == newBuildId:
-                        newJobUrl = str(build.url)
+                    if text.find(newBuildId) != -1:
+                        newJobUrl = buildJobUrl
                         print "Found build job url: %s" % buildJobUrl
             except AttributeError:
                 continue
@@ -71,36 +85,36 @@ def urljoin(first, *rest):
 def generateDiff(oldManifestUri, newManifestUri):
     print "Old manifest: %s" % oldManifestUri
     print "New manifest: %s" % newManifestUri
-    oldManifest = amara.parse(oldManifestUri)
-    newManifest = amara.parse(newManifestUri)
+    oldManifest = miniparse(oldManifestUri)
+    newManifest = miniparse(newManifestUri)
 
     newgits = []
     dmslist = []
-    for newProject in newManifest.manifest.project:
+    for newProject in newManifest.getElementsByTagName("project"):
         matchFound = False
-        for oldProject in oldManifest.manifest.project:
-            if newProject.name != oldProject.name:
+        for oldProject in oldManifest.getElementsByTagName("project"):
+            if newProject.getAttribute("name") != oldProject.getAttribute("name"):
                 continue
             matchFound = True
             try:
-                newrev = newProject.revision
+                newrev = newProject.getAttribute("revision")
             except AttributeError:
                 print >> sys.stderr, "Missing new revision for %s" % (
-                                    newProject.name)
+                                    newProject.getAttribute("name"))
                 continue
             try:
-                oldrev = oldProject.revision
+                oldrev = oldProject.getAttribute("revision")
             except AttributeError:
                 print >> sys.stderr, "Missing old revision for %s" % (
-                                     oldProject.name)
+                                     oldProject.getAttribute("name"))
                 continue
 
             if newrev == oldrev:
                 continue
             else:
-                print "** %s **" % newProject.path
-                print "\n".join(runShortlog(newProject.path, newrev, oldrev))
-                log = "\n".join(runLog(newProject.path, newrev, oldrev))
+                print "** %s **" % newProject.getAttribute("path")
+                print "\n".join(runShortlog(newProject.getAttribute("path"), newrev, oldrev))
+                log = "\n".join(runLog(newProject.getAttribute("path"), newrev, oldrev))
                 dmslist.extend(dmsqueryShow(log))
                 dmsqueryQry(log)
 
@@ -112,12 +126,12 @@ def generateDiff(oldManifestUri, newManifestUri):
     if len(newgits) > 0:
         print "New gits added:"
         for proj in newgits:
-            print "name=\"%s\" path=\"%s\"" % (proj.name, proj.path)
+            print "name=\"%s\" path=\"%s\"" % (proj.getAttribute("name"), proj.getAttribute("path"))
 
     # project name is non-volatile so it can be used as key to find the
     # the same projects in two manifests.
-    newset = set([proj.name for proj in newManifest.manifest.project])
-    oldset = set([proj.name for proj in oldManifest.manifest.project])
+    newset = set([proj.getAttribute("name") for proj in newManifest.getElementsByTagName("project")])
+    oldset = set([proj.getAttribute("name") for proj in oldManifest.getElementsByTagName("project")])
 
     # projects in the old manifest that can't be found in the new, must have
     # been removed.
