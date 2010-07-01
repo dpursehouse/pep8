@@ -173,11 +173,11 @@ def dmsqueryQry(gitlog):
     dmsquery.communicate(input=gitlog)[0]
 
 def dmsqueryShow(gitlog):
-    cmd = "dmsquery --show"
+    cmd = "dmsquery --show-t"
     dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     dmslist = dmsquery.communicate(input=gitlog)[0]
-    return dmslist.split()
+    return dmslist.splitlines()
 
 def command(command):
 
