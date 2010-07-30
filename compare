@@ -1,0 +1,514 @@
+#!/usr/bin/perl
+#        1         2         3         4         5         6         7         8
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+use strict;
+use warnings FATAL => qw( all );
+
+use Term::ANSIColor;
+use Cwd;
+use Cwd 'abs_path';
+
+use constant {
+   false => 0,
+   true  => 1,
+};
+
+sub LOCK_SH() { 1 }    #  Shared lock (for reading)
+sub LOCK_EX() { 2 }    #  Exclusive lock (for writing)
+sub LOCK_NB() { 4 }    #  Non-blocking request (don't stall)
+sub LOCK_UN() { 8 }    #  Free the lock (careful!)
+
+my ($gitLogCmd)     = "git log --numstat --no-merges";
+my ($gitRevListCmd) = "git rev-list";
+my ($repoInitCmd)   = "repo init -u git://review.sonyericsson.net/platform/"
+  . "manifest.git -b deckard-integration";
+
+my ($compareDB)    = "$ENV{'HOME'}/compareDB";
+my ($manifestGit)  = "$compareDB/manifest";
+my ($platformRoot) = "$compareDB/platform";
+my ($gitLog)       = "$compareDB/gitLog";
+
+my ($debug)    = false;
+my ($lockFile) = "$compareDB/lockFile";
+
+sub usage() {
+   print <<SECTION;
+   Usage: compare -verref1 <version reference 1>|-manifest1 <file 1>|
+                  -label1 <label 1> 
+                  -verref2 <version reference 2>|-manifest2 <file 2>|
+                  -label2 <label 2> 
+                  [special dmsquery option(s)]
+          compare -help
+SECTION
+}
+
+sub help() {
+   print color 'bold';
+   print "NAME\n";
+   print color 'reset';
+   print <<SECTION;
+       compare - Compare two revisions of a Repo project family and report on 
+       DMS issues that are part of 2, but not 1. Do also report on removed and
+       added projects.
+       
+SECTION
+   print color 'bold';
+   print "SYNOPSIS\n";
+   print color 'reset';
+   print <<SECTION;
+           compare -verref1 <version reference 1>|-manifest1 <file 1>|
+                   -label1 <label 1> 
+                   -verref2 <version reference 2>|-manifest2 <file 2>|
+                   -label2 <label 2> 
+                   [special dmsquery option(s)]
+           compare -help
+           
+SECTION
+   print color 'bold';
+   print "DESCRIPTION\n";
+   print color 'reset';
+   print <<SECTION;
+       Compare uses Repo and Git to retrieve name, project revision 1 and 
+       project revision 2 for the projects.
+       Each of the manifests can be pointed out by a version reference (SHA1, 
+       tag or branch), a file name or a label. In the label case compare will 
+       use corresponding static manifest file located in the offifial folder of
+       the manifest git.
+              
+       Compare uses the retrieved information to
+       a) Produce two lists, one with removed projects (projects existing in 1,
+          but not 2) and one with added (projects existing in 2 but not in 1). 
+          If the user hasn't specified any \"special dmsquery options\",
+          then these lists are printed on standard output.
+       b) Go through all projects (also the manifest project, if both -verref1
+          and -verref2 are used) and run "git log --numstat --no-merges 
+          <project revision 1>..<project revision 2>. For added projects, it 
+          runs "git log --numstat --no-merges <project revision 2>".
+       
+          All git log results are concatenated into one \"git log file\". 
+          Finally Compare calls dmsquery as follows: \"dmsquery -add 
+          <git log file> --show-p\".
+       
+       Compare creates a folder named compareDB in the HOME folder and stores 
+       its data in it. Do not remove this folder, keeping it will make next 
+       compare go faster.
+       
+SECTION
+   print color 'bold';
+   print "OPTIONS\n";
+   print color 'reset';
+   print <<SECTION;
+       -help
+           Prints this help text.
+       
+       special dmsquery option(s)
+           If Compare is called with options that it doesn't recognize, then it 
+           will suppose that these are dmsquery options. It will then call
+           dmsquery this way instead: \"dmsquery -add <git log file> <special
+           dmsquery options>\".
+           
+SECTION
+}
+
+sub execCmd {
+   my ( $cmd, $resultStringRef, $resultListRef ) = @_;
+   if ($debug) { print "$cmd\n" }
+   @$resultListRef = `$cmd 2>&1`;
+   my ($exitStatus) = $?;
+   if ( ( $exitStatus == 0 ) && ( $#$resultListRef >= 0 ) ) {
+      $$resultStringRef = $$resultListRef[0];
+      chomp $$resultStringRef;
+   }
+   return ($exitStatus);
+}
+
+sub getOptionsAndArgs {
+   my ( $argVerRef1, $argVerRef2, $argManifest1, $argManifest2, $argLabel1,
+      $argLabel2, $argDmsqeryOptions, $showHelp );
+   $showHelp = false;
+   my ($paramNum);
+   for ( $paramNum = 0 ; $paramNum <= $#ARGV ; $paramNum = $paramNum + 1 ) {
+      if ( $ARGV[$paramNum] eq "-help" ) {
+         $showHelp = true;
+         goto RETURN;
+      }
+      elsif ( $ARGV[$paramNum] eq "-verref1" ) {
+         if ( $paramNum == ($#ARGV) ) {
+            print STDERR "compare error: version reference 1 missing.\n";
+            usage();
+            die;
+         }
+         $paramNum   = $paramNum + 1;
+         $argVerRef1 = $ARGV[$paramNum];
+      }
+      elsif ( $ARGV[$paramNum] eq "-verref2" ) {
+         if ( $paramNum == ($#ARGV) ) {
+            print STDERR "compare error: version reference 2 missing.\n";
+            usage();
+            die;
+         }
+         $paramNum   = $paramNum + 1;
+         $argVerRef2 = $ARGV[$paramNum];
+      }
+      elsif ( $ARGV[$paramNum] eq "-manifest1" ) {
+         if ( $paramNum == ($#ARGV) ) {
+            print STDERR "compare error: manifest file 1 missing.\n";
+            usage();
+            die;
+         }
+         $paramNum     = $paramNum + 1;
+         $argManifest1 = $ARGV[$paramNum];
+      }
+      elsif ( $ARGV[$paramNum] eq "-manifest2" ) {
+         if ( $paramNum == ($#ARGV) ) {
+            print STDERR "compare error: manifest file 2 missing.\n";
+            usage();
+            die;
+         }
+         $paramNum     = $paramNum + 1;
+         $argManifest2 = $ARGV[$paramNum];
+      }
+      elsif ( $ARGV[$paramNum] eq "-label1" ) {
+         if ( $paramNum == ($#ARGV) ) {
+            print STDERR "compare error: label 1 missing.\n";
+            usage();
+            die;
+         }
+         $paramNum  = $paramNum + 1;
+         $argLabel1 = $ARGV[$paramNum];
+      }
+      elsif ( $ARGV[$paramNum] eq "-label2" ) {
+         if ( $paramNum == ($#ARGV) ) {
+            print STDERR "compare error: label 2 missing.\n";
+            usage();
+            die;
+         }
+         $paramNum  = $paramNum + 1;
+         $argLabel2 = $ARGV[$paramNum];
+      }
+      else {
+         if ( defined $argDmsqeryOptions ) {
+            $argDmsqeryOptions = $argDmsqeryOptions . " " . $ARGV[$paramNum];
+         }
+         else { $argDmsqeryOptions = $ARGV[$paramNum]; }
+      }
+   }
+   my ($no) = 0;
+   if ( defined $argVerRef1 )   { $no = $no + 1; }
+   if ( defined $argManifest1 ) { $no = $no + 1; }
+   if ( defined $argLabel1 )    { $no = $no + 1; }
+   if ( $no == 0 ) {
+      print STDERR "compare error: one of -verref1, -manifest1 and -label1 "
+        . "must be used.\n";
+      usage();
+      die;
+   }
+   elsif ( $no > 1 ) {
+      print STDERR "compare error: only one of -verref1, -manifest1 and "
+        . "-label1 may be used..\n";
+      usage();
+      die;
+   }
+   $no = 0;
+   if ( defined $argVerRef2 )   { $no = $no + 1; }
+   if ( defined $argManifest2 ) { $no = $no + 1; }
+   if ( defined $argLabel2 )    { $no = $no + 1; }
+   if ( $no == 0 ) {
+      print STDERR "compare error: one of -verref2, -manifest2 and -label2 "
+        . "must be used.\n";
+      usage();
+      die;
+   }
+   elsif ( $no > 1 ) {
+      print STDERR "compare error: only one of -verref2, -manifest2 and "
+        . "-label2 may be used.\n";
+      usage();
+      die;
+   }
+   if ( defined $argManifest1 ) {
+      if ( !-e $argManifest1 ) {
+         print STDERR "The file $argManifest1 does not exist.\n";
+         usage();
+         die;
+      }
+      $argManifest1 = abs_path($argManifest1);
+   }
+   if ( defined $argManifest2 ) {
+      if ( !-e $argManifest2 ) {
+         print STDERR "The file $argManifest2 does not exist.\n";
+         usage();
+         die;
+      }
+      $argManifest2 = abs_path($argManifest2);
+   }
+ RETURN:
+   return ( $argVerRef1, $argVerRef2, $argManifest1, $argManifest2, $argLabel1,
+      $argLabel2, $argDmsqeryOptions, $showHelp );
+}
+
+sub validateLblAndGetManifest {
+   my ($label) = @_;
+
+   # Get manifest git from official folder, when -label1 or -label2 is used.
+   my ($manifest) = "$manifestGit/official/$label.xml";
+
+   if ( !-e $manifest ) {
+      print STDERR "Cannot find static manifest file related to label "
+        . "$label.\n";
+      usage();
+      die;
+   }
+   return ($manifest);
+}
+
+sub refreshCompareDB {
+   my ( @result, $result, $cmd );
+   if ( !-d "$manifestGit/.git" ) {
+      $cmd = "git clone git://review.sonyericsson.net/platform/manifest.git "
+        . "$manifestGit";
+   }
+   else {
+      chdir "$manifestGit";
+      $cmd = "git fetch git://review.sonyericsson.net/platform/manifest.git "
+        . "master";
+   }
+
+   if ( execCmd( "$cmd", \$result, \@result ) != 0 ) {
+      die "Error when cloning/pulling git manifest.\n@result";
+   }
+   if ( !-d "$platformRoot" ) {
+      if ( execCmd( "mkdir $platformRoot", \$result, \@result ) != 0 ) {
+         die "Error when creating $platformRoot folder.\n@result";
+      }
+
+   }
+   chdir "$platformRoot";
+   if ( !-d "$platformRoot/.repo" ) {
+      if ( execCmd( "$repoInitCmd", \$result, \@result ) != 0 ) {
+         die "Error when doing repo init.\n@result";
+      }
+   }
+   chdir "$platformRoot/.repo/manifests";
+   if ( !-d "$platformRoot/.repo" ) {
+      $cmd = "git reset --hard";
+      if ( execCmd( "$cmd", \$result, \@result ) != 0 ) {
+         die "Error when doing git reset.\n@result";
+      }
+   }
+}
+
+sub repoSync {
+   my ( $result, @result );
+   if ( execCmd( "repo sync", \$result, \@result ) != 0 ) {
+      warn "repo sync failed. Will try a repo init.";
+      if ( execCmd( "$repoInitCmd", \$result, \@result ) != 0 ) {
+         die "Error when doing repo init.\n@result";
+      }
+      if ( execCmd( "repo sync", \$result, \@result ) != 0 ) {
+         die "Error when doing repo sync.\n@result";
+      }
+      warn "repo init made repo sync succeed.";
+   }
+}
+
+sub getProjectsWithRevisions {
+   my ( $argVerRef, $argManifest, $sync ) = @_;
+   my ( $cmd, @result, $result, %tbl );
+   if ( defined $argVerRef ) {
+      $cmd = "git show $argVerRef:default.xml > default.xml";
+      if ( execCmd( "$cmd", \$result, \@result ) != 0 ) {
+         die "Failed to retrieve contents of old mainfest version:\n@result";
+      }
+   }
+   elsif ( defined $argManifest ) {
+      execCmd( "cp \"$argManifest\" default.xml", \$result, \@result );
+   }
+   else {
+
+      # Get rid of possible changed default.xml
+      if ( execCmd( "git reset --hard", \$result, \@result ) != 0 ) {
+         die "Error when doing git reset.\n@result";
+      }
+   }
+   if ($sync) { repoSync(); }
+   $cmd = "repo forall -c 'echo \"\$REPO_PROJECT;\$REPO_LREV\"'";
+   if ( execCmd( "$cmd", \$result, \@result ) != 0 ) {
+      die "Failed to retrieve projects:\n@result";
+   }
+
+   my ( $record, $project, $revision );
+   foreach $record (@result) {
+      chomp($record);
+      my (@l) = split /;/, "$record";
+      $project         = $l[0];
+      $revision        = $l[1];
+      $tbl{"$project"} = "$revision";
+   }
+
+   return ( \%tbl );
+}
+
+sub getLock {
+   open( LOCK, ">$lockFile" ) or die "compare is already in use, try later.";
+   unless ( flock( LOCK, LOCK_EX | LOCK_NB ) ) {
+      warn "compare already in use, waiting for exclusive access to "
+        . "database...\n";
+      unless ( flock( LOCK, LOCK_EX ) ) {
+         die "Error getting exclusive access to database.";
+      }
+      warn "Got exclusive access to database.\n";
+   }
+}
+
+# -----------------------------------------------------------------
+# MAIN PROGRAM
+
+# Get and check arguments.
+my ( $argVerRef1, $argVerRef2, $argManifest1, $argManifest2, $argLabel1,
+   $argLabel2, $argDmsqeryOptions, $showHelp )
+  = getOptionsAndArgs(@ARGV);
+
+if ($showHelp) {
+   help();
+   exit;
+}
+
+my ( $result, @result );
+if ( !-d "$compareDB" ) {
+   if ( execCmd( "mkdir $compareDB", \$result, \@result ) != 0 ) {
+      die "Error when creating $compareDB folder.\n@result";
+   }
+}
+
+getLock();
+
+refreshCompareDB();
+
+if ( defined $argLabel1 ) {
+   $argManifest1 = validateLblAndGetManifest($argLabel1);
+}
+if ( defined $argLabel2 ) {
+   $argManifest2 = validateLblAndGetManifest($argLabel2);
+}
+
+chdir "$platformRoot/.repo/manifests"
+  or die "Cannot change folder to $platformRoot/.repo/manifests.";
+
+# Get projects for 1.
+my ($projTbl1Ref) =
+  getProjectsWithRevisions( $argVerRef1, $argManifest1, true );
+
+# Get projects for 2.
+my ($projTbl2Ref) =
+  getProjectsWithRevisions( $argVerRef2, $argManifest2, true );
+
+# Find projects missing in 2 and projects with different revisions.
+my ( @removedProjects, @projectsWithDifferentRevisions,
+   @projectsWithSameRevisions, $project, $revision );
+while ( ( $project, $revision ) = each %$projTbl1Ref ) {
+   if ( !exists $$projTbl2Ref{"$project"} ) {
+      push @removedProjects, $project;
+   }
+   else {
+      my ($rev2) = $$projTbl2Ref{"$project"};
+      if ( $revision ne $rev2 ) {
+         push @projectsWithDifferentRevisions, $project;
+         if ($debug) {
+            print "Different revisions: $project, $revision $rev2\n";
+         }
+      }
+      else {
+         push @projectsWithSameRevisions, $project;
+         if ($debug) { print "Same revisions: $project, $revision\n" }
+      }
+   }
+}
+
+# Get projects existing in 2, but not 1.
+my (@addedProjects);
+while ( ( $project, $revision ) = each %$projTbl2Ref ) {
+   if ( !exists $$projTbl1Ref{"$project"} ) { push @addedProjects, $project }
+}
+
+if ($debug) {
+   print "Removed projects:\n";
+   foreach $project (@removedProjects) { print "   $project\n"; }
+   print "Added projects:\n";
+   foreach $project (@addedProjects) { print "   $project\n"; }
+   print "Changed projects:\n";
+   foreach $project (@projectsWithDifferentRevisions) {
+      print "   $project\n";
+   }
+   print "Unchanged projects:\n";
+   foreach $project (@projectsWithSameRevisions) { print "   $project\n"; }
+}
+
+if ( -e $gitLog ) { unlink $gitLog or die "Cannot remove $gitLog."; }
+
+foreach $project (@addedProjects) {
+   my ($cmd) = "repo forall $project -cvp '$gitLogCmd $$projTbl2Ref{$project}'";
+   if ( execCmd( "$cmd | tee -a $gitLog", \$result, \@result ) != 0 ) {
+      die "Error when retrieving log for $project:\n@result";
+   }
+}
+
+foreach $project (@projectsWithDifferentRevisions) {
+   my ($cmd) =
+       "repo forall $project -cv "
+     . "'$gitRevListCmd $$projTbl2Ref{$project} | grep $$projTbl1Ref{$project} "
+     . "| wc -l'";
+   if ( execCmd( "$cmd", \$result, \@result ) != 0 ) {
+      die "Error when checking relationship between revisions in "
+        . "$project:\n@result";
+   }
+   if ( $result == 0 ) {
+      warn "Warning, $$projTbl2Ref{$project} is not a linear heir of "
+        . "$$projTbl1Ref{$project} in $project.\n";
+   }
+   $cmd = "repo forall $project -cvp "
+     . "'$gitLogCmd $$projTbl1Ref{$project}..$$projTbl2Ref{$project}'";
+   if ( execCmd( "$cmd | tee -a $gitLog", \$result, \@result ) != 0 ) {
+      die "Error when comparing revisions for $project:\n@result";
+   }
+}
+
+# If arguments do not contain any manifest file or label, then compare the
+# manifest versions also.
+if ( ( defined $argVerRef1 ) && ( defined $argVerRef1 ) ) {
+   `echo \"project .repo/manifests/\" >> $gitLog`;
+   my ($cmd);
+   $cmd = "$gitLogCmd $argVerRef1..$argVerRef2 2>&1";
+   if ( execCmd( "$cmd | tee -a $gitLog", \$result, \@result ) != 0 ) {
+      die "Error when retrieving log for the manifest git:\n@result";
+   }
+}
+
+my ($cmd);
+if ( !defined $argDmsqeryOptions ) {
+   print "REMOVED PROJECTS\n";
+   if ( $#removedProjects > -1 ) {
+      foreach $project (@removedProjects) { print " $project\n"; }
+   }
+   else { print "No projects removed\n"; }
+   print "\nADDED PROJECTS\n";
+   if ( $#addedProjects > -1 ) {
+      foreach $project (@addedProjects) { print " $project\n"; }
+   }
+   else { print "No projects added\n"; }
+   $cmd = "dmsquery -add $gitLog --show-p";
+}
+else {
+   $cmd = "dmsquery -add $gitLog $argDmsqeryOptions";
+}
+
+if ( execCmd( "$cmd", \$result, \@result ) != 0 ) {
+   warn "Failed to run dmsquery: @result";
+}
+elsif ( !defined $argDmsqeryOptions ) {
+   print "\nISSUES\n";
+   if ( $#result == -1 ) { print "No issues\n"; }
+}
+foreach (@result) {
+   print $_;
+}
