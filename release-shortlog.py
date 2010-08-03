@@ -28,6 +28,9 @@ def main(argv):
                         help="An official build job URL on Hudson")
     parser.add_option("-n", "--not", dest="not_refs",
                         help="One or more refs (comma separated list) to exclude")
+    parser.add_option("--no-count", action="store_false",
+                      dest="count", default=True)
+    parser.add_option("--qry", dest="queryFile", default="DMSquery.qry")
 
     (options, args) = parser.parse_args()
 
@@ -95,169 +98,193 @@ def main(argv):
         print >> sys.stderr, "Could not find old manifest"
         sys.exit(1)
 
-    generateDiff(oldManifestUrl, newManifestUrl, notFilter)
+    dg = DiffGenerator(count=options.count, query=options.queryFile)
 
-def urljoin(first, *rest):
-    return "/".join([first.rstrip('/'),
-           "/".join([part.lstrip('/') for part in rest])])
+    dg.generateDiff(oldManifestUrl, newManifestUrl, notFilter)
 
-def generateDiff(oldManifestUri, newManifestUri, notFilter=None):
-    print "Old manifest: %s" % oldManifestUri
-    print "New manifest: %s" % newManifestUri
-    oldManifest = miniparse(oldManifestUri)
-    newManifest = miniparse(newManifestUri)
+class DiffGenerator(object):
 
-    newgits = []
-    dmslist = []
-    commitCountFiltered = 0
-    commitCount = 0
+    def __init__(self, count=True, query="DMSQuery.qry"):
+        self.count = count
+        self.query = query
 
-    for newProject in newManifest.getElementsByTagName("project"):
-        matchFound = False
-        for oldProject in oldManifest.getElementsByTagName("project"):
-            if newProject.getAttribute("name") != oldProject.getAttribute("name"):
-                continue
-            matchFound = True
-            try:
-                newrev = newProject.getAttribute("revision")
-            except AttributeError:
-                print >> sys.stderr, "Missing new revision for %s" % (
-                                    newProject.getAttribute("name"))
-                continue
-            try:
-                oldrev = oldProject.getAttribute("revision")
-            except AttributeError:
-                print >> sys.stderr, "Missing old revision for %s" % (
-                                     oldProject.getAttribute("name"))
-                continue
+    def generateDiff(self, oldManifestUri, newManifestUri, notFilter=None):
+        print "Old manifest: %s" % oldManifestUri
+        print "New manifest: %s" % newManifestUri
+        oldManifest = miniparse(oldManifestUri)
+        newManifest = miniparse(newManifestUri)
 
-            if newrev == oldrev:
-                continue
-            else:
-                print "** %s **" % newProject.getAttribute("path")
-                print "\n".join(runShortlog(newProject.getAttribute("path"),
-                                            newrev,
-                                            oldrev))
+        newgits = []
+        dmslist = []
+        concatLog = ""
+        commitCountFiltered = 0
+        commitCount = 0
 
-                log = "\n".join(runLog(newProject.getAttribute("path"),
-                                       newrev,
-                                       oldrev))
+        for newProject in newManifest.getElementsByTagName("project"):
+            matchFound = False
+            for oldProject in oldManifest.getElementsByTagName("project"):
+                if newProject.getAttribute("name") != oldProject.getAttribute("name"):
+                    continue
+                matchFound = True
+                try:
+                    newrev = newProject.getAttribute("revision")
+                except AttributeError:
+                    print >> sys.stderr, "Missing new revision for %s" % (
+                                        newProject.getAttribute("name"))
+                    continue
+                try:
+                    oldrev = oldProject.getAttribute("revision")
+                except AttributeError:
+                    print >> sys.stderr, "Missing old revision for %s" % (
+                                         oldProject.getAttribute("name"))
+                    continue
 
-                dmslist.extend(dmsqueryShow(log))
-
-                if notFilter != None:
-                    filteredLog = "\n".join(runLog(
-                                            newProject.getAttribute("path"),
-                                            newrev,
-                                            oldrev,
-                                            notFilter))
-
-                    dmsqueryQry(filteredLog)
-
-                    commitCountFiltered += \
-                        countCommits(newProject.getAttribute("path"),
-                                     newrev,
-                                     oldrev,
-                                     notFilter)
-
-                    commitCount += countCommits(newProject.getAttribute("path"),
-                                                newrev,
-                                                oldrev)
+                if newrev == oldrev:
+                    continue
                 else:
-                    dmsqueryQry(log)
+                    print "** %s **" % newProject.getAttribute("path")
+                    print "\n".join(self.runShortlog(newProject.getAttribute("path"),
+                                                newrev,
+                                                oldrev))
 
-                    commitCountFiltered += countCommits(
+                    log = "\n".join(self.runLog(newProject.getAttribute("path"),
+                                           newrev,
+                                           oldrev))
+
+                    dmslist.extend(self.dmsqueryShow(log))
+
+                    if notFilter != None:
+                        filteredLog = "\n".join(self.runLog(
                                                 newProject.getAttribute("path"),
                                                 newrev,
-                                                oldrev)
-                    commitCount += countCommits(
-                                        newProject.getAttribute("path"),
-                                        newrev, oldrev)
+                                                oldrev,
+                                                notFilter))
 
-        # if the project does not exist in the old manifest it must have
-        # been added since then.
-        if not matchFound:
-            newgits.append(newProject)
+                        concatLog = concatLog + filteredLog
 
-    if len(newgits) > 0:
-        print "New gits added:"
-        for proj in newgits:
-            print "name=\"%s\" path=\"%s\"" % \
-                (proj.getAttribute("name"), proj.getAttribute("path"))
+                        commitCountFiltered += \
+                            self.countCommits(newProject.getAttribute("path"),
+                                         newrev,
+                                         oldrev,
+                                         notFilter)
 
-    # project name is non-volatile so it can be used as key to find the
-    # the same projects in two manifests.
-    newset = set([proj.getAttribute("name") \
-                for proj in newManifest.getElementsByTagName("project")])
-    oldset = set([proj.getAttribute("name") \
-                for proj in oldManifest.getElementsByTagName("project")])
+                        commitCount += self.countCommits(newProject.getAttribute("path"),
+                                                    newrev,
+                                                    oldrev)
+                    else:
+                        concatLog = concatLog + log
 
-    # projects in the old manifest that can't be found in the new, must have
-    # been removed.
-    removed = oldset - newset
-    if len(removed) > 0:
-        print "Removed gits:"
-        print "\n".join(removed)
+                        commitCountFiltered += self.countCommits(
+                                                    newProject.getAttribute("path"),
+                                                    newrev,
+                                                    oldrev)
+                        commitCount += self.countCommits(
+                                            newProject.getAttribute("path"),
+                                            newrev, oldrev)
 
-    print "DMS issues found:"
-    for issue in dmslist:
-        print issue
+            # if the project does not exist in the old manifest it must have
+            # been added since then.
+            if not matchFound:
+                newgits.append(newProject)
+        self.dmsqueryQry(concatLog)
 
-    print "\nCommits introduced: %d" % commitCount
-    print "Commits used for DMS query: %d" % commitCountFiltered
+        if len(newgits) > 0:
+            print "New gits added:"
+            for proj in newgits:
+                print "name=\"%s\" path=\"%s\"" % \
+                    (proj.getAttribute("name"), proj.getAttribute("path"))
 
-def countCommits(path=None, newrev=None, oldrev=None, notFilter=None):
-    rootdir = os.getcwd()
-    try:
-        os.chdir(path)
-    except OSError:
-        print >> sys.stderr, "Could not change direcotory to %s" % path
-        sys.exit(2)
+        # project name is non-volatile so it can be used as key to find the
+        # the same projects in two manifests.
+        newset = set([proj.getAttribute("name") \
+                    for proj in newManifest.getElementsByTagName("project")])
+        oldset = set([proj.getAttribute("name") \
+                    for proj in oldManifest.getElementsByTagName("project")])
 
-    cmd = "git log --pretty=oneline %s..%s" % (oldrev, newrev)
+        # projects in the old manifest that can't be found in the new, must have
+        # been removed.
+        removed = oldset - newset
+        if len(removed) > 0:
+            print "Removed gits:"
+            print "\n".join(removed)
 
-    if notFilter != None:
-        for notItem in notFilter:
-            if isRef(notItem):
-                filterStr = " ^%s" % notItem
-                cmd = cmd + filterStr
-    (ret, res) = command(cmd)
-    os.chdir(rootdir)
+        print "DMS issues found:"
+        for issue in dmslist:
+            print issue
+        if self.count == True:
+            print "\nCommits introduced: %d" % commitCount
+            print "Commits used for DMS query: %d" % commitCountFiltered
 
-    return len(res)
+    def countCommits(self, path=None, newrev=None, oldrev=None, notFilter=None):
+        if not self.count:
+            return 0
 
-def runShortlog(path=None, newrev=None, oldrev=None):
-    rootdir = os.getcwd()
-    try:
-        os.chdir(path)
-    except OSError:
-        print >> sys.stderr, "Could not change directory to %s" % path
-        sys.exit(2)
+        rootdir = os.getcwd()
+        try:
+            os.chdir(path)
+        except OSError:
+            print >> sys.stderr, "Could not change direcotory to %s" % path
+            sys.exit(2)
 
-    cmd = "git shortlog --no-merges %s..%s" % (oldrev, newrev)
-    (ret, res) = command(cmd)
-    os.chdir(rootdir)
-    return res
+        cmd = "git log --pretty=oneline %s..%s" % (oldrev, newrev)
 
-def runLog(path=None, newrev=None, oldrev=None, notFilter=None):
-    rootdir = os.getcwd()
-    try:
-        os.chdir(path)
-    except OSError:
-        print >> sys.stderr, "Could not change direcotory to %s" % path
-        sys.exit(2)
+        if notFilter != None:
+            for notItem in notFilter:
+                if isRef(notItem):
+                    filterStr = " ^%s" % notItem
+                    cmd = cmd + filterStr
+        (ret, res) = command(cmd)
+        os.chdir(rootdir)
 
-    cmd = "git log %s..%s" % (oldrev, newrev)
+        return len(res)
 
-    if notFilter != None:
-        for notItem in notFilter:
-            if isRef(notItem):
-                filterStr = " ^%s" % notItem
-                cmd = cmd + filterStr
+    def runShortlog(self, path=None, newrev=None, oldrev=None):
+        rootdir = os.getcwd()
+        try:
+            os.chdir(path)
+        except OSError:
+            print >> sys.stderr, "Could not change directory to %s" % path
+            sys.exit(2)
 
-    (ret, res) = command(cmd)
-    os.chdir(rootdir)
-    return res
+        cmd = "git shortlog --no-merges %s..%s" % (oldrev, newrev)
+        (ret, res) = command(cmd)
+        os.chdir(rootdir)
+        return res
+
+    def runLog(self, path=None, newrev=None, oldrev=None, notFilter=None):
+        rootdir = os.getcwd()
+        try:
+            os.chdir(path)
+        except OSError:
+            print >> sys.stderr, "Could not change direcotory to %s" % path
+            sys.exit(2)
+
+        cmd = "git log %s..%s" % (oldrev, newrev)
+
+        if notFilter != None:
+            for notItem in notFilter:
+                if isRef(notItem):
+                    filterStr = " ^%s" % notItem
+                    cmd = cmd + filterStr
+
+        (ret, res) = command(cmd)
+        os.chdir(rootdir)
+        return res
+
+    def dmsqueryQry(self, gitlog):
+        cmd = "dmsquery -qry %s" % self.query
+
+        dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        dmsquery.communicate(input=gitlog)
+        dmsquery.stdin.close()
+
+    def dmsqueryShow(self, gitlog):
+        cmd = "dmsquery --show-t"
+        dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        dmslist = dmsquery.communicate(input=gitlog)[0]
+        return dmslist.splitlines()
 
 def isRef(candidate, gitpath=None):
     cmd = "git show-ref %s" % candidate
@@ -266,25 +293,16 @@ def isRef(candidate, gitpath=None):
         return True
     return False
 
-def dmsqueryQry(gitlog):
-    cmd = "dmsquery -qry DMSquery.qry"
-    dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    dmsquery.communicate(input=gitlog)[0]
-
-def dmsqueryShow(gitlog):
-    cmd = "dmsquery --show-t"
-    dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    dmslist = dmsquery.communicate(input=gitlog)[0]
-    return dmslist.splitlines()
-
 def command(command):
 
     gitCmd = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
     result = gitCmd.communicate()[0].split('\n')
     retval = gitCmd.returncode
     return (retval, result)
+
+def urljoin(first, *rest):
+    return "/".join([first.rstrip('/'),
+           "/".join([part.lstrip('/') for part in rest])])
 
 if __name__ == "__main__":
     main(sys.argv)
