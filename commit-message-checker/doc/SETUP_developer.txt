@@ -1,0 +1,32 @@
+This document describes how to setup commit-message-checker for its developer.
+
+* Environment
+OS               : Ubuntu 9.10
+Software         : XAMPP for Linux 1.7.3
+
+* Install
+
+** Setup XAMPP
+
+Download XAMPP from below site.
+http://www.apachefriends.org/download.php?xampp-linux-1.7.3a.tar.gz
+
+Install XAMPP.
+$ sudo tar xvzf xampp-linux-1.7.3a.tar.gz -C /opt
+
+
+** Setup commit-message-checker
+Download source code to your working directory by Git.
+
+$ cd <path_to_workingdir>
+$ git clone ssh://<firstname>.<lastname>@review.sonyericsson.net:29418/semctools/cm_tools
+
+Create link to xampp htdocs directory # <path_to_workingdir> must be absolute path.
+$ sudo ln -s <path_to_workingdir>/cm_tools/commit-message-checker/src/commit-message-checker /opt/lampp/htdocs
+
+** Start xampp
+$ sudo /opt/lampp/lampp start
+
+
+Then you can access commit-message-checker from below address.
+http://localhost/commit-message-checker/
