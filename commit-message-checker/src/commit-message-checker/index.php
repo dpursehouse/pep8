@@ -24,6 +24,9 @@
 #
 # Title   : index.php
 #
+# Modified:
+# 2010-09-02: Set text input width to 70 characters
+#
 #-----------------------------------------------------------------
 -->
 */
@@ -35,6 +38,18 @@
         <title>Android CM Web Server - Commit Message Checker</title>
         <link rel='stylesheet' href='style/style.css' type='text/css' />
     </head>
+
+    <?php
+    if(preg_match('/(?i)msie [1-7]/',$_SERVER['HTTP_USER_AGENT'])) {
+        // Internet explorer
+        $columns = 70;
+    } else {
+        // Other (assuming Chrome or Firefox)
+        // Set the column width to adjust for extra columns added by the browser
+        $columns = 68;
+    }
+
+    ?>
 
     <body>
         <div class='content'>
@@ -49,7 +64,7 @@
 
                 <div style='float: left; width: 528px; margin-top: 30px;'>
                     <form action="check.php" method="POST">
-                        <textarea tabindex='1' cols="85" rows="30" id="commit_message" name="commit_message"></textarea>
+                        <textarea tabindex='1' cols="<?php echo $columns;?>" rows="30" id="commit_message" name="commit_message"></textarea>
                         <input tabindex='2' align='left' type="submit" name="add_info" value="Submit"/>
                     </form>
                 </div>
