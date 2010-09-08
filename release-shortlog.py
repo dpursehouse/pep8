@@ -226,7 +226,7 @@ class DiffGenerator(object):
             print >> sys.stderr, "Could not change direcotory to %s" % path
             sys.exit(2)
 
-        cmd = "git log --pretty=oneline %s..%s" % (oldrev, newrev)
+        cmd = "git log --no-merges --pretty=oneline %s..%s" % (oldrev, newrev)
 
         if notFilter != None:
             for notItem in notFilter:
@@ -294,9 +294,8 @@ def isRef(candidate, gitpath=None):
     return False
 
 def command(command):
-
     gitCmd = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
-    result = gitCmd.communicate()[0].split('\n')
+    result = gitCmd.communicate()[0].splitlines()
     retval = gitCmd.returncode
     return (retval, result)
 
