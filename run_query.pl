@@ -30,14 +30,20 @@ use constant DMS_ID_LABEL => "DMS ID";
 use constant MASTER_LABEL => "ratl_mastership";
 use constant RELEASE_LABEL_FIELD => "sw_official_release";
 use constant STATE_FIELD => "State";
-use constant RESTRICTED_STATE => "Verified";
+use constant INTEGRATED_STATUS_FIELD => "integrated_status";
+use constant VERIFIED_STATUS_FIELD => "verified_status";
+use constant PROJ_ID => "proj_id";
+use constant RESTRICTED_STATE => "Integrated";
+use constant FINAL_STATE => "Verified";
+use constant PREFERRED_STATUS => "Test OK";
+use constant DEFAULT_SITE => SELD;
+use constant STATE_ACTION => "Pass";
 
 use constant ERROR => "[ERROR]";
 use constant WARN => "[WARNING]";
 use constant CQERROR => "[CQERROR]";
 use constant OK => "[OK]";
  
-
 my $query;
 my $log_file;
 my $label;
@@ -49,6 +55,7 @@ my $update;
 my @sites;
 my $unverified_query;
 my $unlabeled_query;
+my $project;
 
 my $options_ok;
 my $log_handle;
@@ -96,7 +103,7 @@ if(scalar(@ARGV) == 0) {
         @issues = split(/,/, $issue_list);
       }
     }
-    
+
     # Choose if records should be updated or label value listed.
     # 1 for list, 2 for update.
     $choice = 0;
@@ -129,7 +136,31 @@ if(scalar(@ARGV) == 0) {
     my $sites_list = <STDIN>;
     chomp $sites_list;
     @sites = split(/,/, $sites_list);
-  
+
+    # Project (Technical name) refers to the name of project that the label should exist in.
+    # Necessary if a label should be created.
+    $choice = 0;
+    while(!($choice == 1 || $choice == 2)){
+      print "Create SW label?\n";
+      print "1) Create SW label\n";
+      print "2) Skip creation of SW label\n";
+      $choice = <STDIN>;
+      if($choice == 1) {
+        print "Enter project (Technical name):\n";
+        my $project = <STDIN>;
+        chomp $project;
+        if($project eq "") {
+          print "Please enter a non-empty string";
+          undef $project;
+          $choice = 0;
+        }
+      } elsif ($choice == 2) {
+        ;
+      } else {
+        print "Enter 1 Create SW label or 2 to skip creation of SW label:\n";
+      }
+    }
+
     # Print all inputed parameters.
     print "Chosen parameters:";
     print "User = ", $user, "\n";
@@ -167,17 +198,19 @@ if(scalar(@ARGV) == 0) {
   }
 # Parse command line arguments if such were provided.
 } else {
-  $options_ok = GetOptions("query=s"    => \$query,
-                            "log=s"     => \$log_file,
-                            "label=s"   => \$label,
-                            "pwd=s"     => \$pwd,
-                            "user=s"    => \$user,
-                            "list"      => \$list,
-                            "update"    => \$update,
-                            "sites=s"    => \@sites,
-                            "unv=s" => \$unverified_query,
-                            "unl=s" => \$unlabeled_query,
-                            "issues=s"  => \@issues);
+  $options_ok = GetOptions("query=s"        => \$query,
+                            "log=s"         => \$log_file,
+                            "label=s"       => \$label,
+                            "pwd=s"         => \$pwd,
+                            "user=s"        => \$user,
+                            "list"          => \$list,
+                            "update"        => \$update,
+                            "sites=s"       => \@sites,
+                            "unv=s"         => \$unverified_query,
+                            "unl=s"         => \$unlabeled_query,
+                            "issues=s"      => \@issues,
+                            "createlabel=s" => \$project);
+
   die usage() unless ($options_ok && $log_file && $pwd && $user && ($query || @issues));
   if(@issues) {
     @issues = split(/,/, join(',', @issues));
@@ -185,7 +218,7 @@ if(scalar(@ARGV) == 0) {
   if(@sites) {
     @sites = split(/,/, join(',', @sites));
   } else {
-    push(@sites, SELD);
+    push(@sites, DEFAULT_SITE);
   }
   if(defined($update)&& !defined($label)) {
     die usage();
@@ -193,7 +226,11 @@ if(scalar(@ARGV) == 0) {
   if(defined($update) && defined($list)) {
     die usage();
   }
+  if(defined($project) && !defined($label)) {
+    die usage();
+  }
 }
+
 
 ################################################################################
 #              ARGUMENT PARSING ENDS HERE!!!                                   #
@@ -216,6 +253,12 @@ if($session == -1) {
   logg(ERROR, "Could not get a session for site $site");
 }
 
+#Create SW label only on site $sites[0], label should be synchronised to other
+#sites within 30 minutes
+if(defined($project) && defined($label)) {
+  create_sw_label($session,$project,$label);
+}
+
 #If a query is provided, make sure it has all the necessary fields
 #defined. If not, add the fields.
 #If no query is provided, generate on with the necessary fields.
@@ -224,15 +267,16 @@ if(defined($query)) {
   #Get the query from file
   $query_def = $session->OpenQueryDef($query);
   #If mastership is not in the query, add that.
-  if(!is_field_in_query($query_def, MASTERSHIP_FIELD)) {
-    $query_def->BuildField(MASTERSHIP_FIELD);
+  foreach my $field (MASTERSHIP_FIELD,
+                     STATE_FIELD,
+                     INTEGRATED_STATUS_FIELD,
+                     VERIFIED_STATUS_FIELD,
+                     RELEASE_LABEL_FIELD,
+                     PROJ_ID) {
+    if(!is_field_in_query($query_def, $field)) {
+      $query_def->BuildField(MASTERSHIP_FIELD);
+    }
   }
-  if(!is_field_in_query($query_def, STATE_FIELD)) {
-    $query_def->BuildField(STATE_FIELD);
-  }
-  if(!is_field_in_query($query_def, RELEASE_LABEL_FIELD)) {
-    $query_def->BuildField(RELEASE_LABEL_FIELD);
-  } 
 } elsif (scalar(@issues) > 0) {
   $query_def = get_query_for_ids($session, \@issues);
 } else {
@@ -262,7 +306,12 @@ if(!defined($result_set)) {
 
 #Parse the result set for the values needed for further processing and put them
 #in a hash in memory for fast queries
-my $issues_data = build_issue_hash($session, $result_set, $query_def, MASTERSHIP_FIELD, RELEASE_LABEL_FIELD, STATE_FIELD);
+my $issues_data = build_issue_hash($session, $result_set, $query_def, MASTERSHIP_FIELD,
+                                                                      RELEASE_LABEL_FIELD,
+                                                                      STATE_FIELD,
+                                                                      INTEGRATED_STATUS_FIELD,
+                                                                      VERIFIED_STATUS_FIELD,
+                                                                      PROJ_ID);
 
 if(defined($list)) {
   list($issues_data);
@@ -370,7 +419,7 @@ sub build_issue_hash {
         my $field_value = $result_set->GetColumnValue($columns{$field});
         if(!defined($field_value)) {
           $field_value = "";
-          logg(WARN, "Could not get value $field for issue $issue_id");
+          logg(WARN, "Could not get value in field $field for issue $issue_id");
         }
         $hash{$issue_id}->{$field} = $field_value;
       }
@@ -419,7 +468,7 @@ sub list {
 #######################################
 
 sub update {
-  my $session = shift @_;
+  my $session     = shift @_;
   my $issues_data = shift @_;
 
   my @unverified;
@@ -429,14 +478,45 @@ sub update {
                       CNBJ => [],
                       USSV => []
                     );
+
+  my %site_issues_update_state = (
+                                   SELD => [],
+                                   JPTO => [],
+                                   CNBJ => [],
+                                   USSV => []
+                                 );
+
+  my $technical_name = label_is_valid($session,$label);
+  if ((!$technical_name) || ($technical_name eq "-1")) {
+    return -1;
+  }
+
   foreach my $issue (keys(%{$issues_data})) {
     print "checking issue $issue\n";
     my %issue_h = %{$issues_data->{$issue}};
-    if( $issue_h{'State'} eq RESTRICTED_STATE) {
-        push(@{$site_issues{$issue_h{'ratl_mastership'}}}, $issue);
-    } else {
+    if ($issue_h{PROJ_ID()} eq $technical_name) {
+      if(($issue_h{STATE_FIELD()} eq RESTRICTED_STATE) && ($issue_h{INTEGRATED_STATUS_FIELD()} eq PREFERRED_STATUS)){
+        push(@{$site_issues{$issue_h{MASTER_LABEL()}}}, $issue);
+        push(@{$site_issues_update_state{$issue_h{MASTER_LABEL()}}}, $issue);
+      } elsif($issue_h{STATE_FIELD()} eq FINAL_STATE) {
+        if ($issue_h{VERIFIED_STATUS_FIELD()} eq PREFERRED_STATUS) {
+          if ($issue_h{RELEASE_LABEL_FIELD()} eq "") {
+            push(@{$site_issues{$issue_h{MASTER_LABEL()}}}, $issue);
+          } else {
+            push(@unverified, $issue);
+            logg(WARN, "Skipping issue $issue with state \"" . FINAL_STATE . " " . PREFERRED_STATUS . "\" due to SW Official Release field already filled in");
+          }
+        } else {
+          push(@unverified, $issue);
+          logg(WARN, "Skipping issue $issue with state \"$issue_h{STATE_FIELD()}\" because \"" . VERIFIED_STATUS_FIELD ."\" not equal to \"" . PREFERRED_STATUS . "\"");
+        }
+      } else {
+        push(@unverified, $issue);
+        logg(WARN, "Skipping issue $issue with state \"$issue_h{STATE_FIELD()}, $issue_h{INTEGRATED_STATUS_FIELD()}\" != \"" . RESTRICTED_STATE . " " . PREFERRED_STATUS . "\"");
+      }
+    }else {
       push(@unverified, $issue);
-      print "Skipping issue $issue with state != ", RESTRICTED_STATE, "\n";
+      logg(WARN, "Skipping issue $issue, DMS issue proj_id: $issue_h{PROJ_ID()} is not equal to label technical_name:$technical_name");
     }
   }
   DO_SITES:
@@ -460,6 +540,9 @@ sub update {
           logg(ERROR, "Could not get a session for site $site");
           next DO_SITES;
         }
+    }
+    if(scalar(@{$site_issues_update_state{$site}}) > 0) {
+      change_state_issues($session, $site_issues_update_state{$site}, STATE_ACTION, PREFERRED_STATUS);
     }
     modify_issues($session, $site_issues{$site}, $label);
   }
@@ -671,24 +754,42 @@ sub get_column {
 #  be used to put on an issue.        #
 #  takes a cq session object and a    #
 #  label as input.                    #
-#  Returns 1 for 'true' if valid and  #
-#  0 for 'false' if not.              #
+#  Returns technichal_name of label   #
+#  object if label exist, -1 if label #
+#  doesn't exist and 0 for error      #
 #######################################
 
 sub label_is_valid {
   my $session = shift @_;
-  my $label = shift @_;
+  my $label   = shift @_;
   my $label_from_record;
+  my $technical_name;
+
   eval {
     $label_from_record = $session->GetEntity(SW_LABEL_ENTITY, $label);
   };
-  if($@ eq ""){
-		return 1;
-	} else {
+  if($@ eq "") {
+    if ($label_from_record) {
+      eval {
+        $technical_name = $label_from_record->GetFieldValue('technical_name')->GetValue();
+      };
+      if($@ ne "") {
+        logg(ERROR, "Failed to get technical name of label $label");
+        logg(CQERROR, "$@\n");
+        return 0;
+      } else {
+        return $technical_name;
+        logg(OK, "Retrieved technical_name $technical_name from label $label");
+      }
+    } else {
+      logg(WARN, "Label $label doesn't exist");
+      return -1;
+    }
+  } else {
     logg(ERROR, "Failed to validate label $label");
     logg(CQERROR, "$@\n");
-		return 0;
-	}
+	return 0;
+  }
 }
 
 #######################################
@@ -725,30 +826,83 @@ sub is_master {
 # Creates a new SW_label entity       #
 # Takes cq session, project and label #
 # name as input.                      #
-# Returns 1 if ok, -1 on error        #
+# Returns 1 if created, 0 on error    #
+# and -1 not created (already exist)  #
 #######################################
 
 sub create_sw_label {
   my $session = shift @_;
   my $project = shift @_;
   my $label   = shift @_;
-  
-  if label_is_valid {
+
+  #Stop if label already exist.
+  #Continue to create label otherwise.
+  my $createlabel = label_is_valid($session,$label);
+  if(!$createlabel) {
+    return 0;
+  } elsif ($createlabel ne "-1") {
+    return -1;
+  }
+
+  my $entityObj;
+  eval {
+    $entityObj = $session->BuildEntity(SW_LABEL_ENTITY);
+  };
+  if($@ ne "") {
+    logg(ERROR, "Can not Build entity SW_LABEL_ENTITY");
+    logg(CQERROR, "$@\n");
+    return 0;
+  }
+  eval {
+    $entityObj->SetFieldValue("name", $label);
+  };
+  if($@ ne "") {
+    logg(ERROR, "Can not set $label in name field ");
+    logg(CQERROR, "$@\n");
+    return 0;
+  }
+
+  eval {
+    $entityObj->SetFieldValue("technical_name", $project);
+  };
+  if($@ ne "") {
+    logg(ERROR, "Can not set $project in technical_name field ");
+    logg(CQERROR, "$@\n");
+    return 0;
+  }
+  eval {
+    $entityObj->SetFieldValue("hw", "0");
+  };
+  if($@ ne "") {
+    logg(ERROR, "Can not set 0 in hw field ");
+    logg(CQERROR, "$@\n");
+    return 0;
+  }
+
+  my $status;
+  eval {
+    $status = $entityObj->Validate();
+  };
+  if(($@ ne "") && ($status ne "")) {
+    logg(ERROR, "Can not validate adding new label $label!");
+    logg(CQERROR, "$@\n");
+    return 0;
+  }
+
+  eval {
+    $status = $entityObj->Commit();
+  };
+  if(($@ ne "") && ($status ne "")) {
+    $entityObj->Revert();
+    logg(ERROR, "Failed to create $label!");
+    logg(CQERROR, "$@\n");
+    return 0;
+  } else {
+    my $msg = "Created label $label";
+    logg(OK, $msg);
+    print "$msg\n";
     return 1;
   }
-  my $entityObj = $session->BuildEntity(SW_LABEL_ENTITY);
-			$entityObj->SetFieldValue("name", $label);
-			$entityObj->SetFieldValue("technical_name", $project);
-			$entityObj->SetFieldValue("hw", "0");
-			
-	my $status = $entityObj->Validate();		
-	if($status eq ""){
-		$status = $entityObj->Commit();
-		logg(OK, "Created $label");
-	}else{
-		logg(ERROR, "Failed to create $label");
-		return -1;
-	}
 }
 
 #######################################
@@ -757,7 +911,8 @@ sub create_sw_label {
 #  field of an issue record.          #
 #  Takes as input a cq session object #
 #  an issue and a label.              #
-#  Returns 1 if ok, -1 on error.      #
+#  Returns 1 if ok,0 if not exist,    #
+#  -1 on error.                       #
 #######################################
 
 sub modify_label {
@@ -773,6 +928,9 @@ sub modify_label {
     logg(ERROR, "Can not get record for issue $issue");
     logg(CQERROR, "$@\n");
     return -1;
+  } elsif($record eq ""){
+    logg(WARN, "Issue $issue doesn't exist");
+    return 0;
   }
   
   my $ret = modify($session, $record, RELEASE_LABEL_FIELD, $label);
@@ -783,6 +941,46 @@ sub modify_label {
     logg(OK, "Modified record for issue $issue");
     return 1;
   }
+}
+#######################################
+#  change_state                       #
+#  Changes the state of an issue      #
+#  record.                            #
+#  Takes a cq session object, a ref   #
+#  to an issues array and a           #
+#  state_action and status as input.  #
+#  Returns 1 if ok,0 if issue doesn't #
+# exist, -1 on error.                 #
+#######################################
+
+sub change_state {
+  my $session      = shift @_;
+  my $issue        = shift @_;
+  my $state_action = shift @_;
+  my $status       = shift @_;
+
+  my $record;
+  eval {
+    $record = $session->GetEntity(ISSUE_ENTITY, $issue);
+  };
+  if($@ ne "") {
+    logg(ERROR, "Can not get record for issue $issue");
+    logg(CQERROR, "$@\n");
+    return -1;
+  } elsif($record eq "") {
+    logg(WARN, "Issue $issue doesn't exist");
+    return 0;
+  }
+
+  my $ret = change($session, $record, $state_action, VERIFIED_STATUS_FIELD, $status );
+  if($ret == 0 || $ret == -1) {
+    logg(ERROR, "Can not update state for issue $issue");
+    return -1;
+  } else {
+    logg(OK, "Changed state for issue $issue");
+    return 1;
+  }
+
 }
 
 #######################################
@@ -797,9 +995,9 @@ sub modify_label {
 
 sub modify {
   my $session = shift @_;
-  my $record = shift @_;
-  my $field = shift @_;
-  my $value = shift @_;
+  my $record  = shift @_;
+  my $field   = shift @_;
+  my $value   = shift @_;
   
   my $mastership = is_master($record, $current_site);
   
@@ -850,6 +1048,95 @@ sub modify {
 }
 
 #######################################
+#  Change                             #
+#  Change the state of a record and   #
+#  modyfies a field.                  #
+#  Inputs: a CQ session, a record,    #
+#  a state_action to be performed,    #
+#  a field and a value.               #
+#  Returns 1 if change can be         #
+#  commited, -1 on error.             #
+#######################################
+
+sub change {
+  my $session      = shift @_;
+  my $record       = shift @_;
+  my $state_action = shift @_;
+  my $field        = shift @_;
+  my $field_value  = shift @_;
+  my %fields;
+
+  $fields{$field}=$field_value;
+
+  # "Note_Entry" and "verified_in_release" are mandatory fields when setting a
+  # DMS record to "Pass, these fields needs to be populated.
+  # If a string is not submitted to the metheod then add default values
+  if($state_action eq "Pass") {
+    if(!$fields{"Note_Entry"}) {
+      $fields{"Note_Entry"}="N/A";
+    }
+    if(!$fields{"verified_in_release"}) {
+      $fields{"verified_in_release"}="N/A";
+    }
+  }
+
+  my $mastership = is_master($record, $current_site);
+
+  if($mastership == -1) {
+    logg(ERROR, "Error while retreiving mastership status for site $current_site");
+    return -1;
+  }
+  if(!$mastership) {
+    logg(ERROR, "Does not have mastership to perform state actions on $record");
+    return 0;
+  }
+
+  eval {
+    $record->EditEntity($state_action);
+  };
+  if($@ ne "") {
+    logg(ERROR, "Can not make record editable to $state_action");
+    logg(CQERROR, "$@\n");
+  }
+
+  my $ret;
+  foreach my $fl (keys %fields) {
+    eval {
+      $ret = $record->SetFieldValue($fl, $fields{$fl});
+    };
+    if($ret ne "") {
+      logg(ERROR, "Can not set field $fl to value $fields{$fl}!");
+      logg(CQERROR, "$ret\n");
+      return -1;
+    }
+  }
+
+  my $status;
+  eval {
+    $status = $record->Validate();
+  };
+  if(($@ ne "") && ($status ne "")) {
+    logg(ERROR, "Can not validate setting record to $state_action!");
+    logg(CQERROR, "$@, $status\n");
+    return -1;
+  }
+
+  eval {
+    $status = $record->Commit();
+  };
+
+  if(($@ ne "") && ($status ne "")) {
+    $record->Revert();
+    logg(ERROR, "Can not commit setting setting record to $state_action!");
+    logg(CQERROR, "$@, $status \n");
+    return -1;
+  } else {
+    logg(OK, "Commited setting record to $state_action!");
+    return 1;
+  }
+}
+
+#######################################
 #  modify_issues                      #
 #  Modifies "Official SW release"     #
 #  field for a number of issues.      #
@@ -861,12 +1148,11 @@ sub modify {
 #######################################
 
 sub modify_issues {
-  my $session = shift @_;
+  my $session    = shift @_;
   my $issues_ref = shift @_;
-  my $label = shift @_;
-  
-  my $retval = 0;
-  
+  my $label      = shift @_;
+  my $retval     = 0;
+
   #Check if the label is available for use.
   #I.e. it is registered in CMS
   if(label_is_valid($session, $label)) {
@@ -881,11 +1167,43 @@ sub modify_issues {
   foreach my $issue (@issues) {
     $ret = modify_label($session, $issue, $label);
     if($ret == 1) {
-      my $msg = "Modified issue $issue with label $label";
+      my $msg = "Modified issue $issue with label \"$label\"";
       print $msg, "\n";
       logg(OK, $msg);
     } else {
       logg(ERROR, "Could not modify issue $issue with label $label");
+      $retval++;
+    }
+  }
+  return $retval;
+}
+
+#######################################
+#  change_state_issues                #
+#  Changes the state for a number of  #
+#  issues.                            #
+#  Takes a cq session object, a ref   #
+#  to an issues array and a           #
+#  state_action and status as input.  #
+#  Returns number of modified issues  #
+#  or -1 on error.                    #
+#######################################
+
+sub change_state_issues {
+  my $session      = shift @_;
+  my $issues_ref   = shift @_;
+  my $state_action = shift @_;
+  my $status       = shift @_;
+  my $retval       = 0;
+
+  @issues = @{$issues_ref};
+  my $ret;
+  foreach my $issue (@issues) {
+    $ret = change_state($session, $issue, $state_action, $status);
+    if($ret == 1) {
+      logg(OK, "Performed action $state_action on issue $issue");
+    } else {
+      logg(ERROR, "Could not perform action $state_action on issue $issue");
       $retval++;
     }
   }
@@ -912,7 +1230,11 @@ sub get_query_for_ids {
   $query->BuildField(TITLE_FIELD);
   $query->BuildField(MASTERSHIP_FIELD);
   $query->BuildField(STATE_FIELD);
-  
+  $query->BuildField(INTEGRATED_STATUS_FIELD);
+  $query->BuildField(VERIFIED_STATUS_FIELD);
+  $query->BuildField(RELEASE_LABEL_FIELD);
+  $query->BuildField(PROJ_ID);
+
   my $filter_node = $query->BuildFilterOperator(CQ_OR);
   
   foreach my $issue(@{$issues_ref}) {
@@ -970,7 +1292,7 @@ sub logg {
 sub site_exists {
   my $site = shift @_;
   chomp $site;
-  my @valid_sites = (SELD, JPTO, USRT, CNBJ);
+  my @valid_sites = (SELD, JPTO, USSV, CNBJ);
   
   foreach my $valid_site (@valid_sites) {
     if($site eq $valid_site) {
@@ -1016,11 +1338,6 @@ sub create_time_stamp {
 #######################################
 
 sub usage {
-  print "cqperl <script> -user <user> -pwd <password> -log <logfile> [-sites <site>[,...]] (-list [-unv <query> | -unl <query>] | -update -label <label>) (-query <query file> | -issues <issue[,...]>)\n";
+  print "cqperl <script> -user <user> -pwd <password> -log <logfile> [-sites <site>[,...]] (-list [-unv <query> | -unl <query>] | -update -label <label>) (-query <query file> | -issues <issue[,...]>) -createlabel <labelproject>\n";
 }
-
-
-
-
-
 
