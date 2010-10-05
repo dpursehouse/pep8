@@ -142,12 +142,15 @@ class DiffGenerator(object):
                 if newrev == oldrev:
                     continue
                 else:
-                    print "** %s **" % newProject.getAttribute("path")
-                    print "\n".join(self.runShortlog(newProject.getAttribute("path"),
+                    newProjPath = newProject.getAttribute("path")
+                    if not newProjPath:
+                        newProjPath = newProject.getAttribute("name")
+                    print "** %s **" % newProjPath
+                    print "\n".join(self.runShortlog(newProjPath,
                                                 newrev,
                                                 oldrev))
 
-                    log = "\n".join(self.runLog(newProject.getAttribute("path"),
+                    log = "\n".join(self.runLog(newProjPath,
                                            newrev,
                                            oldrev))
 
@@ -155,7 +158,7 @@ class DiffGenerator(object):
 
                     if notFilter != None:
                         filteredLog = "\n".join(self.runLog(
-                                                newProject.getAttribute("path"),
+                                                newProjPath,
                                                 newrev,
                                                 oldrev,
                                                 notFilter))
@@ -163,23 +166,23 @@ class DiffGenerator(object):
                         concatLog = concatLog + filteredLog
 
                         commitCountFiltered += \
-                            self.countCommits(newProject.getAttribute("path"),
+                            self.countCommits(newProjPath,
                                          newrev,
                                          oldrev,
                                          notFilter)
 
-                        commitCount += self.countCommits(newProject.getAttribute("path"),
+                        commitCount += self.countCommits(newProjPath,
                                                     newrev,
                                                     oldrev)
                     else:
                         concatLog = concatLog + log
 
                         commitCountFiltered += self.countCommits(
-                                                    newProject.getAttribute("path"),
+                                                    newProjPath,
                                                     newrev,
                                                     oldrev)
                         commitCount += self.countCommits(
-                                            newProject.getAttribute("path"),
+                                            newProjPath,
                                             newrev, oldrev)
 
             # if the project does not exist in the old manifest it must have
