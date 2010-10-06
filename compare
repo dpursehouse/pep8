@@ -270,8 +270,7 @@ sub refreshCompareDB {
    }
    else {
       chdir "$manifestGit";
-      $cmd = "git fetch git://review.sonyericsson.net/platform/manifest.git "
-        . "master";
+      $cmd = "git pull";
    }
 
    if ( execCmd( "$cmd", \$result, \@result ) != 0 ) {
