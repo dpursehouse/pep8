@@ -274,7 +274,7 @@ if(defined($query)) {
                      RELEASE_LABEL_FIELD,
                      PROJ_ID) {
     if(!is_field_in_query($query_def, $field)) {
-      $query_def->BuildField(MASTERSHIP_FIELD);
+      $query_def->BuildField($field);
     }
   }
 } elsif (scalar(@issues) > 0) {
