@@ -1,0 +1,12 @@
+project: 2.0
+site: seld
+branch: edream1.0-int
+
+project: 2.1
+site: cnbj
+branch: edream2.1
+
+project: 2.0_docomo
+site: jpto
+branch: edream2.0-docomo
+
