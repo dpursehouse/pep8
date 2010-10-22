@@ -29,11 +29,12 @@ def main(argv):
     parser.add_option("-n", "--not", dest="not_refs",
                         help="One or more refs (comma separated list) to exclude")
     parser.add_option("--no-count", action="store_false",
-                      dest="count", default=True)
+                        dest="count", default=True)
     parser.add_option("--qry", dest="queryFile", default="DMSquery.qry")
+    parser.add_option("--git-cmd", dest="gitCommand", default="git shortlog --no-merges",
+                        help="Add arbitrary git command [default: %default]")
 
     (options, args) = parser.parse_args()
-
 
     oldBuildId = args[0]
     newBuildId = args[1]
@@ -98,15 +99,16 @@ def main(argv):
         print >> sys.stderr, "Could not find old manifest"
         sys.exit(1)
 
-    dg = DiffGenerator(count=options.count, query=options.queryFile)
+    dg = DiffGenerator(count=options.count, query=options.queryFile, gitcmd=options.gitCommand)
 
     dg.generateDiff(oldManifestUrl, newManifestUrl, notFilter)
 
 class DiffGenerator(object):
 
-    def __init__(self, count=True, query="DMSQuery.qry"):
+    def __init__(self, count=True, query="DMSQuery.qry", gitcmd="git shortlog --no-merges"):
         self.count = count
         self.query = query
+        self.gitcmd = gitcmd
 
     def generateDiff(self, oldManifestUri, newManifestUri, notFilter=None):
         print "Old manifest: %s" % oldManifestUri
@@ -146,7 +148,7 @@ class DiffGenerator(object):
                     if not newProjPath:
                         newProjPath = newProject.getAttribute("name")
                     print "** %s **" % newProjPath
-                    print "\n".join(self.runShortlog(newProjPath,
+                    print "\n".join(self.runGitlog(newProjPath,
                                                 newrev,
                                                 oldrev))
 
@@ -241,15 +243,14 @@ class DiffGenerator(object):
 
         return len(res)
 
-    def runShortlog(self, path=None, newrev=None, oldrev=None):
+    def runGitlog(self, path=None, newrev=None, oldrev=None):
         rootdir = os.getcwd()
         try:
             os.chdir(path)
         except OSError:
             print >> sys.stderr, "Could not change directory to %s" % path
             sys.exit(2)
-
-        cmd = "git shortlog --no-merges %s..%s" % (oldrev, newrev)
+        cmd = "%s %s..%s" % (self.gitcmd, oldrev, newrev)
         (ret, res) = command(cmd)
         os.chdir(rootdir)
         return res
