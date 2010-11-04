@@ -5,6 +5,7 @@ import semcutil
 import os
 import tempfile
 import shutil
+from optparse import OptionParser
 
 class GetManifestError(Exception):
     def __init__(self, message, error):
@@ -57,24 +58,28 @@ def get_file_from_package(label, package, topath, frompath):
         shutil.rmtree(tempdir)
 
 def get_manifest(label, topath = "manifest_static.xml", frompath = "manifest_static.xml"):
-    get_file_from_package(label, "build-metadata", topath, frompath )
-
-def _usage():
-    myname = os.path.basename(sys.argv[0])
-    usagestr = """%s LABEL [ SAVEPATH ] [ FROMPATH ]
-    Downloads a manifest from a specific LABEL and stores it at
-    SAVEPATH.
-    FROMPATH default is "manifest_static.xml"
-    (NOTE! Doesn't support protected repository until
-    SWD Tools supports "repository list" with that.)""" % (myname)
-    print >> sys.stderr, usagestr
+    get_file_from_package(label, "build-metadata", topath, frompath)
 
 def _main(argv):
-    if len(argv) < 2 or len(argv) > 4:
-        _usage()
-        sys.exit(1)
+
+    usage = "usage: %prog [options] LABEL"
+    parser = OptionParser(usage=usage)
+    parser.add_option("-p", "--package", dest="package",
+                        default="build-metadata",
+                        help="A valid Debian package")
+    parser.add_option("-t", "--topath", dest="topath", default="manifest_static.xml",
+                        help="Stores the manifest to this path [default: %default]")
+    parser.add_option("-f","--frompath", dest="frompath", default="manifest_static.xml",
+                        help="Path where the manifest is found [default: %default]")
+
+    (options, args) = parser.parse_args()
+
+    if len(args) != 1:
+        parser.print_help()
+        parser.error("Incorrect number of arguments")
     try:
-        get_manifest(*argv[1:])
+        label = args[0]
+        get_file_from_package(label, options.package, options.topath, options.frompath)
     except GetManifestError, e:
         print >> sys.stderr, str(e)
         sys.exit(1)
