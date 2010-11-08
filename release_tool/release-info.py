@@ -416,6 +416,8 @@ def _main ():
     for project, commits_info in commits_dict.items():
         direct_commit_count += len(commits_info['direct'])
         total_commit_count += len(commits_info['full'])
+        if len(commits_info['direct']) != 0:
+            print "*** %s ***" % project
         for item in commits_info['direct']:
             print '\n'.join(compare_revision_obj.run_git_log(project, item,\
                             "%s^" %item, options.gitcmd))
@@ -423,6 +425,8 @@ def _main ():
     print "======Rebased Commits Information========"
     for project, commits_info in commits_dict.items():
         not_filter_commit_count += len(commits_info['rebase'])
+        if len(commits_info['rebase']) != 0:
+            print "*** %s ***" % project
         for item in commits_info['rebase']:
             print '\n'.join(compare_revision_obj.run_git_log(project, item,\
                              "%s^" %item, options.gitcmd))
@@ -431,13 +435,13 @@ def _main ():
     rebase_dmslist = compare_revision_obj.get_dms_info('rebase',
                                                         options.query)
 
-    print "\n***Direct DMS Issues:***"
+    print "\n===Direct DMS Issues:==="
     if len(direct_dmslist) == 0:
         print "None"
     for item in set(direct_dmslist):
         print item
 
-    print "\n***Rebased DMS Issues:***"
+    print "\n===Rebased DMS Issues:==="
     if len(rebase_dmslist) == 0:
         print "None"
     for item in set(rebase_dmslist):
