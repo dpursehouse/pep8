@@ -11,16 +11,23 @@
             oldBuildId: It could be snapshot or the specifed manifest file.
             newBuildId: It could be snapshot or the specifed manifest file.
          options:
-            job_url: The hudson job url. such as
-                     http://android-ci.cnbj.sonyericsson.net/job/
-                     offbuild_edream2.1/api/xml
-            project: The project name, such as 2.1, the default value is 2.1.
-            workspace: The directory contains .repo.
-            rebase: The rebased project name or the manifest file of the rebase
-                    project.
-            query: The name of the query file, the default value is DMSquery.qry
-            gitcmd: You can supply the git command to get the log info as you
-                    like. The default is "git shortlog --no-merges"
+            -j, --job): The hudson job url. such as
+                        http://android-ci.cnbj.sonyericsson.net/job/
+                        offbuild_edream2.1/api/xml
+            -p, --project): The project name, such as 2.1, the default value is
+                            2.1.
+            -w, --workspace): The directory contains .repo.
+            -r, --rebase): The rebased project name or the manifest file of the
+                           rebase  project.
+            -q, --query): The name of the query file, the default value is
+                          DMSquery.qry
+            -c, --git-cmd): You can supply the git command to get the log info
+                            as you like. The default is
+                            "git shortlog --no-merges"
+            -d, --debs-flag): With this flag, the script will generate the
+                              package change list in variant spec between the
+                              specified two snapshots.
+
 '''
 
 import subprocess
@@ -72,11 +79,18 @@ def getTextOfFirstTagByName(element, name):
                 rc = rc + node.data
     return rc.strip()
 
+def dmsqueryShowNoTitle(gitlog):
+    cmd = "dmsquery --show"
+    dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    dmslist_notitle = dmsquery.communicate(input=gitlog)[0]
+    return dmslist_notitle.splitlines()
+
 def dmsqueryShow(gitlog):
     cmd = "dmsquery --show-t"
     dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    dmslist = dmsquery.communicate(input=gitlog)[0]
+    dmslist= dmsquery.communicate(input=gitlog)[0]
     return dmslist.splitlines()
 
 def dmsqueryQry(gitlog, query):
@@ -112,6 +126,33 @@ def get_main_job_url (project_name):
         else:
             continue
     return main_job_url
+
+def generate_delta_packages(oldBuildId, newBuildId, old_manifest_obj,
+                          new_manifest_obj):
+    output = open('delta_packages_%s-%s.txt' \
+                       %(oldBuildId, newBuildId),'w')
+    print >>output, "Delta packages between %s and %s:" \
+        % (oldBuildId, newBuildId)
+    variant_spec_old_rev = old_manifest_obj.get_project_info(\
+                                "semctools/semcsystem", "revision")
+    variant_spec_new_rev = new_manifest_obj.get_project_info(\
+                                "semctools/semcsystem", "revision")
+    compare_var_spec = CompareVariantSpec(variant_spec_old_rev,
+                                          variant_spec_new_rev)
+    var_spec_dict = compare_var_spec.get_compare_result()
+    if len(var_spec_dict) != 0:
+        for variant_spec, packages in var_spec_dict.items():
+            print >>output, "\n===%s===" % variant_spec
+            if len(packages['removed']) != 0:
+                print >> output, "** Removed packages: **"
+                print >> output, '\n'.join(packages['removed']) + '\n'
+            if len(packages['added']) != 0:
+                print >> output, '** Added packages: **'
+                print >> output, '\n'.join(packages['added']) + '\n'
+    else:
+        print >>output, "There's no packages changes between %s and %s" \
+               % (oldBuildId, newBuildId)
+    output.close()
 #===============================================================================
 
 class ManifestUrl:
@@ -229,7 +270,6 @@ class CompareManifest:
 
     def get_new_manifest_obj(self):
         return self.new_manifest_obj
-
 #==============================================================================
 class CompareRevisions:
     '''
@@ -241,7 +281,6 @@ class CompareRevisions:
         self.rebase = rebase
         self.commits_dict = {}
         self.direct_commits_dict = {}
-        self.dmslist = []
         self._compare()
 
     def _compare (self):
@@ -286,6 +325,7 @@ class CompareRevisions:
 
     def get_dms_info(self, selector, query):
         concatlog = ""
+        dmslist_notitle = []
         dmslist = []
         for project, commits_info in self.commits_dict.items():
             if selector in commits_info and len(commits_info[selector]) != 0:
@@ -295,10 +335,11 @@ class CompareRevisions:
                                        gitcmd="git log --no-merges"))
                     concatlog += gitlog
                     dmslist.extend(dmsqueryShow(concatlog))
+                    dmslist_notitle.extend(dmsqueryShowNoTitle(concatlog))
             else:
                 continue
         dmsqueryQry(concatlog,"%s_%s" %(selector,query))
-        return dmslist
+        return (dmslist, dmslist_notitle)
 
     def run_git_log(self, path=None, newrev=None, oldrev=None, gitcmd=None,\
                     not_filter=None):
@@ -327,6 +368,46 @@ class CompareRevisions:
         if ret == 0:
             return True
         return False
+#==============================================================================
+class CompareVariantSpec:
+    def __init__(self, old_rev, new_rev, path="vendor/semc/build/semcsystem"):
+        self.old_rev = old_rev
+        self.new_rev = new_rev
+        self.variant_spec_dict = {}
+        self.path = path
+        self._compare()
+
+    def _compare(self):
+        rootdir = os.getcwd()
+        os.chdir(self.path)
+        if self.old_rev != self.new_rev:
+            cmd = "git diff %s %s --relative=variant_spec" % (self.old_rev, self.new_rev)
+            (ret, self.res) = command(cmd)
+            os.chdir(rootdir)
+            self._parse_result()
+        os.chdir(rootdir)
+
+    def _parse_result(self):
+        for item in self.res:
+            m1 = re.match("diff --git (?P<file>.*) .", item)
+            if m1 is not None:
+                file_name = m1.group('file').split('/')[2]
+                self.variant_spec_dict[file_name] = {}
+                self.variant_spec_dict[file_name]['removed'] = []
+                self.variant_spec_dict[file_name]['added'] = []
+            m2 = re.search("-\s+<package  name=\"(?P<package>[\w|-]+).*>",\
+                           item)
+            m3 = re.search("^\+\s+<package name=\"(?P<package>[\w|-]+).*>",\
+                           item)
+            if m2:
+                package = m2.group('package')
+                self.variant_spec_dict[file_name]['removed'].append(package)
+            if m3:
+                package = m3.group('package')
+                self.variant_spec_dict[file_name]['added'].append(package)
+
+    def get_compare_result(self):
+        return self.variant_spec_dict
  #============================================================================
 def _main ():
     '''
@@ -349,6 +430,10 @@ def _main ():
     parser.add_option("-c", "--git-cmd", dest="gitcmd",
                         default="git shortlog --no-merges",
                         help="set the git command for output display")
+    parser.add_option("-d", "--debs-flag", action="store_true",
+                        dest="debs_flag",
+                        help="with this flag, will generate the delta changes"
+                             "in variant spec")
     parser.set_usage("\n%prog [Options] <old_build_id> <new_build_id>")
     (options, args) = parser.parse_args()
     if len(args) != 2:
@@ -372,8 +457,24 @@ def _main ():
         old_manifest_url_obj.get_manifest_url()))
     compare_manifest_obj = CompareManifest(old_manifest_obj=old_manifest_obj,
                                            new_manifest_obj=new_manifest_obj)
+    # Get the delta projects between two snapshot.
     added_projects = compare_manifest_obj.get_added_projects()
     removed_projects = compare_manifest_obj.get_removed_projects()
+    if len(added_projects) != 0:
+        print "=====Added Projects in %s against %s=====" \
+            % (newBuildId, oldBuildId)
+        for item in added_projects:
+            print item
+    if len(removed_projects) != 0:
+        print "======Removed Projects in %s against %s=====" \
+            %(newBuildId, oldBuildId)
+        for item in removed_projects:
+            print item
+    # If debs_flag is true, generate package change list in variant spec
+    if options.debs_flag:
+        generate_delta_packages(oldBuildId, newBuildId,
+                              old_manifest_obj, new_manifest_obj)
+    # Handle the situation with rebase option is given.
     rebase_manifest = ""
     if rebase is not None:
         if os.path.isfile(rebase) or rebase.startswith("http://"):
@@ -395,22 +496,12 @@ def _main ():
                                                 rebase_manifest_obj)
     else:
         compare_revision_obj = CompareRevisions(compare_manifest_obj)
-
+    # Get and output commit information
     commits_dict = compare_revision_obj.get_commits_info()
     commits_dict = compare_revision_obj.get_commits_info()
     total_commit_count = 0
     direct_commit_count = 0
     not_filter_commit_count = 0
-    if len(added_projects) != 0:
-        print "=====Added Projects in %s against %s=====" \
-            % (newBuildId, oldBuildId)
-        for item in added_projects:
-            print item
-    if len(removed_projects) != 0:
-        print "======Removed Projects in %s against %s=====" \
-            %(newBuildId, oldBuildId)
-        for item in removed_projects:
-            print item
 
     print "=======Direct Commit Information==========="
     for project, commits_info in commits_dict.items():
@@ -430,28 +521,43 @@ def _main ():
         for item in commits_info['rebase']:
             print '\n'.join(compare_revision_obj.run_git_log(project, item,\
                              "%s^" %item, options.gitcmd))
-
-    direct_dmslist = compare_revision_obj.get_dms_info('direct', options.query)
-    rebase_dmslist = compare_revision_obj.get_dms_info('rebase',
-                                                        options.query)
+    (direct_dmslist, direct_dmslist_notitle) = \
+        compare_revision_obj.get_dms_info('direct', options.query)
+    (rebase_dmslist, rebase_dmslist_notitle) = \
+            compare_revision_obj.get_dms_info('rebase', options.query)
 
     print "\n===Direct DMS Issues:==="
-    if len(direct_dmslist) == 0:
+    if len(direct_dmslist_notitle) == 0:
         print "None"
-    for item in set(direct_dmslist):
-        print item
+    if len(direct_dmslist_notitle) != 0:
+        if len(direct_dmslist_notitle) != len(direct_dmslist):
+            print "Warning: There's problem with DMS server! " +\
+                  "Can't get DMS title for following DMS!!!"
+            for item in set(direct_dmslist_notitle):
+                print item
+        else:
+            for item in set(direct_dmslist):
+                print item
 
     print "\n===Rebased DMS Issues:==="
-    if len(rebase_dmslist) == 0:
+    if len(rebase_dmslist_notitle) == 0:
         print "None"
-    for item in set(rebase_dmslist):
-        print item
+    if len(rebase_dmslist_notitle) != 0:
+        if len(rebase_dmslist_notitle) != len(rebase_dmslist):
+            print "Warning: There's problem with DMS server! " +\
+                  "Can't get DMS title for following DMS!!!"
+            for item in set(rebase_dmslist_notitle):
+                print item
+        else:
+            for item in set(rebase_dmslist):
+                print item
 
     print "=========Information Summary============"
     print "Total Commits Count: %d" % total_commit_count
     print "Direct Commits Count: %d" % direct_commit_count
     print "Rebased Commits Count: %d" % not_filter_commit_count
-    print "Direct DMS Count: %d" % len(set(direct_dmslist))
-    print "Rebased DMS Count: %d" % len(set(rebase_dmslist))
+    print "Direct DMS Count: %d" % len(set(direct_dmslist_notitle))
+    print "Rebased DMS Count: %d" % len(set(rebase_dmslist_notitle))
+
 if __name__ == "__main__":
     _main()
