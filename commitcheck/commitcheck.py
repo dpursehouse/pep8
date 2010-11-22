@@ -42,18 +42,29 @@ def isExcludedSubject(subject):
             return True
     return False
 
+def isExcludedProject(project):
+    excludedProjects = ["kernel/msm",
+                        "tools/gerrit",
+                        "kernel/st-ericsson",
+                        "semctools/c2d",
+                        "platform/sdk",
+                        "semctools/hudson/hudson-slave-files",
+                        "indus/tsce"]
+    for index in excludedProjects:
+        if index == project:
+            return True
+    return False
+
 for line in sys.stdin:
     data = json.loads(line)
-    if "subject" in data and not isExcludedSubject(data["subject"]) \
-                         and len(data["subject"]) > 70:
-        print "<p>"
-        if "project" in data:
+    if "subject" in data and "project" in data \
+                         and "branch" in data \
+                         and "url" in data:
+        if not isExcludedProject(data["project"]) \
+           and not isExcludedSubject(data["subject"]) \
+           and len(data["subject"]) > 70:
+            print "<p>"
             print "[" + data["project"] + "]"
-        if "branch" in data:
             print "[" + data["branch"] + "]"
-
-        if "url" in data:
             print "<a href=\"" + data["url"] + "\">" + data["subject"] + "</a>"
-        else:
-            print "<a href=\"#\">" + data["subject"] + "</a>"
-        print "</p>"
+            print "</p>"
