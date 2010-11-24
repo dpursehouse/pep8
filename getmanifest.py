@@ -22,9 +22,15 @@ def run_or_fail(command, message):
         raise GetManifestError(message, e)
     return r
 
-def get_package_version(label, package):
-    returncode, stdout, stderr = run_or_fail(["repository", "list", label],
-        "Failed to list label")
+def get_package_version(label, package, repo_name=None):
+    args = ["repository", "list", label]
+    if repo_name:
+        if repo_name == "protected":
+            args += ["-ru", "ssh://seldlnx045"]
+        else:
+            raise GetManifestError("Unsupported repository type",
+                                   "Repository %s not found" % (repo_name))
+    returncode, stdout, stderr = run_or_fail(args, "Failed to list label")
     version = None
     for line in stdout.splitlines():
         parts = line.split()
@@ -36,20 +42,26 @@ def get_package_version(label, package):
     else:
         return version
 
-def get_and_extract_package(label, package, outdir):
-    pversion = get_package_version(label, package)
-    returncode, stdout, stderr = run_or_fail(["repository", "getpackage", "-o", outdir, package, pversion],
-        "Downloading %s from %s failed:" % (package, pversion))
-
+def get_and_extract_package(label, package, outdir, repo_name=None):
+    pversion = get_package_version(label, package, repo_name)
+    args = ["repository", "getpackage", "-o", outdir, package, pversion]
+    if repo_name:
+        if repo_name == "protected":
+            args += ["-ru", "ssh://seldlnx045:/srv/protected-repo"]
+        else:
+            raise GetManifestError("Unsupported repository type",
+                                   "Repository %s not found" % (repo_name))
+    returncode, stdout, stderr = run_or_fail(args, "Downloading %s from %s \
+                                             failed:" % (package, pversion))
     debpath = stdout.strip()
 
     run_or_fail(["dpkg-deb", "-x", debpath, outdir],
         "Failed to extract package %s to %s:" % (package, outdir))
 
-def get_file_from_package(label, package, outfile, frompath):
+def get_file_from_package(label, package, outfile, frompath, repo_name=None):
     tempdir = tempfile.mkdtemp()
     try:
-        get_and_extract_package(label, package, tempdir)
+        get_and_extract_package(label, package, tempdir, repo_name)
         try:
             shutil.copyfile(os.path.join(tempdir, frompath), outfile)
         except IOError, e:
@@ -57,8 +69,9 @@ def get_file_from_package(label, package, outfile, frompath):
     finally:
         shutil.rmtree(tempdir)
 
-def get_manifest(label, outfile = "manifest_static.xml", frompath = "manifest_static.xml"):
-    get_file_from_package(label, "build-metadata", outfile, frompath)
+def get_manifest(label, outfile="manifest_static.xml",
+                 frompath="manifest_static.xml", repo_name=None):
+    get_file_from_package(label, "build-metadata", outfile, frompath, repo_name)
 
 def _main(argv):
 
@@ -71,7 +84,8 @@ def _main(argv):
                         help="Stores the manifest to this path [default: %default]")
     parser.add_option("-f","--frompath", dest="frompath", default="manifest_static.xml",
                         help="Path where the manifest is found [default: %default]")
-
+    parser.add_option("-t","--type", dest="repo_name",
+                        help="Override default repository type. ")
     (options, args) = parser.parse_args()
 
     if len(args) != 1:
@@ -79,7 +93,8 @@ def _main(argv):
         parser.error("Incorrect number of arguments")
     try:
         label = args[0]
-        get_file_from_package(label, options.package, options.outfile, options.frompath)
+        get_file_from_package(label, options.package, options.outfile,
+                              options.frompath, options.repo_name)
     except GetManifestError, e:
         print >> sys.stderr, str(e)
         sys.exit(1)
