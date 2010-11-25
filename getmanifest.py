@@ -46,19 +46,19 @@ def get_and_extract_package(label, package, outdir):
     run_or_fail(["dpkg-deb", "-x", debpath, outdir],
         "Failed to extract package %s to %s:" % (package, outdir))
 
-def get_file_from_package(label, package, topath, frompath):
+def get_file_from_package(label, package, outfile, frompath):
     tempdir = tempfile.mkdtemp()
     try:
         get_and_extract_package(label, package, tempdir)
         try:
-            shutil.copyfile(os.path.join(tempdir, frompath), topath)
+            shutil.copyfile(os.path.join(tempdir, frompath), outfile)
         except IOError, e:
-            raise GetManifestError("Failed to move manifest to %s" % (topath), e)
+            raise GetManifestError("Failed to move manifest to %s" % (outfile), e)
     finally:
         shutil.rmtree(tempdir)
 
-def get_manifest(label, topath = "manifest_static.xml", frompath = "manifest_static.xml"):
-    get_file_from_package(label, "build-metadata", topath, frompath)
+def get_manifest(label, outfile = "manifest_static.xml", frompath = "manifest_static.xml"):
+    get_file_from_package(label, "build-metadata", outfile, frompath)
 
 def _main(argv):
 
@@ -67,7 +67,7 @@ def _main(argv):
     parser.add_option("-p", "--package", dest="package",
                         default="build-metadata",
                         help="A valid Debian package")
-    parser.add_option("-t", "--topath", dest="topath", default="manifest_static.xml",
+    parser.add_option("-o", "--outfile", dest="outfile", default="manifest_static.xml",
                         help="Stores the manifest to this path [default: %default]")
     parser.add_option("-f","--frompath", dest="frompath", default="manifest_static.xml",
                         help="Path where the manifest is found [default: %default]")
@@ -79,7 +79,7 @@ def _main(argv):
         parser.error("Incorrect number of arguments")
     try:
         label = args[0]
-        get_file_from_package(label, options.package, options.topath, options.frompath)
+        get_file_from_package(label, options.package, options.outfile, options.frompath)
     except GetManifestError, e:
         print >> sys.stderr, str(e)
         sys.exit(1)
