@@ -58,9 +58,10 @@ VERSION = '1.1.1'
 class Wiki:
 	"""A Wiki site"""
 
-	def __init__(self, url="http://en.wikipedia.org/w/api.php"):
+	def __init__(self, url="http://en.wikipedia.org/w/api.php", auth=None):
 		"""
 		url - A URL to the site's API, defaults to en.wikipedia
+		auth - A tuple containing user, password if HTTP Basic Auth is needed
 		"""
 		self.apibase = url
 		self.cookies = WikiCookieJar()
@@ -75,6 +76,7 @@ class Wiki:
 		self.NSaliases = {}
 		urlbits = urlparse(self.apibase)
 		self.domain = '://'.join([urlbits.scheme, urlbits.netloc])
+		self.auth = auth
 		try:
 			self.setSiteinfo()
 		except api.APIError: # probably read-restricted
