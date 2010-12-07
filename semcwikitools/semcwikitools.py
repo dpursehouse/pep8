@@ -1,0 +1,68 @@
+#!/usr/bin/env python
+
+import os.path
+import os
+import wikitools
+import urlparse
+
+class SemcWikiError(Exception):
+    def __init__(self, message):
+        self.message = message
+
+    def __str__(self):
+        return self.message
+
+class WikiOperation():
+    def __init__(self, f):
+        self.f = f
+
+    def __call__(self, *args):
+        try:
+            return self.f(*args)
+        except wikitools.api.APIError, e:
+            raise SemcWikiError("The wiki returned an error:\n" + str(e))
+        except wikitools.wiki.WikiError, e:
+            raise SemcWikiError("The wiki returned an error:\n" + str(e))
+
+def read_netrc_cred(wikiserver):
+    try:
+        netrc = file(os.path.join(os.environ["HOME"], ".netrc"))
+    except IOError, e:
+        raise SemcWikiError("Failed to open $HOME/.netrc: " + str(e))
+
+    for line in netrc:
+        parts = line.split()
+        if len(parts) == 6:
+            if parts[1] == wikiserver:
+                return parts[3], parts[5]
+    raise SemcWikiError("Could not find %s in $HOME/.netrc" % (wikiserver))
+
+@WikiOperation
+def get_wiki(url):
+    urlp = urlparse.urlparse(url)
+    cred = read_netrc_cred(urlp.netloc)
+    wiki = wikitools.wiki.Wiki(url, cred)
+    return wiki
+
+@WikiOperation
+def add_item_to_feed(wiki, page, title, text):
+    p = wikitools.page.Page(wiki, page)
+    result = p.edit(section="0", text="<startFeed/>\n\n= %s =\n\n%s" % (title, text))
+    editedpage = result["edit"]["title"]
+    return editedpage
+
+@WikiOperation
+def add_section_to_page(wiki, page, title, text):
+    p = wikitools.page.Page(wiki, page)
+    result = p.edit(section="new", summary=title, text=text)
+    editedpage = result["edit"]["title"]
+    return editedpage
+
+@WikiOperation
+def get_sections(wiki, page):
+    p = wikitools.page.Page(wiki, page)
+    r = wikitools.api.APIRequest(wiki, {"action": "parse",
+                                        "text": p.getWikiText(),
+                                        "prop": "sections"})
+    result = r.query()
+    return [x["line"] for x in result["parse"]["sections"]]
