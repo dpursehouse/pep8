@@ -49,7 +49,20 @@ def isExcludedProject(project):
                         "semctools/c2d",
                         "platform/sdk",
                         "semctools/hudson/hudson-slave-files",
-                        "indus/tsce"]
+                        "indus/tsce",
+                        "semctools/keyboard-layout-generator",
+                        "semctools/idd-probes",
+                        "platform/vendor/qcom-proprietary",
+                        "amss7230",
+                        "platform/external/qemu",
+                        "platform/manifest-indus",
+                        "semctools/mib-tools",
+                        "services/trackid3-server",
+                        "device/semc/zeus",
+                        "product/common",
+                        "platform/vendor/qcom/android-open",
+                        "platform/amss2xxx",
+                        "platform/vendor/qcom-proprietary-2xxx"]
     for index in excludedProjects:
         if index == project:
             return True
@@ -66,5 +79,8 @@ for line in sys.stdin:
             print "<p>"
             print "[" + data["project"] + "]"
             print "[" + data["branch"] + "]"
-            print "<a href=\"" + data["url"] + "\">" + data["subject"] + "</a>"
+            try:
+                print "<a href=\"" + data["url"] + "\">" + data["subject"] + "</a>"
+            except UnicodeEncodeError:
+                print "<b><a href=\"" + data["url"] + "\">!!! ENCODE ERROR !!!</a></b>"
             print "</p>"
