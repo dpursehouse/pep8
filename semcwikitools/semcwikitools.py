@@ -4,6 +4,7 @@ import os.path
 import os
 import wikitools
 import urlparse
+import urllib
 
 class SemcWikiError(Exception):
     def __init__(self, message):
@@ -37,6 +38,13 @@ def read_netrc_cred(wikiserver):
                 return parts[3], parts[5]
     raise SemcWikiError("Could not find %s in $HOME/.netrc" % (wikiserver))
 
+def get_page_rss(wiki, pagename):
+    url = wiki.apibase
+    url = url.replace("api.php", "index.php")
+    encpage = urllib.quote(pagename)
+    url += "?title=%s&action=feed" % (encpage)
+    return url
+
 @WikiOperation
 def get_wiki(url):
     urlp = urlparse.urlparse(url)
@@ -46,8 +54,15 @@ def get_wiki(url):
 
 @WikiOperation
 def add_item_to_feed(wiki, page, title, text):
+    # Add convenience link to the rss-feed
+    fulltext = "[%s RSS feed for this page]\n\n" % (get_page_rss(wiki, page))
+    # This must be added every time, otherwise it gets overwritten
+    fulltext += "<startFeed/>\n\n"
+    # Add the item
+    fulltext += "= %s =\n\n%s" % (title, text)
+
     p = wikitools.page.Page(wiki, page)
-    result = p.edit(section="0", text="<startFeed/>\n\n= %s =\n\n%s" % (title, text))
+    result = p.edit(section="0", text=fulltext)
     editedpage = result["edit"]["title"]
     return editedpage
 
