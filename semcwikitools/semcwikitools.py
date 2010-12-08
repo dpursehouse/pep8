@@ -66,3 +66,12 @@ def get_sections(wiki, page):
                                         "prop": "sections"})
     result = r.query()
     return [x["line"] for x in result["parse"]["sections"]]
+
+@WikiOperation
+def upload_file_to_wiki(wiki, page, filepath):
+    p = wikitools.wikifile.File(wiki, page)
+    f = file(filepath)
+    # ignorewarnings allows us to upload files with same contents as
+    # previously uploaded files.
+    result = p.upload(f, ignorewarnings=True)
+    return result
