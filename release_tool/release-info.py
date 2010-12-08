@@ -395,7 +395,7 @@ class CompareVariantSpec:
                 self.variant_spec_dict[file_name] = {}
                 self.variant_spec_dict[file_name]['removed'] = []
                 self.variant_spec_dict[file_name]['added'] = []
-            m2 = re.search("-\s+<package  name=\"(?P<package>[\w|-]+).*>",\
+            m2 = re.search("-\s+<package name=\"(?P<package>[\w|-]+).*>",\
                            item)
             m3 = re.search("^\+\s+<package name=\"(?P<package>[\w|-]+).*>",\
                            item)
