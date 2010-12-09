@@ -56,6 +56,8 @@ def get_wiki(url):
 def add_item_to_feed(wiki, page, title, text):
     # Add convenience link to the rss-feed
     fulltext = "[%s RSS feed for this page]\n\n" % (get_page_rss(wiki, page))
+    # A TOC would just be a duplicate of the page itself
+    fulltext += "__NOTOC__\n"
     # This must be added every time, otherwise it gets overwritten
     fulltext += "<startFeed/>\n\n"
     # Add the item
