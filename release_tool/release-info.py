@@ -230,6 +230,9 @@ class Manifest:
             if "path" in project.attributes.keys():
                 self.project_info[project.attributes["name"].value]["path"] \
                     = project.attributes["path"].value
+            else:
+                self.project_info[project.attributes["name"].value]["path"] \
+                    = project.attributes["name"].value
 
     def get_project_list(self):
         return self.project_info.keys()
