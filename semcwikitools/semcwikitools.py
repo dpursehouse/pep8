@@ -64,7 +64,15 @@ def add_item_to_feed(wiki, page, title, text):
     fulltext += "= %s =\n\n%s" % (title, text)
 
     p = wikitools.page.Page(wiki, page)
-    result = p.edit(section="0", text=fulltext)
+
+    # Setup the feed if there wasn't a feed before
+    if not "<endFeed/>" in p.getWikiText():
+        fulltext += "\n\n<endFeed/>"
+        section = "new"
+    else:
+        section = "0"
+
+    result = p.edit(section=section, text=fulltext)
     editedpage = result["edit"]["title"]
     return editedpage
 
