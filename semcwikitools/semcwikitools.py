@@ -66,7 +66,7 @@ def add_item_to_feed(wiki, page, title, text):
     p = wikitools.page.Page(wiki, page)
 
     # Setup the feed if there wasn't a feed before
-    if not "<endFeed/>" in p.getWikiText():
+    if not p.exists or not "<endFeed/>" in p.getWikiText():
         fulltext += "\n\n<endFeed/>"
         section = "new"
     else:
