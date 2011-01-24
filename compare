@@ -20,7 +20,9 @@ use constant {
   _INSERT_ => '__INSERT__',
   _MANIFEST_ => 'manifest_static.xml',
   _TIMEOUT   => 900,
-  _SRM_PASSWORD  => 0, # required for the -excel option
+  _C2D_DEV_  => '--type=dev',
+  _C2D_PROTECTED_ => '--type=protected',
+  _SRM_PASSWORD   => 0, # required for the -excel option
 };
 
 
@@ -48,10 +50,9 @@ my ($gitRevListCmd) = "git rev-list";
 my ($repoSyncCmd)   = "repo sync -j 4";
 my ($repoInitCmd)   = "repo init -u git://review.sonyericsson.net/platform/"
   . "manifest.git -b deckard-integration";
-my (@repositoryGetManifestCmd) = ("repository getpackage build-metadata ", _INSERT_, " --out=$tempDir");
-my (@dpkgManifestCmd)          = ("dpkg-deb --extract $tempDir/build-metadata_", _INSERT_, "_all.deb $tempDir");
-my (@mvManifestDBCmd)          = ("mv -f $tempDir/", _MANIFEST_, " $manifestDB/", _INSERT_, ".xml");
-
+my (@dpkgManifestCmd) = ("dpkg-deb --extract $tempDir/build-metadata_", _INSERT_, "_all.deb $tempDir");
+my (@mvManifestDBCmd) = ("mv -f $tempDir/", _MANIFEST_, " $manifestDB/", _INSERT_, ".xml");
+my (@repositoryGetManifestCmd) = ("repository getpackage build-metadata ", _INSERT_, " --out=$tempDir ");
 
 
 sub usage() {
@@ -322,7 +323,7 @@ sub getManifestsFromGit {
   return if ( -e $firstGitManifest );
   my ( $result, @result );
 
-  # remove legacy manifest folder  
+  # remove legacy manifest folder
   execCmd( "rm -rf $compareDB/manifest", \$result, \@result ) if ( -d "$compareDB/manifest" );
 
   execCmd( "rm -rf $tempDir", \$result, \@result ) if ( -d "$tempDir" );
@@ -365,7 +366,11 @@ sub validateLblAndGetManifest {
     my ($manifest) = "$manifestDB/$label.xml";
     if ( !-e $manifest ) {
         # Import the debian-package from C2D
-        if ( execCmd( join('', map({$_ eq _INSERT_ ? $label : $_} @repositoryGetManifestCmd)), \$result, \@result ) != 0 ) {
+        execCmd( join('', map({$_ eq _INSERT_ ? $label : $_} @repositoryGetManifestCmd)) . _C2D_DEV_, \$result, \@result );
+        if (grep(/^Error:/, @result)) {
+            execCmd( join('', map({$_ eq _INSERT_ ? $label : $_} @repositoryGetManifestCmd)) . _C2D_PROTECTED_, \$result, \@result );
+        }
+        if (grep(/^Error:/, @result)) {
             print STDERR "Cannot find manifest file related to label "
              . "$label in the C2D repository.\n";
         }
@@ -381,7 +386,7 @@ sub validateLblAndGetManifest {
             print STDERR "Failed to move manifest into DB\n" if ( !-e $manifest );
         }
     }
-    
+
     execCmd( "rm -rf $tempDir", \$result, \@result ) if ( -d "$tempDir" );
     die "Failed to retrieve manifest-file for $label" unless ( -e $manifest );
 
