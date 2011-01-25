@@ -84,6 +84,13 @@ def add_section_to_page(wiki, page, title, text):
     return editedpage
 
 @WikiOperation
+def write_page(wiki, page, text):
+    p = wikitools.page.Page(wiki, page)
+    result = p.edit(text=text)
+    editedpage = result["edit"]["title"]
+    return editedpage
+
+@WikiOperation
 def get_sections(wiki, page):
     p = wikitools.page.Page(wiki, page)
     r = wikitools.api.APIRequest(wiki, {"action": "parse",
