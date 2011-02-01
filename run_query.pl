@@ -32,6 +32,7 @@ use constant RELEASE_LABEL_FIELD => "sw_official_release";
 use constant STATE_FIELD => "State";
 use constant INTEGRATED_STATUS_FIELD => "integrated_status";
 use constant VERIFIED_STATUS_FIELD => "verified_status";
+use constant FIX_FOR_FIELD => "fix_for";
 use constant PROJ_ID => "proj_id";
 use constant RESTRICTED_STATE => "Integrated";
 use constant FINAL_STATE => "Verified";
@@ -272,7 +273,8 @@ if(defined($query)) {
                      INTEGRATED_STATUS_FIELD,
                      VERIFIED_STATUS_FIELD,
                      RELEASE_LABEL_FIELD,
-                     PROJ_ID) {
+                     PROJ_ID,
+                     FIX_FOR_FIELD) {
     if(!is_field_in_query($query_def, $field)) {
       $query_def->BuildField($field);
     }
@@ -311,7 +313,8 @@ my $issues_data = build_issue_hash($session, $result_set, $query_def, MASTERSHIP
                                                                       STATE_FIELD,
                                                                       INTEGRATED_STATUS_FIELD,
                                                                       VERIFIED_STATUS_FIELD,
-                                                                      PROJ_ID);
+                                                                      PROJ_ID,
+                                                                      FIX_FOR_FIELD);
 
 if(defined($list)) {
   list($issues_data);
@@ -446,7 +449,7 @@ sub list {
   foreach my $issue (keys(%{$issues_data})) {
       if($first_line) {
         foreach my $field (keys(%{$issues_data->{$issue}})) {
-          print "$field :";
+          print "$field : ";
         }
         print "\n";
       }
@@ -1234,6 +1237,7 @@ sub get_query_for_ids {
   $query->BuildField(VERIFIED_STATUS_FIELD);
   $query->BuildField(RELEASE_LABEL_FIELD);
   $query->BuildField(PROJ_ID);
+  $query->BuildField(FIX_FOR_FIELD);
 
   my $filter_node = $query->BuildFilterOperator(CQ_OR);
   
