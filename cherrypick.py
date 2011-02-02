@@ -3,9 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.1.4
-
-@bug: not verified against gerrit if the commit is already in gerrit for review
+@version: 0.1.5
 '''
 
 DESCRIPTION = \
@@ -17,6 +15,10 @@ considered. Commits with the DMSs mentioned in dms_filter.txt will be excluded.
 Then the potential commits will be pushed to Gerrit for review. As a byproduct
 a .csv file will be created with the commit list and a _result.csv file with
 the result of each cherry pick execution.
+
+During each cherry pick, commit id will be checked in Gerrit commit message,
+and cherry pick of this commit will be skipped if corresponding commit is found
+in open or abandoned state.
 
 It is possible to simulate the whole process by using the --dry-run option and
 possible to create only the cherry pick list and skip the push to Gerrit
@@ -57,11 +59,12 @@ import os
 import re
 import json
 import xml.dom.minidom
+import time
 
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.1.4'
+__version__ = '0.1.5'
 
 REPO = 'repo'
 GIT = 'git'
@@ -77,6 +80,7 @@ STATUS_MANIFEST = 4
 STATUS_ARGS = 5
 STATUS_FILE = 6
 STATUS_GIT_USR = 7
+STATUS_GERRIT_ERR = 8
 
 class Httpdump:
     """Http dump class"""
@@ -114,6 +118,80 @@ class HelpFormatter(optparse.IndentedHelpFormatter):
         if description:
             print "Description:", description
         return ''
+
+class Gerrit():
+    '''
+    Gerrit interface class to collect data from Gerrit
+    '''
+    def __init__(self,
+                 address='review.sonyericsson.net',
+                 port='29418',
+                 gerrit_user=None):
+        '''
+        Constructor
+        '''
+        self.address = address
+        self.port = port
+        self.gerrit_user = gerrit_user
+        self.data_format = 'JSON'
+
+    def collect_email_addresses(self, commit):
+        '''
+        Collect email addresses from Gerrit of a review
+        '''
+        r_cmd = ['ssh', '-p', self.port, self.address,
+                 '-l', self.gerrit_user,
+                 'gerrit',
+                 'query',
+                 '--format='+self.data_format,
+                 'status:merged', 'limit:1',
+                 '--current-patch-set',
+                 'commit:' + commit
+                 ]
+        out, err, ret = execmd(r_cmd)
+        if ret != 0:
+            print_err("%s %s" %(out, err))
+            cherry_pick_exit(STATUS_GERRIT_ERR)
+        #collect email addresses from Gerrit
+        gerrit_patchsets = json.JSONDecoder().raw_decode(out)[0]
+        emails = None
+        if gerrit_patchsets:
+            approvals_email = filter(lambda a: "email" in a["by"],
+                                     gerrit_patchsets["currentPatchSet"]
+                                     ["approvals"])
+            emails = list(set([a["by"]["email"] for a in approvals_email]))
+        return emails
+
+    def is_commit_available(self, commit, target_branch, prj_name):
+        '''
+        Return (url,date) tuple if commit is available in target_branch
+        in open or abandoned state, otherwise return (None,None,None) tuple
+        '''
+        r_cmd = ['ssh', '-p', self.port, self.address,
+                 '-l', self.gerrit_user,
+                 'gerrit',
+                 'query',
+                 '--format='+self.data_format,
+                 'project:'+prj_name, 'status:open',
+                 'message:cherry.picked.from.commit.' + commit,
+                 'OR',
+                 'project:'+prj_name, 'status:abandoned',
+                 'message:cherry.picked.from.commit.' + commit,
+                 '--current-patch-set',
+                 'branch:' + target_branch
+                  ]
+        out, err, ret = execmd(r_cmd)
+        if ret != 0:
+            print_err("%s %s" %(out, err))
+            cherry_pick_exit(STATUS_GERRIT_ERR)
+        gerrit_patchsets = json.JSONDecoder().raw_decode(out)[0]
+        if gerrit_patchsets:
+            if gerrit_patchsets.has_key('url'):
+                return (gerrit_patchsets['url'],
+                        gerrit_patchsets['lastUpdated'],
+                        gerrit_patchsets['status'])
+            else:
+                return None, None, None
 
 class Commit:
     """Data structure for a single commit"""
@@ -221,7 +299,8 @@ def cherry_pick_exit(exit_code):
               STATUS_MANIFEST: "Manifest file error",
               STATUS_ARGS: "Using wrong arguments",
               STATUS_FILE: "File error",
-              STATUS_GIT_USR: "Git config error"
+              STATUS_GIT_USR: "Git config error",
+              STATUS_GERRIT_ERR: "Gerrit server is not reachable"
               }
     msg = reason.get(exit_code)
     if exit_code != STATUS_OK:
@@ -375,7 +454,7 @@ def collect_fix_dms(branch, commit_begin, project, log_file):
             author_date = log_str
         elif re.match(r'CommitDate:', log_str): #get the title 2 lines bellow it
             title = git_log_list[git_log_list.index(log_str) + 2].strip()
-        elif re.match(r'^\s*?FIX\s*=\s*DMS[0-9].*?', log_str):   #"FIX=DMSxxxxx"
+        elif re.match(r'^\s*?FIX\s*=\s*DMS[0-9]+', log_str):   #"FIX=DMSxxxxx"
             dms_str = log_str.split('=')
             dms_id = dms_str[1].strip()     #DMSxxxxxxx
             rev, path, name = project.split(',')
@@ -490,8 +569,18 @@ def cherry_pick(unique_commit_list, target_branch):
     result_dms_tag_list = []
     dry_run = '_dry_run' if OPT.dry_run else ''
 
-    do_log("Cherry pick starting...", echo=True)
+    do_log("", info="Cherry pick starting...", echo=True)
+    gerrit = Gerrit(gerrit_user=gituser)
     for cmt in unique_commit_list:
+        url_date = gerrit.is_commit_available(cmt.commit, target_branch,
+                                              cmt.name)
+        if url_date[0]:
+            do_log('%s is %s in Gerrit, url %s, last updated on %s' %
+                   (cmt, url_date[2], url_date[0],
+                    time.ctime(url_date[1])),
+                    echo=True)
+            continue
+
         pick_result = ''
         do_log( 'Cherry picking %s ..' % cmt, echo=True)
         os.chdir(os.path.join(OPT.cwd, cmt.path))
@@ -500,23 +589,7 @@ def cherry_pick(unique_commit_list, target_branch):
                  + target_branch]
         git_log, err, ret = execmd(r_cmd)
         if ret == 0:
-            #get the review list of this commit
-            r_cmd = ['ssh', '-p', '29418', 'review.sonyericsson.net', '-l',
-                     gituser, 'gerrit', 'query', '--format=JSON',
-                     'status:merged', 'limit:1', '--current-patch-set',
-                     'commit:' + cmt.commit]
-            out, err, ret = execmd(r_cmd)
-            if ret != 0:
-                print_err("%s %s" %(out, err))
-                cherry_pick_exit(STATUS_GIT_USR)
-            #collect email addresses from gerrit
-            gerrit_patchsets = json.JSONDecoder().raw_decode(out)[0]
-            if gerrit_patchsets:
-                approvals_email = filter(lambda a: "email" in a["by"],
-                                         gerrit_patchsets["currentPatchSet"]
-                                         ["approvals"])
-                emails = list(set([a["by"]["email"] for a in approvals_email]))
-
+            emails = gerrit.collect_email_addresses(cmt.commit)
             # now cherry pick
             git_log, err, ret = execmd([GIT, 'cherry-pick', '-x', cmt.commit])
             if ret == 0:
@@ -548,8 +621,7 @@ def cherry_pick(unique_commit_list, target_branch):
                     if OPT.dry_run:
                         pick_result = 'Dry-run ok'
                     else:
-                        match = re.search('https://review.sonyericsson.net.*',
-                                          err)
+                        match = re.search('https://review.sonyericsson.net/[0-9]+', err)
                         if match:
                             #collect the gerrit id
                             pick_result = match.group(0)
@@ -561,9 +633,9 @@ def cherry_pick(unique_commit_list, target_branch):
                 if 'the conflicts' in err:
                     pick_result = 'Failed due to merge conflict'
                 elif 'nothing to commit' in git_log:
-                    pick_result = 'nothing to commit'
+                    pick_result = 'Already merged, nothing to commit'
                 else:
-                    pick_result = 'Failed to cherry pick'
+                    pick_result = 'Failed due to unknown reason'
                 print_err(err)
                 print_err("Resetting to HEAD...")
                 git_log, err, ret = execmd([GIT, 'reset', '--hard'])
@@ -617,8 +689,9 @@ def do_log(contents, file_name=None, info=None, echo=False):
         log_file.write(contents)
     if OPT.verbose or echo:
         if info != None:
-            print info
+            print (10*'=' ) + info + (10*'=' )
         print >> sys.stdout, contents
+    sys.stdout.flush()
 
 def main():
     """
