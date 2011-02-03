@@ -3,14 +3,14 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.1.5
+@version: 0.1.6
 '''
 
 DESCRIPTION = \
 '''
 Find cherry pick candidates in source branch(es) by processing the git log of
 each base branch and target branch. From the log, list of DMSs will be checked
-with DMS server and commits with correct DMS tag (--dms-tags) will be
+with DMS tag server and commits with correct DMS tag (--dms-tags) will be
 considered. Commits with the DMSs mentioned in dms_filter.txt will be excluded.
 Then the potential commits will be pushed to Gerrit for review. As a byproduct
 a .csv file will be created with the commit list and a _result.csv file with
@@ -24,7 +24,9 @@ It is possible to simulate the whole process by using the --dry-run option and
 possible to create only the cherry pick list and skip the push to Gerrit
 action with the -n(--no-push-to-gerrit) option.
 
-SEMC username and password are required in .netrc file for DMS tag check.
+SEMC username and password are required in .netrc file for DMS tag check through
+web. It is not necessary if dms tag server is used(--dms-tag-server) and web
+interface is not used.
 
 repo envirionment must be initialized in working directory before you run this
 script.
@@ -60,11 +62,12 @@ import re
 import json
 import xml.dom.minidom
 import time
+import socket
 
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.1.5'
+__version__ = '0.1.6'
 
 REPO = 'repo'
 GIT = 'git'
@@ -81,6 +84,13 @@ STATUS_ARGS = 5
 STATUS_FILE = 6
 STATUS_GIT_USR = 7
 STATUS_GERRIT_ERR = 8
+
+#Server communication tags
+SRV_DMS_STATUS = 'DMS_STATUS'
+SRV_CHERRY_UPDATE = 'CHERRY_UPDATE'
+SRV_CHERRY_GET = 'CHERRY_GET'
+SRV_ERROR = 'SRV_ERROR'
+SRV_END = '|END'
 
 class Httpdump:
     """Http dump class"""
@@ -193,6 +203,64 @@ class Gerrit():
             else:
                 return None, None, None
 
+class DMSTagServer():
+    '''
+    This is interface to send request to dms_tag_server.py to collect old and
+    save new cherry pick records and dms for tags.
+    '''
+    def __init__(self, server, port=55655):
+        '''
+        Constructor
+        '''
+        self.server = server
+        self.port = port
+
+    def dms_for_tags(self, dmss, dms_tags):
+        """
+        Connect to tag server and collect dmss for a tag
+        """
+        dms_list = {}
+        for tag in dms_tags.split(','):
+            tagged_dms = self.query_srv('%s|%s|%s' %(SRV_DMS_STATUS, tag, dmss))
+            if tagged_dms == None:
+                return None
+            dms_list[tag] = tagged_dms
+            do_log("DMS found for tag %s: %s" %(tag, dms_list[tag]),
+                   echo=True)
+        return dms_list
+
+    def query_srv(self, query):
+        """Send the query to server and collect the data"""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((self.server, self.port))
+            sock.send(query)
+            sock.send(SRV_END)
+            data = sock.recv(1024)
+            msg = ''
+            while 1:
+                msg = msg + data
+                if SRV_END in str(data):
+                    break
+                data = sock.recv(1024)
+            sock.close()
+            if SRV_ERROR in msg:
+                print_err('DMS tag server side error')
+                return None
+            return msg.split('|')[0]
+        except socket.error, err:
+            print_err('dms tag server error: %s'%err[1])
+            return None
+
+    def retrieve(self, branch):
+        '''Collect data from server of branch'''
+        return self.query_srv('%s|%s' %(SRV_CHERRY_GET, branch))
+
+    def update(self, branch, records):
+        '''Save data into server for branch'''
+        return self.query_srv('%s|%s|%s' %(SRV_CHERRY_UPDATE, branch,
+                                           '\n'.join(records)))
+
 class Commit:
     """Data structure for a single commit"""
     base, path, name, = None, None, None
@@ -259,6 +327,11 @@ def option_parser():
                      dest='cwd',
                      help='working directory, default is current directory',
                      action="store", default=os.getcwd())
+    opt_parser.add_option('--dms-tag-server',
+                     dest='dms_tag_server',
+                     help='IP address or name of DMS tag server',
+                     action="store", default=None)
+
     #debug options
     opt_group = opt_parser.add_option_group('Debug options')
     opt_group.add_option('-v', '--verbose',
@@ -493,6 +566,20 @@ def dms_get_fix_for(commit_list):
     progress = 0
     total = len(commit_list)
 
+    if OPT.dms_tag_server:
+        server = DMSTagServer(OPT.dms_tag_server)
+        tags_dmss = server.dms_for_tags(','.join([x.dms for x in commit_list]),
+                                        OPT.dms_tags)
+        if tags_dmss != None:
+            for cmt in commit_list:
+                dms = cmt.dms
+                for tag in OPT.dms_tags.split(','):
+                    if dms in tags_dmss[tag]:
+                        commit_tag_list.append(cmt)
+                        break
+            return commit_tag_list
+
+    do_log('DMS tag server is not available, trying web interface..', echo=True)
     for cmt in commit_list:
         dms = cmt.dms
         dump = Httpdump(DMS_URL + "?q=0___" + str(dms) + "___issue")
@@ -566,8 +653,20 @@ def cherry_pick(unique_commit_list, target_branch):
             print_err("Please run this after git configuration is done.")
             cherry_pick_exit(STATUS_GIT_USR)
     #keep the result here
-    result_dms_tag_list = []
+    cherrypick_result = []
     dry_run = '_dry_run' if OPT.dry_run else ''
+
+    #check cherry pick history
+    old_cherries = None
+    tag_server = None
+    if OPT.dms_tag_server:
+        tag_server = DMSTagServer(OPT.dms_tag_server)
+        records = tag_server.retrieve(target_branch + dry_run)
+        if not records:
+            print_err("Server is not reachable to check old cherry pick")
+        elif 'Unavailable' not in records:
+            do_log(records, info="Old cherries", echo=True)
+            old_cherries =  records.strip().split('\n')
 
     do_log("", info="Cherry pick starting...", echo=True)
     gerrit = Gerrit(gerrit_user=gituser)
@@ -580,6 +679,18 @@ def cherry_pick(unique_commit_list, target_branch):
                     time.ctime(url_date[1])),
                     echo=True)
             continue
+
+        #Check old cherries
+        go_next = False
+        if old_cherries:
+            for cherry in old_cherries:
+                if cmt.commit in cherry:
+                    do_log('Already processed once %s' %cherry, echo=True)
+                    go_next = True
+                    break
+        if go_next:
+            continue
+        #end of old cherry check
 
         pick_result = ''
         do_log( 'Cherry picking %s ..' % cmt, echo=True)
@@ -651,11 +762,21 @@ def cherry_pick(unique_commit_list, target_branch):
                                        if not OPT.dry_run else 'Dry-run ok')):
             ret_err = STATUS_CHERRYPICK_FAILED
 
-        result_dms_tag_list.append(str(cmt) + ',' + pick_result)
+        cherrypick_result.append(str(cmt) + ',' + pick_result)
     os.chdir(OPT.cwd)
-    do_log('\n'.join(result_dms_tag_list), echo=True, file_name=
-          "%s_cherrypick%s_result.csv" %
-          (target_branch, dry_run), info="Result.")
+    #report the result if any cherry pick done
+    if cherrypick_result:
+        cherrypick_result.sort()
+        if tag_server:
+            result = tag_server.update(target_branch + dry_run,
+                                       cherrypick_result)
+            if not result:
+                print_err("Server is not reachable to update")
+        do_log('\n'.join(cherrypick_result), echo=True, file_name=
+              "%s_cherrypick%s_result.csv" %
+              (target_branch, dry_run), info="New cherries picked:")
+    else:
+        do_log("No new cherry", echo=True)
     return ret_err
 
 def execmd(cmd):
