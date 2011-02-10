@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.1.8
+@version: 0.1.9
 '''
 
 DESCRIPTION = \
@@ -70,7 +70,7 @@ import socket
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.1.8'
+__version__ = '0.1.9'
 
 REPO = 'repo'
 GIT = 'git'
@@ -178,7 +178,7 @@ class Gerrit():
 
     def is_commit_available(self, commit, target_branch, prj_name):
         '''
-        Return (url,date) tuple if commit is available in target_branch
+        Return (url,date,status) tuple if commit is available in target_branch
         in open or abandoned state, otherwise return (None,None,None) tuple
         '''
         r_cmd = ['ssh', '-p', self.port, self.address,
@@ -237,6 +237,7 @@ class DMSTagServer():
         """Send the query to server and collect the data"""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(30) #disconnect after 30 sec
             sock.connect((self.server, self.port))
             sock.send(query)
             sock.send(SRV_END)
@@ -252,6 +253,9 @@ class DMSTagServer():
                 print_err('DMS tag server side error')
                 return None
             return msg.split('|')[0]
+        except socket.timeout, err:
+            print_err('dms tag server error: %s'%err[0])
+            return None
         except socket.error, err:
             print_err('dms tag server error: %s'%err[1])
             return None
@@ -267,8 +271,6 @@ class DMSTagServer():
 
 class Commit:
     """Data structure for a single commit"""
-    base, path, name, = None, None, None
-    author_date, commit, title, dms = None, None, None, None
     def __init__(self, base=None, path=None, name=None,
                  author_date=None, commit=None, dms=None, title=None):
         self.base = base
@@ -670,15 +672,6 @@ def cherry_pick(unique_commit_list, target_branch):
     do_log("", info="Cherry pick starting...", echo=True)
     gerrit = Gerrit(gerrit_user=gituser)
     for cmt in unique_commit_list:
-        url_date = gerrit.is_commit_available(cmt.commit, target_branch,
-                                              cmt.name)
-        if url_date[0]:
-            do_log('%s is %s in Gerrit, url %s, last updated on %s' %
-                   (cmt, url_date[2], url_date[0],
-                    time.ctime(url_date[1])),
-                    echo=True)
-            continue
-
         #Check old cherries
         go_next = False
         if old_cherries:
@@ -687,10 +680,22 @@ def cherry_pick(unique_commit_list, target_branch):
                     do_log('Already processed once %s' %cherry, echo=True)
                     go_next = True
                     break
+        #end of old cherry check
+        url_date = gerrit.is_commit_available(cmt.commit, target_branch,
+                                              cmt.name)
+        if url_date[0]:
+            do_log('%s is %s in Gerrit, url %s, last updated on %s' %
+                   (cmt, url_date[2], url_date[0],
+                    time.ctime(url_date[1])),
+                    echo=True)
+            if not go_next: # if not in tag server, but in Gerrit, add it
+                if tag_server:
+                    if not tag_server.update(target_branch + dry_run,
+                                       [str(cmt) + ',' + url_date[0]]):
+                        print_err("Server is not reachable to update")
+            continue
         if go_next:
             continue
-        #end of old cherry check
-
         pick_result = ''
         do_log( 'Cherry picking %s ..' % cmt, echo=True)
         os.chdir(os.path.join(OPT.cwd, cmt.path))
@@ -741,22 +746,20 @@ def cherry_pick(unique_commit_list, target_branch):
             else:
                 if 'the conflicts' in err:
                     pick_result = 'Failed due to merge conflict'
+                elif 'is a merge but no -m' in err:
+                    pick_result = 'It is a merge commit'
                 elif 'nothing to commit' in git_log:
                     pick_result = 'Already merged, nothing to commit'
                 else:
                     pick_result = 'Failed due to unknown reason'
                 emails = [gituser+'@sonyericsson.com'] if OPT.dry_run else reviewers
-                email('Cherry-pick %s into %s has failed.'%(url, target_branch),
-                       emails,
-                      'Hello,\n Cherry-pick %s into %s '%(url, target_branch) +
-                      'has failed and the reason is %s.\n' %(pick_result) +
-                      'Thanks,\nCherry-picker.')
+                email(target_branch, url, cmt.commit, emails, pick_result)
                 print_err(err)
                 print_err("Resetting to HEAD...")
                 git_log, err, ret = execmd([GIT, 'reset', '--hard'])
                 do_log(git_log)
         else:
-            pick_result = '%s, %s' % (git_log, err)
+            pick_result = '%s %s' % (git_log, err)
             do_log(pick_result)
         #move to origin and delete topic branch
         git_log, err, ret = execmd([GIT, 'checkout', 'origin/' + target_branch])
@@ -768,15 +771,15 @@ def cherry_pick(unique_commit_list, target_branch):
             ret_err = STATUS_CHERRYPICK_FAILED
 
         cherrypick_result.append(str(cmt) + ',' + pick_result)
+        if tag_server:
+            if not tag_server.update(target_branch + dry_run,
+                                       [str(cmt) + ',' + pick_result]):
+                print_err("Server is not reachable to update")
+
     os.chdir(OPT.cwd)
     #report the result if any cherry pick done
     if cherrypick_result:
         cherrypick_result.sort()
-        if tag_server:
-            result = tag_server.update(target_branch + dry_run,
-                                       cherrypick_result)
-            if not result:
-                print_err("Server is not reachable to update")
         do_log('\n'.join(cherrypick_result), echo=True, file_name=
               "%s_cherrypick%s_result.csv" %
               (target_branch, dry_run), info="New cherries picked:")
@@ -819,7 +822,7 @@ def do_log(contents, file_name=None, info=None, echo=False):
         print >> sys.stdout, contents
     sys.stdout.flush()
 
-def email(subject, recepent, body):
+def email(branch, url, change_id, recipient, result):
     '''
     Email function
     '''
@@ -828,23 +831,29 @@ def email(subject, recepent, body):
     from email.mime.text import MIMEText
 
     msg = MIMEMultipart()
+    subject = ('[Cherrypick] [%s] cherry-pick of change %s has failed.'%
+               (branch, change_id))
+    body = ('Hello,\n\nAutomated cherry-pick of %s into %s '%(url, branch) +
+            'branch has failed.\n\nThe reason is %s.\n\nPlease ' %(result) +
+            'manually upload this cherry-pick.\n\nThanks,\nCherry-picker.')
     msg['Subject'] = subject
     sender = 'DL-WW-eDream4_0-CM@sonyericsson.com'
-
+    if not OPT.dry_run:
+        recipient.append(sender)
     msg['From'] = sender
-    msg['To'] = ', '.join(recepent)
+    msg['To'] = ', '.join(recipient)
     msg.preamble = subject
     text = MIMEText(body)
     msg.attach(text)
     # Send the email via our own SMTP server.
     try:
         mailer = smtplib.SMTP('smtpem1.sonyericsson.net')
-        mailer.sendmail(sender, recepent, msg.as_string())
+        mailer.sendmail(sender, recipient, msg.as_string())
         mailer.quit()
     except Exception, exp:
         print_err('Failed to send mail due to SMTP error: %s'%exp[1])
         return
-    do_log('Mail sent to %s for %s' % (', '.join(recepent), subject))
+    do_log('Mail sent to %s for %s' % (', '.join(recipient), subject))
 
 def main():
     """
