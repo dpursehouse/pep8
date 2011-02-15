@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.1.9
+@version: 0.2
 '''
 
 DESCRIPTION = \
@@ -15,6 +15,11 @@ considered. Exclusion filters which are mentioned in --exlude-git,--exclude-dms
 and --exclude-commit will be excluded. Then the potential commits will be pushed
 to Gerrit for review. As a byproduct a .csv file will be created with the commit
 list and a _result.csv file with the result of each cherry pick execution.
+
+Possible to use configuration file(--config) to set the argument values.
+Config file has higher priority on default command line parameter values
+(e.g. cwd) and command line parameter has higher priority than config file values
+for others.
 
 During each cherry pick, commit id will be checked in Gerrit commit message,
 and cherry pick of this commit will be skipped if corresponding commit is found
@@ -54,6 +59,17 @@ Example:
     -r <reviewers email addresses> option
     $%prog -b ginger-dev -t edream3.0-release-caf -d "3.0 CAF"
     -r "xx@sonyericsson.com,yy@sonyericsson.com"
+ 6. To use configuration file use --config <file_name> option
+     Suppose you have configuration file config.cfg and content is following:
+
+         [edream3.0-release-caf]
+         dry_run = True
+         base_branches = esea-ginger-dev,master,esea-ginger-dev-2.6.32
+         dms_tags = 3.0 CAF,Fix ASAP
+
+    And want to set verbose flag from command line
+    $%prog --config config.cfg -t edream3.0-release-caf -v
+
 '''
 
 import pycurl
@@ -70,7 +86,7 @@ import socket
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.1.9'
+__version__ = '0.2'
 
 REPO = 'repo'
 GIT = 'git'
@@ -207,6 +223,38 @@ class Gerrit():
             else:
                 return None, None, None
 
+    def approve(self, url):
+        """Approve the change-set with +2"""
+        #first collect revision
+        r_cmd = ['ssh', '-p', self.port, self.address,
+             '-l', self.gerrit_user,
+             'gerrit',
+             'query',
+             '--format='+self.data_format,
+             'status:open', 'limit:1',
+             '--current-patch-set',
+             'change:' + url.split('/')[-1]
+             ]
+        out, err, ret = execmd(r_cmd)
+        if ret != 0:
+            print_err("%s %s" %(out, err))
+            cherry_pick_exit(STATUS_GERRIT_ERR)
+        gerrit_patchsets = json.JSONDecoder().raw_decode(out)[0]
+        if gerrit_patchsets:
+            revision = gerrit_patchsets["currentPatchSet"]["revision"]
+            #approve with +2
+            r_cmd = ['ssh', '-p', self.port, self.address,
+                     '-l', self.gerrit_user,
+                     'gerrit',
+                     'approve',
+                     '--code-review=+2',
+                     revision]
+            out, err, ret = execmd(r_cmd)
+            if ret != 0:
+                print_err("%s %s" %(out, err))
+            else:
+                do_log("Code review for %s set to +2"%url)
+
 class DMSTagServer():
     '''
     This is interface to send request to dms_tag_server.py to collect old and
@@ -305,11 +353,15 @@ def option_parser():
     """
     Option parser
     """
-    usage = ("%prog -b BASE_BRANCHES,... -t TARGET_BRANCH " +
-             "-d DMS_TAGS,... [options]")
+    usage = ("%prog -t TARGET_BRANCH [--config CONF_FILE |-b BASE_BRANCHES," +
+             ".. -d DMS_TAGS,... [options]]")
     opt_parser = optparse.OptionParser(formatter=HelpFormatter(),
                                        usage=usage, description=DESCRIPTION,
-                                          version='%prog ' + __version__)
+                                       version='%prog ' + __version__)
+    opt_parser.add_option('-c', '--config',
+                     dest='config_file',
+                     help='Configuration file name.',
+                     action="store", default=None, metavar="FILE")
     opt_parser.add_option('-b', '--base-branches',
                      dest='base_branches',
                      help='base branches (comma separated)',
@@ -332,6 +384,14 @@ def option_parser():
     opt_parser.add_option('--dms-tag-server',
                      dest='dms_tag_server',
                      help='IP address or name of DMS tag server',
+                     action="store", default=None)
+    opt_parser.add_option('--approve',
+                     dest='approve',
+                     help='Approve uploaded change set in Gerrit with +2',
+                     action="store_true", default=False)
+    opt_parser.add_option('--mail-sender',
+                     dest='mail_sender',
+                     help='Mail sender address for mail notification.',
                      action="store", default=None)
     opt_parser.add_option('--exclude-git',
                      dest='exclude_git',
@@ -638,7 +698,7 @@ def cherry_pick(unique_commit_list, target_branch):
     4. Change the commit message
     5. push it to gerrit
     6. save the status to a file
-    7. Checkout source branch
+    7. Move out from topic branch
     8. delete topic-cherrypick branch
     """
     ret_err = STATUS_OK
@@ -652,6 +712,10 @@ def cherry_pick(unique_commit_list, target_branch):
             print_err("user.email is not configured for git yet")
             print_err("Please run this after git configuration is done.")
             cherry_pick_exit(STATUS_GIT_USR)
+
+    if not OPT.mail_sender:
+        OPT.mail_sender = gituser+'@sonyericsson.com'
+
     #keep the result here
     cherrypick_result = []
     dry_run = '_dry_run' if OPT.dry_run else ''
@@ -739,21 +803,24 @@ def cherry_pick(unique_commit_list, target_branch):
                         if match:
                             #collect the gerrit id
                             pick_result = match.group(0)
+                            if OPT.approve:
+                                gerrit.approve(pick_result)
                         else:
                             pick_result = 'Gerrit URL not found after push'
                 else:
                     pick_result = 'Failed to push to Gerrit'
             else:
+                emails = [gituser+'@sonyericsson.com'] if OPT.dry_run else reviewers
                 if 'the conflicts' in err:
                     pick_result = 'Failed due to merge conflict'
+                    email(target_branch, url, cmt.commit, emails, pick_result)
                 elif 'is a merge but no -m' in err:
                     pick_result = 'It is a merge commit'
                 elif 'nothing to commit' in git_log:
                     pick_result = 'Already merged, nothing to commit'
                 else:
                     pick_result = 'Failed due to unknown reason'
-                emails = [gituser+'@sonyericsson.com'] if OPT.dry_run else reviewers
-                email(target_branch, url, cmt.commit, emails, pick_result)
+                    email(target_branch, url, cmt.commit, emails, pick_result)
                 print_err(err)
                 print_err("Resetting to HEAD...")
                 git_log, err, ret = execmd([GIT, 'reset', '--hard'])
@@ -827,45 +894,85 @@ def email(branch, url, change_id, recipient, result):
     Email function
     '''
     import smtplib
-    from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
+    from email.header import Header
 
-    msg = MIMEMultipart()
+    sender = OPT.mail_sender
     subject = ('[Cherrypick] [%s] cherry-pick of change %s has failed.'%
                (branch, change_id))
     body = ('Hello,\n\nAutomated cherry-pick of %s into %s '%(url, branch) +
             'branch has failed.\n\nThe reason is %s.\n\nPlease ' %(result) +
             'manually upload this cherry-pick.\n\nThanks,\nCherry-picker.')
-    msg['Subject'] = subject
-    sender = 'DL-WW-eDream4_0-CM@sonyericsson.com'
+    msg = MIMEText(body)
+    msg['Subject'] = Header(subject)
     if not OPT.dry_run:
         recipient.append(sender)
     msg['From'] = sender
     msg['To'] = ', '.join(recipient)
-    msg.preamble = subject
-    text = MIMEText(body)
-    msg.attach(text)
     # Send the email via our own SMTP server.
     try:
         mailer = smtplib.SMTP('smtpem1.sonyericsson.net')
         mailer.sendmail(sender, recipient, msg.as_string())
         mailer.quit()
-    except Exception, exp:
+    except smtplib.SMTPException, exp:
         print_err('Failed to send mail due to SMTP error: %s'%exp[1])
         return
     do_log('Mail sent to %s for %s' % (', '.join(recipient), subject))
+
+def config_parser():
+    """
+    Parse config file and load the values into OPT option parser. Config file
+    has higher priority on default command line parameter values(e.g. cwd) and
+    command line parameter has higher priority than config file values for
+    others.
+    """
+    import ConfigParser
+    config = ConfigParser.SafeConfigParser()
+    try:
+        config.read(OPT.config_file)
+        items = dict(config.items(OPT.target_branch))
+    except ConfigParser.NoSectionError, exp:
+        print_err("No branch configuration in config file: %s"% exp)
+        cherry_pick_exit(STATUS_FILE)
+    except ConfigParser.ParsingError, exp:
+        print_err("%s file parsing error: %s"% (OPT.config_file, exp))
+        cherry_pick_exit(STATUS_FILE)
+    except ConfigParser.Error, exp:
+        print_err("Config File error: %s"% exp)
+        cherry_pick_exit(STATUS_FILE)
+
+    for key, value in OPT.__dict__.iteritems():
+        if items.has_key(key):
+            if value: #handle default values here and give priority to config
+                if key == 'cwd':
+                    OPT.__dict__[key] = items[key]
+            else:     # cmd line parameter has higher priority on non-defaults
+                if items[key].lower() == 'true':
+                    OPT.__dict__[key] = True
+                elif items[key].lower() == 'false':
+                    OPT.__dict__[key] = False
+                elif items[key].lower() == 'none':
+                    OPT.__dict__[key] = None
+                else:
+                    OPT.__dict__[key] = items[key]
 
 def main():
     """
     Cherry pick main function
     """
-
     global OPT_PARSER, OPT
     OPT_PARSER = option_parser()
+    OPT = OPT_PARSER.parse_args()[0]
+
     if len(sys.argv) <2:
         OPT_PARSER.error("Insufficient arguments")
+    if OPT.config_file:
+        if not OPT.target_branch:
+            print_err("Must pass target (-t) branch name")
+            cherry_pick_exit(STATUS_ARGS)
+        config_parser()
 
-    OPT = OPT_PARSER.parse_args()[0]
+
     args = ["%s = %s" % (key, value) for key, value in OPT.__dict__.iteritems()]
     do_log("Arguments are:\n%s\n" %"\n".join(args), echo=False)
     status_code = STATUS_OK
