@@ -22,65 +22,162 @@
 # Title   : commitcheck.py
 #
 # Modified:
+# 2011-02-18: Rewritten to check the whole commit message
 #
 #-----------------------------------------------------------------
 
-import sys, json
+import sys
+import re
 
-print "<!DOCTYPE html>"
-print "<head><title>commitcheck.py results</title>"
-print "<meta charset=\"utf-8\"/></head>"
+errors = 0
+warnings = 0
 
-def isExcludedSubject(subject):
+def is_excluded_subject(subject):
+    '''
+    Check if a given subject should be excluded
+    '''
     excludedSubjects = ["Merge remote branch",
                         "Revert \"",
+                        "Merge \"",
                         "Merge commit \'",
                         "Merge branch \'",
-                        "DO NOT SUBMIT"]
+                        "DO NOT SUBMIT",
+                        "DON\'T SUBMIT"]
     for index in excludedSubjects:
-        if index in subject:
+        if re.match('^'+index, subject):
             return True
     return False
 
-def isExcludedProject(project):
-    excludedProjects = ["kernel/msm",
-                        "tools/gerrit",
-                        "kernel/st-ericsson",
-                        "semctools/c2d",
-                        "platform/sdk",
-                        "semctools/hudson/hudson-slave-files",
-                        "indus/tsce",
-                        "semctools/keyboard-layout-generator",
-                        "semctools/idd-probes",
-                        "platform/vendor/qcom-proprietary",
-                        "amss7230",
-                        "platform/external/qemu",
-                        "platform/manifest-indus",
-                        "semctools/mib-tools",
-                        "services/trackid3-server",
-                        "device/semc/zeus",
-                        "product/common",
-                        "platform/vendor/qcom/android-open",
-                        "platform/amss2xxx",
-                        "platform/vendor/qcom-proprietary-2xxx"]
-    for index in excludedProjects:
-        if index == project:
-            return True
-    return False
+def fatal_error(error):
+    '''
+    Print an error message and exit with error status
+    '''
+    print >> sys.stderr, "Fatal error: " + error
+    sys.stderr.flush()
+    exit(1)
 
-for line in sys.stdin:
-    data = json.loads(line)
-    if "subject" in data and "project" in data \
-                         and "branch" in data \
-                         and "url" in data:
-        if not isExcludedProject(data["project"]) \
-           and not isExcludedSubject(data["subject"]) \
-           and len(data["subject"]) > 70:
-            print "<p>"
-            print "[" + data["project"] + "]"
-            print "[" + data["branch"] + "]"
-            try:
-                print "<a href=\"" + data["url"] + "\">" + data["subject"] + "</a>"
-            except UnicodeEncodeError:
-                print "<b><a href=\"" + data["url"] + "\">!!! ENCODE ERROR !!!</a></b>"
-            print "</p>"
+def report_error(error):
+    '''
+    Print an error message and increment the count
+    '''
+    global errors
+    print "Error: " + error
+    errors += 1
+
+def report_warning(warning):
+    '''
+    Print a warning message and increment the count
+    '''
+    global warnings
+    print "Warning: " + warning
+    warnings += 1
+
+def is_utf8_string(s):
+    '''
+    Check if a string is UTF8 only
+    '''
+    try:
+        s.decode('utf_8')
+    except:
+        return False
+    else:
+        return True
+
+def check_line(line, line_no):
+    '''
+    Check the content of a line
+    '''
+    if line_no == 1:
+        # Check for DMS mentioned in the subject
+        dmslist = re.findall('DMS[\d]{6,8}', line)
+        if len(dmslist):
+            report_warning("Line 1: It is not recommended to list DMS in the "
+                           "subject line.")
+    else:
+        # Check for invalid FIX=tags in the message body
+        dmspattern = re.compile('(FIX.{1,3}?DMS[\d]{6,8})+', re.IGNORECASE)
+        dmslist = re.findall(dmspattern, line)
+        if len(dmslist):
+            if len(dmslist) > 1:
+                report_error("Line %d: Only one DMS should be listed per "
+                             "line." % line_no)
+            else:
+                dmspattern = re.compile('^FIX.*?DMS[\d]{6,8}$', re.IGNORECASE)
+                if not re.match(dmspattern, line):
+                    report_error("Line %d: DMS should be listed on a "
+                                 "separate line, with no leading whitespace "
+                                 "or trailing text." % line_no)
+            for dms in dmslist:
+                if not re.match('FIX=DMS[\d]{6,8}', dms):
+                    report_error("Line %d: Tag '%s' is formatted incorrectly."
+                                 %(line_no, dms))
+
+    # Make sure a blank line follows the subject
+    if line_no == 2:
+        if len(line):
+            report_error("Line 2: Subject should be followed by a blank "
+                         "line.")
+
+    # Check line length
+    if len(line) > 70:
+        report_error("Line %d: Length should be limited to 70 characters."
+                      % line_no)
+
+    # Check for non-UTF8 characters
+    if not is_utf8_string(line):
+        report_error("Line %d: Should not include non-UTF-8 characters."
+                     % line_no)
+
+def check_header(header):
+    '''
+    Check the commit header to verify that it only contains
+    expected tokens: 'tree', 'parent', 'author', or 'committer'
+    '''
+    headerLines = header.split('\n')
+    line_no = 0
+    for line in headerLines:
+        line_no += 1
+        if not re.match("^(tree|parent|author|committer) ", line):
+            fatal_error("Header: Unexpected token at line %d." % line_no)
+
+def check_commit_message(message):
+    '''
+    Check the commit message subject and body
+    '''
+    commitLines = message.split('\n')
+    line_no = 0
+    for line in commitLines:
+        line_no += 1
+        line = line.rstrip('\n')
+        if line_no == 1:
+            # Check the subject line
+            if is_excluded_subject(line):
+                print ("Found excluded commit type.  "
+                       "Skipping message body check.")
+                break
+            else:
+                check_line(line, line_no)
+        elif line_no >= 2:
+            # Check the message body
+            check_line(line, line_no)
+
+    print "\nProcessed %d lines" % line_no
+    print "Errors: %d" % errors
+    print "Warnings: %d" % warnings
+
+def main():
+    '''
+    Commit checker main function.   Expected input on stdin
+    is the output from the "git cat-file -p HEAD" command
+    '''
+    input = sys.stdin.read()
+    check_header(input[0:input.find('\n\n')])
+    check_commit_message(input[input.find('\n\n')+2:])
+
+    if errors > 0:
+        exit(1)
+    else:
+        exit(0)
+
+if __name__ == '__main__':
+    main()

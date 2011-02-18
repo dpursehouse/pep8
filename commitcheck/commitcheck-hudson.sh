@@ -1,0 +1,36 @@
+#!/bin/bash -ex
+
+if [ -z "$WORKSPACE" ]; then
+    WORKSPACE="./WORKSPACE"
+fi
+
+rm -rf $WORKSPACE
+mkdir $WORKSPACE
+cd $WORKSPACE
+
+if [ -n "$GERRIT_CHANGE_NUMBER" ]; then
+    # Set up folders and download the tools git
+    mkdir out
+    mkdir temp
+    git clone git://review.sonyericsson.net/semctools/cm_tools -b master
+
+    # Download the project
+    PROJNAME=$(basename $GERRIT_PROJECT)
+    git clone git://review.sonyericsson.net/$GERRIT_PROJECT temp/$PROJNAME
+
+    # Fetch the patch set
+    cd temp/$PROJNAME
+    git fetch git://review.sonyericsson.net/$GERRIT_PROJECT $GERRIT_REFSPEC
+
+    # Checkout the head
+    git checkout FETCH_HEAD
+
+    # Get the commit message
+    git cat-file -p HEAD > $WORKSPACE/out/commit_message.txt
+
+    # Run the commit message check tool
+    cd $WORKSPACE
+    python cm_tools/commitcheck/commitcheck.py < out/commit_message.txt | tee out/commit_message_check_log.txt
+    COMMIT_MESSAGE_STATUS=${PIPESTATUS[0]}
+    exit $COMMIT_MESSAGE_STATUS
+fi
