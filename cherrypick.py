@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.2.1
+@version: 0.2.2
 '''
 
 DESCRIPTION = \
@@ -86,7 +86,7 @@ import socket
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.2.1'
+__version__ = '0.2.2'
 
 REPO = 'repo'
 GIT = 'git'
@@ -203,12 +203,13 @@ class Gerrit():
                  'query',
                  '--format='+self.data_format,
                  'project:'+prj_name, 'status:open',
+                 'branch:' + target_branch,
                  'message:cherry.picked.from.commit.' + commit,
                  'OR',
                  'project:'+prj_name, 'status:abandoned',
+                 'branch:' + target_branch,
                  'message:cherry.picked.from.commit.' + commit,
-                 '--current-patch-set',
-                 'branch:' + target_branch
+                 '--current-patch-set'
                   ]
         out, err, ret = execmd(r_cmd)
         if ret != 0:
