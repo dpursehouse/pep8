@@ -4,6 +4,21 @@ if [ -z "$WORKSPACE" ]; then
     WORKSPACE="./WORKSPACE"
 fi
 
+if [ -z "$GERRIT_USER" ]; then
+    echo "ERROR: GERRIT_USER is not set"
+    exit 1
+fi
+
+FAIL_MESSAGE="FAILED: Commit message does not follow the guideline:
+
+https://wiki.sonyericsson.net/androiki/Commit_messages
+
+See commit message check log for details:
+
+$BUILD_URL"
+
+PASS_MESSAGE="Commit message review OK"
+
 rm -rf $WORKSPACE
 mkdir $WORKSPACE
 cd $WORKSPACE
@@ -32,5 +47,15 @@ if [ -n "$GERRIT_CHANGE_NUMBER" ]; then
     cd $WORKSPACE
     python cm_tools/commitcheck/commitcheck.py < out/commit_message.txt | tee out/commit_message_check_log.txt
     COMMIT_MESSAGE_STATUS=${PIPESTATUS[0]}
+
+    # Send the review comment to Gerrit
+    if [ 0 -ne "$COMMIT_MESSAGE_STATUS" ]; then
+        REVIEW_MESSAGE=$FAIL_MESSAGE
+    else
+        REVIEW_MESSAGE=$PASS_MESSAGE
+    fi
+    ssh -p 29418 review.sonyericsson.net -l $GERRIT_USER gerrit review \
+    --project=$GERRIT_PROJECT $GERRIT_PATCHSET_REVISION \'--message="$REVIEW_MESSAGE"\'
+
     exit $COMMIT_MESSAGE_STATUS
 fi
