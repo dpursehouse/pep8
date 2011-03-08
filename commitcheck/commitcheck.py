@@ -23,6 +23,9 @@
 #
 # Modified:
 # 2011-02-18: Rewritten to check the whole commit message
+# 2011-03-04: Add check for the invalid tag DMS=
+#             Add "DO NOT MERGE" to list of excluded subjects
+#             Check for excluded subject with simpler construct
 #
 #-----------------------------------------------------------------
 
@@ -41,10 +44,11 @@ def is_excluded_subject(subject):
                         "Merge \"",
                         "Merge commit \'",
                         "Merge branch \'",
+                        "DO NOT MERGE",
                         "DO NOT SUBMIT",
                         "DON\'T SUBMIT"]
     for index in excludedSubjects:
-        if re.match('^'+index, subject):
+        if subject.startswith(index):
             return True
     return False
 
@@ -94,7 +98,13 @@ def check_line(line, line_no):
             report_warning("Line 1: It is not recommended to list DMS in the "
                            "subject line.")
     else:
-        # Check for invalid FIX=tags in the message body
+        # Check for invalid tag DMS=DMS00123456
+        dmspattern = re.compile('(DMS=DMS[\d]{6,8})+', re.IGNORECASE)
+        if re.search(dmspattern, line) is not None:
+            report_warning("Line %d: DMS should be listed with FIX= tag"
+                           % line_no)
+
+        # Check for invalid FIX= tags in the message body
         dmspattern = re.compile('(FIX.{1,3}?DMS[\d]{6,8})+', re.IGNORECASE)
         dmslist = re.findall(dmspattern, line)
         if len(dmslist):
