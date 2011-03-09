@@ -1,8 +1,21 @@
-#!/bin/bash -ex
+#!/bin/bash -e
 
 if [ -z "$WORKSPACE" ]; then
     WORKSPACE="./WORKSPACE"
 fi
+
+if [ -z "$GERRIT_USER" ]; then
+    echo "ERROR: GERRIT_USER is not set"
+    exit 1
+fi
+
+FAIL_MESSAGE="FAILED: Change contains whitespace errors.
+
+See whitespace check log for details:
+
+$BUILD_URL"
+
+PASS_MESSAGE="Whitespace check OK"
 
 rm -rf $WORKSPACE
 mkdir $WORKSPACE
@@ -28,8 +41,15 @@ if [ -n "$GERRIT_CHANGE_NUMBER" ]; then
     git diff HEAD^ HEAD --check | tee $WORKSPACE/out/whitespace_log.txt
     WHITESPACE_STATUS=${PIPESTATUS[0]}
 
-    # Exit
+    # Send the review comment to Gerrit
     if [ $WHITESPACE_STATUS != 0 ]; then
-        exit 1
+        REVIEW_MESSAGE=$FAIL_MESSAGE
+    else
+        REVIEW_MESSAGE=$PASS_MESSAGE
     fi
+    ssh -p 29418 review.sonyericsson.net -l $GERRIT_USER gerrit review \
+    --project=$GERRIT_PROJECT $GERRIT_PATCHSET_REVISION \'--message="$REVIEW_MESSAGE"\'
+
+    # Exit
+    exit $WHITESPACE_STATUS
 fi

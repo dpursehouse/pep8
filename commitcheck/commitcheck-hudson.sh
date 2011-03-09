@@ -1,4 +1,4 @@
-#!/bin/bash -ex
+#!/bin/bash -e
 
 if [ -z "$WORKSPACE" ]; then
     WORKSPACE="./WORKSPACE"
@@ -57,5 +57,6 @@ if [ -n "$GERRIT_CHANGE_NUMBER" ]; then
     ssh -p 29418 review.sonyericsson.net -l $GERRIT_USER gerrit review \
     --project=$GERRIT_PROJECT $GERRIT_PATCHSET_REVISION \'--message="$REVIEW_MESSAGE"\'
 
+    # Exit
     exit $COMMIT_MESSAGE_STATUS
 fi
