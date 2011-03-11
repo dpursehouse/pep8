@@ -22,14 +22,19 @@ def run_or_fail(command, message):
         raise GetManifestError(message, e)
     return r
 
-def get_package_version(label, package, repo_name=None):
+def get_package_version(label, package, repo_name=None, repo_url=None):
     args = ["repository", "list", label]
+    if repo_name and repo_url:
+        raise GetManifestError("You can't supply repo_name "
+                               "and repo_url at the same time")
     if repo_name:
         if repo_name == "protected":
             args += ["-ru", "ssh://seldlnx045"]
         else:
             raise GetManifestError("Unsupported repository type",
                                    "Repository %s not found" % (repo_name))
+    if repo_url:
+        args += ["-ru", repo_url]
     returncode, stdout, stderr = run_or_fail(args, "Failed to list label")
     version = None
     for line in stdout.splitlines():
@@ -42,36 +47,46 @@ def get_package_version(label, package, repo_name=None):
     else:
         return version
 
-def get_and_extract_package(label, package, outdir, repo_name=None):
-    pversion = get_package_version(label, package, repo_name)
+def get_and_extract_package(label, package, outdir, repo_name=None,
+                            repo_url=None):
+    pversion = get_package_version(label, package, repo_name, repo_url)
     args = ["repository", "getpackage", "-o", outdir, package, pversion]
+    if repo_name and repo_url:
+        raise GetManifestError("You can't supply repo_name "
+                               "and repo_url at the same time")
     if repo_name:
         if repo_name == "protected":
             args += ["-ru", "ssh://seldlnx045:/srv/protected-repo"]
         else:
             raise GetManifestError("Unsupported repository type",
                                    "Repository %s not found" % (repo_name))
+    if repo_url:
+        args += ["-ru", repo_url]
     returncode, stdout, stderr = run_or_fail(args, "Downloading %s from %s \
                                              failed:" % (package, pversion))
-    debpath = stdout.strip()
-
+    lines = stdout.splitlines()
+    debpath = lines[-1].strip()
     run_or_fail(["dpkg-deb", "-x", debpath, outdir],
         "Failed to extract package %s to %s:" % (package, outdir))
 
-def get_file_from_package(label, package, outfile, frompath, repo_name=None):
+def get_file_from_package(label, package, outfile, frompath,
+                          repo_name=None, repo_url=None):
     tempdir = tempfile.mkdtemp()
     try:
-        get_and_extract_package(label, package, tempdir, repo_name)
+        get_and_extract_package(label, package, tempdir, repo_name, repo_url)
         try:
             shutil.copyfile(os.path.join(tempdir, frompath), outfile)
         except IOError, e:
-            raise GetManifestError("Failed to move manifest to %s" % (outfile), e)
+            raise GetManifestError("Failed to move manifest to %s" % (outfile),
+                                   e)
     finally:
         shutil.rmtree(tempdir)
 
 def get_manifest(label, outfile="manifest_static.xml",
-                 frompath="manifest_static.xml", repo_name=None):
-    get_file_from_package(label, "build-metadata", outfile, frompath, repo_name)
+                 frompath="manifest_static.xml", repo_name=None, repo_url=None):
+    get_file_from_package(label, "build-metadata", outfile, frompath, repo_name,
+                          repo_url)
+
 
 def _main(argv):
 
@@ -80,21 +95,29 @@ def _main(argv):
     parser.add_option("-p", "--package", dest="package",
                         default="build-metadata",
                         help="A valid Debian package")
-    parser.add_option("-o", "--outfile", dest="outfile", default="manifest_static.xml",
-                        help="Stores the manifest to this path [default: %default]")
-    parser.add_option("-f","--frompath", dest="frompath", default="manifest_static.xml",
-                        help="Path where the manifest is found [default: %default]")
-    parser.add_option("-t","--type", dest="repo_name",
+    parser.add_option("-o", "--outfile", dest="outfile",
+                        default="manifest_static.xml",
+                        help="Stores the manifest to this path " +\
+                             "[default: %default]")
+    parser.add_option("-f", "--frompath", dest="frompath",
+                        default="manifest_static.xml",
+                        help="Path where the manifest is found " +\
+                             "[default: %default]")
+    parser.add_option("-t", "--type", dest="repo_name",
                         help="Override default repository type. ")
+    parser.add_option("-r", "--repo_url", dest="repo_url",
+                        help="Override default repository url")
     (options, args) = parser.parse_args()
-
     if len(args) != 1:
         parser.print_help()
         parser.error("Incorrect number of arguments")
+    if options.repo_name and options.repo_url:
+        parser.error("You can't supply repo_name and repo_url at the same time")
     try:
         label = args[0]
         get_file_from_package(label, options.package, options.outfile,
-                              options.frompath, options.repo_name)
+                              options.frompath, options.repo_name,
+                              options.repo_url)
     except GetManifestError, e:
         print >> sys.stderr, str(e)
         sys.exit(1)
