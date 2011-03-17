@@ -1,7 +1,7 @@
 import subprocess
 import sys
 import os
-from xml.dom.minidom import parse
+from xml.dom.minidom import parseString
 from xml.parsers.expat import ExpatError
 
 class ChildExecutionError(Exception):
@@ -53,6 +53,7 @@ class ChildStartupError(ChildExecutionError):
     def __str__(self):
         return 'Error running command (%s): %s' % (self.enverror.strerror,
                                                    self.command)
+
 def run_cmd(*cmdandargs):
     """Runs a command, returns result.
 
@@ -109,8 +110,8 @@ class RepoXmlManifest():
     default_rev: the default revision as specified in the manifest.
     Throws ManifestParseError on all kinds of errors.
     """
-    def __init__(self, manifestpath):
-        self.manifestpath = manifestpath
+    def __init__(self, manifestdata):
+        self.manifestdata = manifestdata
         self.projects = {}
         self.default_rev = None
 
@@ -118,10 +119,8 @@ class RepoXmlManifest():
 
     def _parse_manifest(self):
         try:
-            domtree = parse(self.manifestpath)
+            domtree = parseString(self.manifestdata)
         except ExpatError, e:
-            raise ManifestParseError(str(e))
-        except IOError, e:
             raise ManifestParseError(str(e))
 
         default = domtree.getElementsByTagName("default")
