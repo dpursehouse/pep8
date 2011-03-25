@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.2.2
+@version: 0.2.3
 '''
 
 DESCRIPTION = \
@@ -86,7 +86,7 @@ import socket
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.2.2'
+__version__ = '0.2.3'
 
 REPO = 'repo'
 GIT = 'git'
@@ -881,7 +881,7 @@ def cherry_pick(unique_commit_list, target_branch):
                     if OPT.dry_run:
                         pick_result = 'Dry-run ok'
                     else:
-                        match = re.search('https://review.sonyericsson.net/[0-9]+', err)
+                        match = re.search('http[s]?://review.sonyericsson.net/[0-9]+', err)
                         if match:
                             #collect the gerrit id
                             pick_result = match.group(0)
