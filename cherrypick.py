@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.2.4
+@version: 0.2.5
 '''
 
 DESCRIPTION = \
@@ -82,11 +82,12 @@ import json
 import xml.dom.minidom
 import time
 import socket
+import errno
 
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.2.4'
+__version__ = '0.2.5'
 
 REPO = 'repo'
 GIT = 'git'
@@ -103,6 +104,7 @@ STATUS_ARGS = 5
 STATUS_FILE = 6
 STATUS_GIT_USR = 7
 STATUS_GERRIT_ERR = 8
+STATUS_RM_PROJECTLIST = 9
 
 #Server communication tags
 SRV_DMS_STATUS = 'DMS_STATUS'
@@ -416,6 +418,10 @@ def option_parser():
     opt_group.add_option('-v', '--verbose',
                      dest="verbose", action="store_true", default=False,
                      help="Verbose")
+    opt_group.add_option('--no-rm-projectlist',
+                     dest='no_rm_projectlist',
+                     help='Do not remove .repo/project.list', action="store_true",
+                     default=False)
     opt_group.add_option('--no-repo-sync',
                      dest='no_repo_sync',
                      help='Do not repo sync', action="store_true",
@@ -452,7 +458,8 @@ def cherry_pick_exit(exit_code):
               STATUS_ARGS: "Using wrong arguments",
               STATUS_FILE: "File error",
               STATUS_GIT_USR: "Git config error",
-              STATUS_GERRIT_ERR: "Gerrit server is not reachable"
+              STATUS_GERRIT_ERR: "Gerrit server is not reachable",
+              STATUS_RM_PROJECTLIST: "Failed to remove .repo/project.list"
               }
     msg = reason.get(exit_code)
     if exit_code != STATUS_OK:
@@ -508,8 +515,16 @@ def repo_sync():
     """
     Repo sync
     """
-    do_log("Repo sync ....", echo=True)
     os.chdir(OPT.cwd)
+    if not OPT.no_rm_projectlist:
+        do_log("Removing .repo/project.list...", echo=True)
+        try:
+            os.remove('.repo/project.list')
+        except os.error, err:
+            if err.errno != errno.ENOENT:
+                print_err("Error removing .repo/project.list: %s" % err)
+                cherry_pick_exit(STATUS_RM_PROJECTLIST)
+    do_log("Repo sync...", echo=True)
     result, err, ret = execmd([REPO, 'sync', '-j5'])
     do_log(result, file_name='repo_sync.log')
     if ret != 0:
