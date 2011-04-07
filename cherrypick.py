@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.2.3
+@version: 0.2.4
 '''
 
 DESCRIPTION = \
@@ -86,7 +86,7 @@ import socket
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.2.3'
+__version__ = '0.2.4'
 
 REPO = 'repo'
 GIT = 'git'
@@ -406,6 +406,11 @@ def option_parser():
                      dest='exclude_dms',
                      help='List of DMSs to be excluded (comma separated)',
                      default=None,)
+    opt_parser.add_option('--include-git',
+                     dest='include_git',
+                     help='List of gits to be included (comma separated)'+
+                     '--exclude-git will be ignored.',
+                     default=None,)
     #debug options
     opt_group = opt_parser.add_option_group('Debug options')
     opt_group.add_option('-v', '--verbose',
@@ -520,6 +525,7 @@ def get_dms_list(target_branch):
     #Parse base and target manifest file
     base_proj_rev, dst_proj_rev = parse_base_and_target_manifest(target_branch)
 
+    os.chdir(OPT.cwd)
     merge_base_log = open('merge-base.log', 'wb')
     base_log = open('source_commit.log', 'wb')
     target_log = open(target_branch + '_commit.log', 'wb')
@@ -530,7 +536,10 @@ def get_dms_list(target_branch):
         target_is_sha1 = False
         path = rev_path.split(',')[1]
         base_rev = rev_path.split(',')[0]
-        if OPT.exclude_git and name in OPT.exclude_git.split(','):
+        if OPT.include_git:
+            if name not in OPT.include_git.split(','):
+                continue #include gits
+        elif OPT.exclude_git and name in OPT.exclude_git.split(','):
             continue    #exclude gits
 
         os.chdir(os.path.join(OPT.cwd, path))
