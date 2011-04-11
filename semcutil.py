@@ -54,29 +54,46 @@ class ChildStartupError(ChildExecutionError):
         return 'Error running command (%s): %s' % (self.enverror.strerror,
                                                    self.command)
 
-def run_cmd(*cmdandargs):
+def run_cmd(*cmdandargs, **kwargs):
     """Runs a command, returns result.
 
-    Takes either a list with arguments or any number of arguments.
-    Returns a tuple with the exit status, a string containing stdout
+    This function can be used in the following ways:
+
+    run_cmd(list) -> Runs the command (with arguments) in list.
+    run_cmd(cmd, arg1, arg2, ...) -> Runs cmd with the specified arguments.
+    run_cmd(list, path=dir) -> Runs the command (with arguments) in list at
+        the given path.
+    run_cmd(cmd, arg1, arg2, ..., path=dir) -> Runs cmd with the specified
+        arguments at the given path.
+
+    Returns a tuple with: the exit status, a string containing stdout
     and a string containing stderr. Throws some version of
     ChildExecutionError if it encountered an error.
     """
+
     if isinstance(cmdandargs[0], list):
         cmdandargs = cmdandargs[0]
+    cmddesc = ' '.join(cmdandargs)
+
+    popenkwargs = {"stdout": subprocess.PIPE,
+                   "stderr": subprocess.PIPE}
+
+    if "path" in kwargs:
+        popenkwargs["cwd"] = kwargs["path"]
+        cmddesc += " (In directory: %s)" % kwargs["path"]
+
     try:
-        p = subprocess.Popen(cmdandargs, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
+        p = subprocess.Popen(cmdandargs, **popenkwargs)
         stdout, stderr = p.communicate()
         result = (p.returncode, stdout, stderr)
         if p.returncode == 0:
             return result
         elif p.returncode < 0:
-            raise ChildSignalledError(' '.join(cmdandargs), result)
+            raise ChildSignalledError(cmddesc, result)
         else:
-            raise ChildRuntimeError(' '.join(cmdandargs), result)
+            raise ChildRuntimeError(cmddesc, result)
     except EnvironmentError, e:
-        raise ChildStartupError(' '.join(cmdandargs), e)
+        raise ChildStartupError(cmddesc, e)
 
 def fatal(exitcode, message):
     """Prints an error message and does sys.exit with exitcode.
