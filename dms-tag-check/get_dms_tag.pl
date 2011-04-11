@@ -56,9 +56,23 @@ if (@tags) {
             $DMS_ID = $tag;
             print "Searching DMS ID: " . $DMS_ID . "\n";
             print "Getting record reference \n";
-            $record = $CQ_Session->GetEntity("Issue", $DMS_ID);
+            eval{
+                $record = $CQ_Session->GetEntity("Issue", $DMS_ID);
+                1;
+            }or do {
+                print "Record not available\n";
+                unshift(@dms_tags, $DMS_ID);
+                next;
+            };
             print "Getting fieldInfo reference \n";
-            $fieldInfo = $record->GetFieldValue("fix_for");
+            eval{
+                $fieldInfo = $record->GetFieldValue("fix_for");
+                1;
+            }or do {
+                print "Exception reading field value \n";
+                unshift(@dms_tags, $DMS_ID);
+                next;
+            };
             $temp = $fieldInfo->GetValueStatus();
             if ($temp == $CQPerlExt::CQ_VALUE_NOT_AVAILABLE) {
                 $status = "VALUE_NOT_AVAILABLE";
