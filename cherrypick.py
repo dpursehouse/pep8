@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.2.5
+@version: 0.2.6
 '''
 
 DESCRIPTION = \
@@ -83,11 +83,13 @@ import xml.dom.minidom
 import time
 import socket
 import errno
+import signal
+import threading
 
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.2.5'
+__version__ = '0.2.6'
 
 REPO = 'repo'
 GIT = 'git'
@@ -525,7 +527,7 @@ def repo_sync():
                 print_err("Error removing .repo/project.list: %s" % err)
                 cherry_pick_exit(STATUS_RM_PROJECTLIST)
     do_log("Repo sync...", echo=True)
-    result, err, ret = execmd([REPO, 'sync', '-j5'])
+    result, err, ret = execmd([REPO, 'sync', '-j5'], 3600)
     do_log(result, file_name='repo_sync.log')
     if ret != 0:
         print_err("Repo sync error %s" %err)
@@ -962,22 +964,48 @@ def cherry_pick(unique_commit_list, target_branch):
         do_log("No new cherry", echo=True)
     return ret_err
 
-def execmd(cmd):
+def execmd(cmd, timeout=30):
     """
-    Execute a command in a new child process
+    Execute a command in a new child process. The child process is killed
+    if the timeout is up.
     """
+    kill_check = threading.Event()
+
+    def kill_process_after_timeout(pid):
+        p = subprocess.Popen(['ps', '--ppid', str(pid)],
+                             stdout=subprocess.PIPE)
+        child_pids = []
+        for line in p.stdout:
+            if len(line.split()) > 0:
+                local_pid = (line.split())[0]
+                if local_pid.isdigit():
+                    child_pids.append(int(local_pid))
+        os.kill(pid, signal.SIGKILL)
+        for child_pid in child_pids:
+            os.kill(child_pid, signal.SIGKILL)
+        kill_check.set() #tell the main routine that we had to kill
+        return
+
     try:
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE)
+        watchdog = threading.Timer(timeout,
+                                   kill_process_after_timeout,
+                                   args=(process.pid, ))
+        watchdog.start()
         out, err = process.communicate()
         result_out = ''.join(out).strip()
         result_err = ''.join(err).strip()
-        if process.wait() != 0 and OPT.verbose:
-            print_err('Error to execute ' + " ".join(cmd))
+        watchdog.cancel() #if it's still waiting to run
+        if kill_check.isSet():
+            result_err = "Timeout: the command \"%s\" did not " \
+                         "complete in %dsec." % (" ".join(cmd), timeout)
+        kill_check.clear()
+        if process.poll() != 0 and OPT.verbose:
+            print_err('Error executing: ' + " ".join(cmd))
         return result_out, result_err, process.poll()
     except OSError, exp:
         print_err(exp)
-
 
 def print_err(err):
     """print error message"""
