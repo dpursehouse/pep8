@@ -3,6 +3,8 @@ use warnings;
 use Getopt::Long;
 use CQPerlExt;
 
+use constant MASTERSHIP_FIELD => "ratl_mastership";
+
 my @CQ_Connection = ("CQMS.SE.SELD","CQMS.SE.JPTO","CQMS.SE.CNBJ");# ClearQuest Connection name
 my $CQ_User_Db    = "DMS";      # Database (TSTX_ for Testing UTS_ for live)
 my $CQ_user_name  = "xscm";     # ClearQUest user name
@@ -24,6 +26,9 @@ my @dms_tags_found;
 my $current_tag;
 my @print_list;
 my $print_str;
+my $master_field;
+my $server_name;
+my @tmp_arr;
 
 open(MYINPUTFILE, "<DMS_tags.txt"); # open for input
 my(@tags) = <MYINPUTFILE>; # read file into list
@@ -39,7 +44,7 @@ else {
     print "Clearquest connected\n";
 }
 print @tags;
-
+print "\n";
 if (@tags) {
     foreach $server (@CQ_Connection) {
         print " Connecting to server " . $server ."\n";
@@ -51,6 +56,9 @@ if (@tags) {
             $server_err = 1;
             next;
         };
+        @tmp_arr = split(/\./,$server);
+        $server_name = pop(@tmp_arr);
+        print "Server mastership name: " . $server_name . "\n";
         foreach $tag (@tags) {
             chomp($tag);
             $DMS_ID = $tag;
@@ -64,6 +72,21 @@ if (@tags) {
                 unshift(@dms_tags, $DMS_ID);
                 next;
             };
+            print "Checking mastership \n";
+            eval{
+                $master_field = $record->GetFieldValue(MASTERSHIP_FIELD)->GetValue();
+                print "Mastership site: " . $master_field . "\n";
+                1;
+            } or do {
+                print "Error reading mastership field \n";
+                unshift(@dms_tags, $DMS_ID);
+                next;
+            };
+            if ( $master_field ne $server_name ) {
+                print $server_name . " not having mastership \n";
+                unshift(@dms_tags, $DMS_ID);
+                next;
+            }
             print "Getting fieldInfo reference \n";
             eval{
                 $fieldInfo = $record->GetFieldValue("fix_for");
