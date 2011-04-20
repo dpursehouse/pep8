@@ -9,7 +9,7 @@ RESULT_FILE=result.txt
 echo $DMS_TAG_LIST |sed 's/\,/\n/g'> $TARGET_TAG_LIST
 COUNT_DMS_TAG_OK=0
 COUNT_DMS_TAG_NOK=0
-
+CODE_REVIEW=-1
 #Check if the commit message has DMS issue
 DMS_FOUND=`cat $FILE_PATH`
 if [ -z "$DMS_FOUND" ];then
@@ -53,6 +53,7 @@ else
     if [ $COUNT_DMS_TAG_OK -ne 0 -a $COUNT_DMS_TAG_NOK -eq 0 ]
     then
         echo "All DMS tags are valid for $GERRIT_BRANCH" >> $RESULT_FILE
+        CODE_REVIEW=0
     elif [ $COUNT_DMS_TAG_OK -ne 0 -a $COUNT_DMS_TAG_NOK -ne 0 ]
     then
         echo "Some DMS tags are not Valid for $GERRIT_BRANCH" >> $RESULT_FILE
@@ -63,5 +64,5 @@ else
 fi
 #Update the gerrit with the review message for the change
 ssh -p 29418 review.sonyericsson.net -l $HUDSON_REVIEWER gerrit review \
---project=$GERRIT_PROJECT $GERRIT_PATCHSET_REVISION \
+--project=$GERRIT_PROJECT $GERRIT_PATCHSET_REVISION --code-review $CODE_REVIEW \
 \'--message="$MSG"\'
