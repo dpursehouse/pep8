@@ -30,6 +30,21 @@ my $master_field;
 my $server_name;
 my @tmp_arr;
 
+sub help {
+    print "Usage: cqperl get_dms_tag.pl [--site SITE_LIST] [--help]\n";
+    print "SITE_LIST: Site names should be comma separated\n";
+    exit 0;
+}
+sub site_names{
+    my $temp = $_[1];
+    print $temp;
+    $temp =~ s/([A-Z]*[A-Z])/CQMS.SE.$1/g;
+    @CQ_Connection = split(/,/,$temp);
+}
+
+GetOptions ( 'site=s' => \&site_names,
+             'help' => \&help);
+
 open(MYINPUTFILE, "<DMS_tags.txt"); # open for input
 my(@tags) = <MYINPUTFILE>; # read file into list
 @tags = sort(@tags);
