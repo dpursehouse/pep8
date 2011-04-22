@@ -5,7 +5,7 @@ use CQPerlExt;
 
 use constant MASTERSHIP_FIELD => "ratl_mastership";
 
-my @CQ_Connection = ("CQMS.SE.SELD","CQMS.SE.JPTO","CQMS.SE.CNBJ");# ClearQuest Connection name
+my @CQ_Connection = ("CQMS.SE.SELD","CQMS.SE.JPTO","CQMS.SE.CNBJ","CQMS.SE.USSV");# ClearQuest Connection name
 my $CQ_User_Db    = "DMS";      # Database (TSTX_ for Testing UTS_ for live)
 my $CQ_user_name  = "xscm";     # ClearQUest user name
 my $CQ_user_pw    = "3Yp(Wb%8"; # ClearQuest user password
