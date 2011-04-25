@@ -51,6 +51,7 @@ my $label;
 my $user;
 my $pwd;
 my @issues;
+my @tags;
 my $list;
 my $update;
 my @sites;
@@ -210,11 +211,15 @@ if(scalar(@ARGV) == 0) {
                             "unv=s"         => \$unverified_query,
                             "unl=s"         => \$unlabeled_query,
                             "issues=s"      => \@issues,
+                            "tags=s"        => \@tags,
                             "createlabel=s" => \$project);
 
   die usage() unless ($options_ok && $log_file && $pwd && $user && ($query || @issues));
   if(@issues) {
     @issues = split(/,/, join(',', @issues));
+  }
+  if(@tags) {
+    @tags = split(/,/, join(',', @tags));
   }
   if(@sites) {
     @sites = split(/,/, join(',', @sites));
@@ -498,9 +503,28 @@ sub update {
     print "checking issue $issue\n";
     my %issue_h = %{$issues_data->{$issue}};
     if ($issue_h{PROJ_ID()} eq $technical_name) {
-      if(($issue_h{STATE_FIELD()} eq RESTRICTED_STATE) && ($issue_h{INTEGRATED_STATUS_FIELD()} eq PREFERRED_STATUS)){
-        push(@{$site_issues{$issue_h{MASTER_LABEL()}}}, $issue);
-        push(@{$site_issues_update_state{$issue_h{MASTER_LABEL()}}}, $issue);
+      if(($issue_h{STATE_FIELD()} eq RESTRICTED_STATE) && ($issue_h{INTEGRATED_STATUS_FIELD()} eq PREFERRED_STATUS)) {
+        if(@tags && $issue_h{FIX_FOR_FIELD()} ne "") {
+          my $match_tag = 0;
+          foreach my $tag (@tags) {
+            $tag =~ s/^\s+//;
+            $tag =~ s/\s+$//;
+            if($issue_h{FIX_FOR_FIELD()} eq $tag) {
+              $match_tag = 1;
+              last;
+            }
+          }
+          if($match_tag) {
+            push(@{$site_issues{$issue_h{MASTER_LABEL()}}}, $issue);
+            push(@{$site_issues_update_state{$issue_h{MASTER_LABEL()}}}, $issue);
+          } else {
+            push(@unverified, $issue);
+            logg(WARN, "Skipping issue $issue with fix_for \"$issue_h{FIX_FOR_FIELD()}\" not in tag list");
+          }
+        } else {
+          push(@{$site_issues{$issue_h{MASTER_LABEL()}}}, $issue);
+          push(@{$site_issues_update_state{$issue_h{MASTER_LABEL()}}}, $issue);
+        }
       } elsif($issue_h{STATE_FIELD()} eq FINAL_STATE) {
         if ($issue_h{VERIFIED_STATUS_FIELD()} eq PREFERRED_STATUS) {
           if ($issue_h{RELEASE_LABEL_FIELD()} eq "") {
@@ -1076,7 +1100,7 @@ sub change {
   # If a string is not submitted to the metheod then add default values
   if($state_action eq "Pass") {
     if(!$fields{"Note_Entry"}) {
-      $fields{"Note_Entry"}="N/A";
+      $fields{"Note_Entry"}="Set to \"Verified\" \"Test OK\" by ASW CM.";
     }
     if(!$fields{"verified_in_release"}) {
       $fields{"verified_in_release"}="N/A";
@@ -1342,6 +1366,6 @@ sub create_time_stamp {
 #######################################
 
 sub usage {
-  print "cqperl <script> -user <user> -pwd <password> -log <logfile> [-sites <site>[,...]] (-list [-unv <query> | -unl <query>] | -update -label <label>) (-query <query file> | -issues <issue[,...]>) -createlabel <labelproject>\n";
+  print "cqperl <script> -user <user> -pwd <password> -log <logfile> [-sites <site>[,...]] [-tag <\"tag[,...]\">] (-list [-unv <query> | -unl <query>] | -update -label <label>) (-query <query file> | -issues <issue[,...]>) -createlabel <labelproject>\n";
 }
 
