@@ -93,32 +93,28 @@ def check_line(line, line_no):
     '''
     if line_no == 1:
         # Check for DMS mentioned in the subject
-        dmslist = re.findall('DMS[\d]{6,8}', line)
+        dmslist = re.findall('DMS\d{6,8}', line)
         if len(dmslist):
             report_warning("Line 1: It is not recommended to list DMS in the "
                            "subject line.")
     else:
         # Check for invalid tag DMS=DMS00123456
-        dmspattern = re.compile('(DMS=DMS[\d]{6,8})+', re.IGNORECASE)
+        dmspattern = re.compile('(DMS=DMS\d{6,8})+', re.IGNORECASE)
         if re.search(dmspattern, line) is not None:
             report_warning("Line %d: DMS should be listed with FIX= tag"
                            % line_no)
 
         # Check for invalid FIX= tags in the message body
-        dmspattern = re.compile('(FIX.{1,3}?DMS[\d]{6,8})+', re.IGNORECASE)
+        dmspattern = re.compile('(FIX.{1,3}?DMS\d{6,8})+', re.IGNORECASE)
         dmslist = re.findall(dmspattern, line)
         if len(dmslist):
-            if len(dmslist) > 1:
-                report_error("Line %d: Only one DMS should be listed per "
-                             "line." % line_no)
-            else:
-                dmspattern = re.compile('^FIX.*?DMS[\d]{6,8}$', re.IGNORECASE)
-                if not re.match(dmspattern, line):
-                    report_error("Line %d: DMS should be listed on a "
-                                 "separate line, with no leading whitespace "
-                                 "or trailing text." % line_no)
+            dmspattern = re.compile('^FIX.{1,3}?DMS\d{6,8}$', re.IGNORECASE)
+            if not re.match(dmspattern, line):
+                report_error("Line %d: DMS should be listed on a "
+                             "separate line, with no leading whitespace "
+                             "or trailing text." % line_no)
             for dms in dmslist:
-                if not re.match('FIX=DMS[\d]{6,8}', dms):
+                if not re.match('FIX=DMS\d{6,8}', dms):
                     report_error("Line %d: Tag '%s' is formatted incorrectly."
                                  %(line_no, dms))
 
