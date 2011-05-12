@@ -15,12 +15,12 @@ cd result-dir
 echo $JOB_URL
 echo $CQ_SITE_LIST
 curl -f $JOB_URL/ws/output/DMS_tags.txt -o DMS_tags.txt
-curl -f $JOB_URL/ws/cm_tools/dms-tag-check/get_dms_tag.pl -o get_dms_tag.pl
+curl -f $JOB_URL/ws/cm_tools/dms-tag-check/cq_query_issue.pl -o cq_query_issue.pl
 
 #If $CQ_SITE_LIST is configured in main job,
 #then it is passed as an argument to the get_dms_tag.pl file.
 if [ -z "$CQ_SITE_LIST" ]; then
-    cqperl get_dms_tag.pl
+    cqperl cq_query_issue.pl
 else
-    cqperl get_dms_tag.pl --site $CQ_SITE_LIST
+    cqperl cq_query_issue.pl --site $CQ_SITE_LIST
 fi

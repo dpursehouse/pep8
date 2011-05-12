@@ -5,6 +5,7 @@
 FILE_PATH=result-dir/dms_fix_for.txt                 #dms_fix_for.txt file copied from the build artifacts of the other job
 TARGET_TAG_LIST=tag_list.txt
 RESULT_FILE=result.txt
+DMS_DETAILS=dms_fields.txt
 
 echo $DMS_TAG_LIST |sed 's/\,/\n/g'> $TARGET_TAG_LIST
 COUNT_DMS_TAG_OK=0
@@ -20,8 +21,12 @@ else
     echo $DMS_COUNT
     while [ $i -le $DMS_COUNT ]
     do
-        FIX_FOR=`cat $FILE_PATH | head -$i | tail -1 | sed 's/.*://' | sed 's/.$//'`
-        DMS_TAG=`cat $FILE_PATH | head -$i | tail -1 | sed 's/.$//'`
+        FIX_FOR=`cat $FILE_PATH | head -$i | tail -1 | awk -F "," '{print $6}' \
+        | sed 's/.*://' | sed 's/.$//'`
+        #DMS Number
+        DMS_NO=`cat $FILE_PATH | head -$i | tail -1 | awk -F "," '{print $1}'`
+        DMS_TAG="$DMS_NO:`cat $FILE_PATH | head -$i | tail -1 | awk -F "," '{print $6}'\
+        | sed 's/.*://' | sed 's/.$//'`"
         echo "Fix For:"$FIX_FOR
         if [ "$FIX_FOR" = "Server_error" ];then
             echo "Server connection error"
@@ -47,19 +52,36 @@ else
                 COUNT_DMS_TAG_OK=`expr $COUNT_DMS_TAG_OK + 1`
             fi
         fi
-        i=`expr $i + 1`
+        #DMS details
+        #DMS Number
+        echo $DMS_NO >> $DMS_DETAILS
+        #DMS State
+        DMS_STATE=`cat $FILE_PATH | head -$i | tail -1 | awk -F "," '{print $3}'`
+        echo -e "\t$DMS_STATE" >> $DMS_DETAILS
+        if [ "$DMS_STATE" = "State:Integrated" ]
+        then
+            #Integrated Status
+            cat $FILE_PATH | head -$i | tail -1 | awk -F "," '{print "\t" $4}' >> $DMS_DETAILS
+        elif [ "$DMS_STATE" = "State:Verified" ]
+        then
+            #Verified Status
+            cat $FILE_PATH | head -$i | tail -1 | awk -F "," '{print "\t" $5}' >> $DMS_DETAILS
+        fi
+       i=`expr $i + 1`
     done
     # Setting the review message depending on the dms tag found
     if [ $COUNT_DMS_TAG_OK -ne 0 -a $COUNT_DMS_TAG_NOK -eq 0 ]
     then
-        echo "All DMS tags are valid for $GERRIT_BRANCH" >> $RESULT_FILE
         CODE_REVIEW=0
+        echo -e "All DMS tags are valid for $GERRIT_BRANCH \n" >> $RESULT_FILE
     elif [ $COUNT_DMS_TAG_OK -ne 0 -a $COUNT_DMS_TAG_NOK -ne 0 ]
     then
-        echo "Some DMS tags are not Valid for $GERRIT_BRANCH" >> $RESULT_FILE
+        echo -e "Some DMS tags are not Valid for $GERRIT_BRANCH \n" >> $RESULT_FILE
     else
-        echo "None of the DMS are tagged" >> $RESULT_FILE
+        echo -e "None of the DMS are tagged \n" >> $RESULT_FILE
     fi
+    echo -e "Build URL - $BUILD_URL \n" >> $RESULT_FILE
+    cat $DMS_DETAILS >> $RESULT_FILE
     MSG=`cat $RESULT_FILE`
 fi
 #Update the gerrit with the review message for the change
