@@ -17,8 +17,6 @@ use constant {
   _SERVER  => 'deliveryweb.sonyericsson.net',
   _PORT    => 9097,
   _VERSION => 'P.1',
-  _INSERT_ => '__INSERT__',
-  _MANIFEST_ => 'manifest_static.xml',
   _TIMEOUT   => 900,
   _C2D_DEV_  => '--type=dev',
   _C2D_PROTECTED_ => '--type=protected',
@@ -43,16 +41,16 @@ my ($debug)    = false;
 my ($log)      = false;
 my ($trace)    = false;
 my ($generateExcelFile) = false;
+my ($ExcelFilePrefix) = "";
 my ($lockFile) = "$compareDB/lockFile";
+
+my ($AMSSPackage) = "";
 
 my ($gitLogCmd)     = "git log --numstat --no-merges";
 my ($gitRevListCmd) = "git rev-list";
 my ($repoSyncCmd)   = "repo sync -j 4";
 my ($repoInitCmd)   = "repo init -u git://review.sonyericsson.net/platform/"
-  . "manifest.git -b deckard-integration";
-my (@dpkgManifestCmd) = ("dpkg-deb --extract $tempDir/build-metadata_", _INSERT_, "_all.deb $tempDir");
-my (@mvManifestDBCmd) = ("mv -f $tempDir/", _MANIFEST_, " $manifestDB/", _INSERT_, ".xml");
-my (@repositoryGetManifestCmd) = ("repository getpackage build-metadata ", _INSERT_, " --out=$tempDir ");
+  . "manifest.git -b ginger-mogami";
 
 
 sub usage() {
@@ -62,6 +60,7 @@ sub usage() {
                   -verref2 <version reference 2>|-manifest2 <file 2>|
                   -label2 <label 2>
                   [special dmsquery option(s)]
+                  [-amss]
           compare -help
 SECTION
 }
@@ -134,7 +133,7 @@ SECTION
 
   if (_SRM_PASSWORD) {
     print <<SECTION;
-       -xls
+       -xls [prefix]
            Trigger generation of an Excel-file based on the compare result.
            The Excel-file can be retrieved from http://deliveryweb.sonyericsson.net/srm/
 
@@ -257,6 +256,17 @@ sub getOptionsAndArgs {
         die;
       }
       $generateExcelFile = true;
+      $ExcelFilePrefix = $ARGV[++$paramNum] if $ARGV[$paramNum+1] && $ARGV[$paramNum+1] !~ /^-/;
+    }
+    elsif ( $ARGV[$paramNum] eq "-amss" ) {
+      if ( $paramNum == ($#ARGV) ) {
+        print STDERR "compare error: AMSS package missing.\n";
+        usage();
+        die;
+      }
+      $AMSSPackage = $ARGV[++$paramNum];
+      $platformRoot = "$compareDB/amss";
+      $repoInitCmd  = "repo init -u git://review.sonyericsson.net/platform/amssmanifest.git -b esea-7230";
     }
     else {
       if ( defined $argDmsqeryOptions ) {
@@ -366,9 +376,11 @@ sub validateLblAndGetManifest {
     my ($manifest) = "$manifestDB/$label.xml";
     if ( !-e $manifest ) {
         # Import the debian-package from C2D
-        execCmd( join('', map({$_ eq _INSERT_ ? $label : $_} @repositoryGetManifestCmd)) . _C2D_DEV_, \$result, \@result );
+        my $package = $AMSSPackage || "build-metadata";
+        my $cmd = "repository getpackage $package $label --out=$tempDir ";
+        execCmd( $cmd . _C2D_DEV_, \$result, \@result );
         if (grep(/^Error:/, @result)) {
-            execCmd( join('', map({$_ eq _INSERT_ ? $label : $_} @repositoryGetManifestCmd)) . _C2D_PROTECTED_, \$result, \@result );
+            execCmd( $cmd . _C2D_PROTECTED_, \$result, \@result );
         }
         if (grep(/^Error:/, @result)) {
             print STDERR "Cannot find manifest file related to label "
@@ -376,13 +388,16 @@ sub validateLblAndGetManifest {
         }
 
         # Retrieve the manifest file from the debian-package
-        if ( execCmd( join('', map({$_ eq _INSERT_ ? $label : $_} @dpkgManifestCmd)), \$result, \@result ) != 0 ) {
+        my $orgManifest = $AMSSPackage ? "util/data/amssmanifest.xml" : "manifest_static.xml";
+        $cmd = "dpkg-deb --extract $tempDir/${package}_${label}_all.deb $tempDir";
+        if ( execCmd( $cmd, \$result, \@result ) != 0 ) {
             print STDERR "Failed to unpack debian package\n";
-        } elsif ( !-e "$tempDir/" . _MANIFEST_ ) {
+        } elsif ( !-e "$tempDir/$orgManifest" ) {
             execCmd( "rm -rf $tempDir", \$result, \@result ) if ( -d "$tempDir" );
-            print STDERR "No " . _MANIFEST_ . " found in the debian package\n";
+            print STDERR "No $orgManifest found in the debian package\n";
         } else {
-            execCmd( join('', map({$_ eq _INSERT_ ? $label : $_} @mvManifestDBCmd)), \$result, \@result );
+            $cmd = "mv -f $tempDir/$orgManifest $manifest";
+            execCmd( $cmd, \$result, \@result );
             print STDERR "Failed to move manifest into DB\n" if ( !-e $manifest );
         }
     }
@@ -433,7 +448,7 @@ sub repoSync {
 }
 
 sub getProjectsWithRevisions {
-  my ( $argVerRef, $argManifest, $sync ) = @_;
+  my ( $argVerRef, $argManifest, $sync, $extPack ) = @_;
   my ( $cmd, @result, $result, %tbl );
   if ( defined $argVerRef ) {
     $cmd = "git show $argVerRef:default.xml > default.xml";
@@ -465,6 +480,9 @@ sub getProjectsWithRevisions {
     $revision        = $l[1];
     $tbl{"$project"} = "$revision";
   }
+
+  # Catch external packages info
+  $$extPack = `cat ../../vendor/semc/build/external-packages/package-files/pld.xml` if $extPack;
 
   return ( \%tbl );
 }
@@ -526,7 +544,7 @@ sub server_request {
 
 # Get and check arguments.
 my ( $argVerRef1, $argVerRef2, $argManifest1, $argManifest2, $argLabel1,
-  $argLabel2, $argDmsqeryOptions, $showHelp )
+  $argLabel2, $argDmsqeryOptions, $showHelp, $extPack1, $extPack2 )
   = getOptionsAndArgs(@ARGV);
 
 if ($showHelp) {
@@ -557,11 +575,11 @@ chdir "$platformRoot/.repo/manifests"
 
 # Get projects for 1.
 my ($projTbl1Ref) =
-  getProjectsWithRevisions( $argVerRef1, $argManifest1, true );
+  getProjectsWithRevisions( $argVerRef1, $argManifest1, true, $AMSSPackage ? undef : \$extPack1);
 
 # Get projects for 2.
 my ($projTbl2Ref) =
-  getProjectsWithRevisions( $argVerRef2, $argManifest2, true );
+  getProjectsWithRevisions( $argVerRef2, $argManifest2, true, $AMSSPackage ? undef : \$extPack2);
 
 # Find projects missing in 2 and projects with different revisions.
 my ( @removedProjects, @projectsWithDifferentRevisions,
@@ -676,7 +694,7 @@ foreach (@result) {
 # generate an Excel-file on the server
 if ( $generateExcelFile && _SRM_PASSWORD && ($argVerRef1 || $argLabel1) ) {
   my @Issues = map({/(DMS\d{8})/;$1;} grep(/DMS\d{8}/, @result));
-  my $fileName = ($argLabel1 ? $argLabel1 . '__' . $argLabel2 : $argVerRef1  . '__' . $argVerRef2);
+  my $fileName = $ExcelFilePrefix . ($argLabel1 ? $argLabel1 . '__' . $argLabel2 : $argVerRef1  . '__' . $argVerRef2);
 
   if (scalar @Issues) {
     print colored( 'Generating Excel-file', 'yellow' ), "\n" if ($trace || $debug);
@@ -690,4 +708,40 @@ if ( $generateExcelFile && _SRM_PASSWORD && ($argVerRef1 || $argLabel1) ) {
       close($fLog);
     }
   }
+}
+
+close(LOCK);
+
+# Genererate list for external packages when applicable
+if (!$AMSSPackage && $extPack1 ne $extPack2)
+{
+   print "\n== AMSS packages updated, generating lists...\n";
+   my $com = $0;
+   $com .= " -trace" if $trace;
+   my $prefix = ($argLabel1 ? $argLabel1 . '__' . $argLabel2 : $argVerRef1  . '__' . $argVerRef2) . "__AMSS__";
+   $com .= " -xls $prefix" if $generateExcelFile;
+   my %revList;
+   while ($extPack1 =~ s/package-group name="([^"]+)" revision="([^"]+)"//)
+   {
+      my ($name, $rev1) = ($1, $2);
+      next unless $extPack2 =~ s/package-group name="$name" revision="([^"]+)"//;
+      my $rev2 = $1;
+      $revList{"$rev1;$rev2"} .= "$name " unless $rev1 eq $rev2;
+   }
+   foreach (sort keys %revList)
+   {
+      my ($rev1, $rev2) = split(/;/, $_);
+      print  "- ", $revList{$_}, "\n   Changed from $rev1 -> $rev2 ...\n\n";
+      my $pack = "fw-amss-" . lc((split(/ /, $revList{$_}))[0]);
+      if (execCmd( "$com -amss $pack -label1 $rev1 -label2 $rev2", \$result, \@result ) == 0)
+      {
+        print @result, "\n";
+      }
+      else
+      {
+        die "Error comparing AMSS package:\n@result";
+      }
+   }
+
+
 }
