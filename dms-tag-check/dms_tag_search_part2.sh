@@ -42,13 +42,13 @@ else
             then
                 if [ "$FIX_FOR" = "Not found" ]
                 then
-                    echo -e "$DMS_TAG : Tag Not Found \n" >> $RESULT_FILE
+                    echo "$DMS_TAG : Tag Not Found" >> $RESULT_FILE
                 else
-                    echo -e "$DMS_TAG : Invalid tag \n" >> $RESULT_FILE
+                    echo "$DMS_TAG : Invalid tag" >> $RESULT_FILE
                 fi
                 COUNT_DMS_TAG_NOK=`expr $COUNT_DMS_TAG_NOK + 1`
             else
-                echo -e "$DMS_TAG : Valid tag \n" >> $RESULT_FILE
+                echo "$DMS_TAG : Valid tag" >> $RESULT_FILE
                 COUNT_DMS_TAG_OK=`expr $COUNT_DMS_TAG_OK + 1`
             fi
         fi
@@ -73,14 +73,14 @@ else
     if [ $COUNT_DMS_TAG_OK -ne 0 -a $COUNT_DMS_TAG_NOK -eq 0 ]
     then
         CODE_REVIEW=0
-        echo -e "All DMS tags are valid for $GERRIT_BRANCH \n" >> $RESULT_FILE
+        echo "All DMS tags are valid for $GERRIT_BRANCH" >> $RESULT_FILE
     elif [ $COUNT_DMS_TAG_OK -ne 0 -a $COUNT_DMS_TAG_NOK -ne 0 ]
     then
-        echo -e "Some DMS tags are not Valid for $GERRIT_BRANCH \n" >> $RESULT_FILE
+        echo "Some DMS tags are not Valid for $GERRIT_BRANCH" >> $RESULT_FILE
     else
-        echo -e "None of the DMS are tagged \n" >> $RESULT_FILE
+        echo "None of the DMS are tagged" >> $RESULT_FILE
     fi
-    echo -e "Build URL - $BUILD_URL \n" >> $RESULT_FILE
+    echo "Build URL - $BUILD_URL" >> $RESULT_FILE
     cat $DMS_DETAILS >> $RESULT_FILE
     MSG=`cat $RESULT_FILE`
 fi

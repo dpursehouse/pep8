@@ -4,10 +4,6 @@
 #Part 1: This job will prepare the environment and extract the DMS from the commit message
 #-------------------------------------------------------------------------------------
 
-if [ -z "$WORKSPACE" ]; then
-    WORKSPACE="./WORKSPACE"
-fi
-
 if [ -z "$DMS_TAG_LIST" ]; then
     echo "No DMS Tag list defined to validate. Exiting.."
     exit 1
@@ -18,15 +14,8 @@ if [ -z "$HUDSON_REVIEWER" ]; then
     exit 1
 fi
 
-# Clean workspace
-rm -rf $WORKSPACE
-mkdir $WORKSPACE
-cd $WORKSPACE
-
 mkdir output
 MSG_COMMIT_FILE=$WORKSPACE/output/msg_commit.txt
-
-git clone git://review.sonyericsson.net/semctools/cm_tools.git -b master
 
 if [ -n "$GERRIT_CHANGE_NUMBER" ]; then
 
