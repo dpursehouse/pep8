@@ -697,7 +697,7 @@ if ( $generateExcelFile && _SRM_PASSWORD && ($argVerRef1 || $argLabel1) ) {
   my $fileName = $ExcelFilePrefix . ($argLabel1 ? $argLabel1 . '__' . $argLabel2 : $argVerRef1  . '__' . $argVerRef2);
 
   if (scalar @Issues) {
-    print colored( 'Generating Excel-file', 'yellow' ), "\n" if ($trace || $debug);
+    print colored( 'Generating Excel-file: ' . $fileName, 'yellow' ), "\n" if ($trace || $debug);
     my($problem, $req_result) = server_request('srm_dms_xls', _SRM_PASSWORD, $fileName, @Issues);
     print "\n", ($problem ? "Failed to create excel-file: " : "Created Excel-file: "), $req_result, "\n";
 
@@ -718,7 +718,7 @@ if (!$AMSSPackage && $extPack1 ne $extPack2)
    print "\n== AMSS packages updated, generating lists...\n";
    my $com = $0;
    $com .= " -trace" if $trace;
-   my $prefix = ($argLabel1 ? $argLabel1 . '__' . $argLabel2 : $argVerRef1  . '__' . $argVerRef2) . "__AMSS__";
+   my $prefix = ($argLabel1 ? $argLabel1 . '__' . $argLabel2 : $argVerRef1  . '__' . $argVerRef2);
    $com .= " -xls $prefix" if $generateExcelFile;
    my %revList;
    while ($extPack1 =~ s/package-group name="([^"]+)" revision="([^"]+)"//)
@@ -731,9 +731,12 @@ if (!$AMSSPackage && $extPack1 ne $extPack2)
    foreach (sort keys %revList)
    {
       my ($rev1, $rev2) = split(/;/, $_);
+      $revList{$_} =~s/\s$//;
       print  "- ", $revList{$_}, "\n   Changed from $rev1 -> $rev2 ...\n\n";
+      my $cmd = $com;
+      $cmd .= '__PRODUCTS__' . join('_', split(/\s/, $revList{$_})) . "__AMSS__" if $generateExcelFile;
       my $pack = "fw-amss-" . lc((split(/ /, $revList{$_}))[0]);
-      if (execCmd( "$com -amss $pack -label1 $rev1 -label2 $rev2", \$result, \@result ) == 0)
+      if (execCmd( "$cmd -amss $pack -label1 $rev1 -label2 $rev2", \$result, \@result ) == 0)
       {
         print @result, "\n";
       }
@@ -742,6 +745,4 @@ if (!$AMSSPackage && $extPack1 ne $extPack2)
         die "Error comparing AMSS package:\n@result";
       }
    }
-
-
 }
