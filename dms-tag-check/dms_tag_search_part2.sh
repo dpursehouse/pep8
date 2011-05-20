@@ -40,7 +40,7 @@ else
             fi
             if [ "$RESULT" != "$FIX_FOR" ]
             then
-                if [ "$FIX_FOR" = "Not found" ]
+                if [ "$FIX_FOR" = "Not Found" ]
                 then
                     echo "$DMS_TAG : Tag Not Found" >> $RESULT_FILE
                 else
@@ -76,10 +76,11 @@ else
         echo "All DMS tags are valid for $GERRIT_BRANCH" >> $RESULT_FILE
     elif [ $COUNT_DMS_TAG_OK -ne 0 -a $COUNT_DMS_TAG_NOK -ne 0 ]
     then
-        echo "Some DMS tags are not Valid for $GERRIT_BRANCH" >> $RESULT_FILE
+        echo "Some DMS tags are not valid for $GERRIT_BRANCH" >> $RESULT_FILE
     else
         echo "None of the DMS are tagged" >> $RESULT_FILE
     fi
+    echo `cat $RESULT_FILE` | sed 's/ /%20/g' > build_description.txt
     echo "Build URL - $BUILD_URL" >> $RESULT_FILE
     cat $DMS_DETAILS >> $RESULT_FILE
     MSG=`cat $RESULT_FILE`
