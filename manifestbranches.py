@@ -2,6 +2,7 @@
 
 from optparse import OptionParser
 import os
+import re
 import sys
 
 cm_tools = os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -13,27 +14,75 @@ import semcwikitools
 import wikitools
 
 
-def get_manifests(branchlist, manifestpath):
-    """Returns a list of tuples containing:
-    1) The name of the branch
-    2) A RepoXmlManifest object representing the manifest
-    for all branches in branchlist."""
-    manifests = []
+def get_manifests(refname, manifestpath):
+    """Matches the ref name in `refname` against the refs found in the
+    manifest from the local `manifestpath` directory and returns a
+    list containing one or more tuples for each ref matched. If no
+    refs matched an empty list is returned.
+
+    Each returned tuple contains the fully-qualified name of the ref,
+    the "pretty" name of the ref, and a dictionary with information
+    from the manifest. The latter dictionary is really the `projects`
+    member of a `RepoXmlManifest` object and is keyed by the git
+    name. Each value is another dictionary with the keys `path`,
+    `name`, and `revision`, corresponding to the identically named
+    attributes of the <project> element of the XML manifest.
+
+    The ref matching is done by using `git show-ref`, i.e. matches are
+    made from the end of the string. For example, `master` could
+    result in both refs/heads/master, refs/remotes/origin/master, and
+    refs/remotes/origin/oss/master being returned. To force it to
+    return a particular branch the input ref must specify a unique ref
+    name suffix.
+
+    The "pretty" name of the ref found in the second member of the
+    tuple is the bare name of the ref without any refs/heads,
+    refs/remotes/foo, or refs/tags prefix. This string is probably
+    what should be shown to the user.
+
+    If a Git operation fails, a processes.ChildExecutionError exception
+    (or any subclass thereof) will be thrown. If the manifest XML data
+    found in the default.xml file on the branch being inspected can't
+    be parsed, a manifest.ManifestParseError exception will be
+    thrown."""
+
+    refs = []
     branches = []
-    for branch in branchlist:
-        code, out, err = processes.run_cmd("git", "show", "%s:default.xml" % \
-                (branch), path=manifestpath)
+    manifests = []
+
+    # Ask `git show-ref` to list all branches that match the ref
+    # given in `refname`. That command returns two-column lines
+    # containing (SHA-1, refname), where we only care about the
+    # refname.
+    code, out, err = processes.run_cmd("git", "show-ref", refname,
+                                       path=manifestpath)
+    for ref in [s.split()[1] for s in out.splitlines()]:
+        code, out, err = processes.run_cmd("git", "show",
+                                           "%s:default.xml" % (ref),
+                                           path=manifestpath)
         manifestdata = out.strip()
-        branches.append(branch.replace("origin/", ""))
+
+        # If a ref matches one of the elements in `stripped_prefixes`,
+        # set `prettyname` to the first captured group.
+        stripped_prefixes = [r'^refs/(?:heads|tags)/(.*)',
+                             r'^refs/remotes/[^/]+/(.*)']
+        prettyname = ref
+        for prefix in stripped_prefixes:
+            match = re.search(prefix, ref)
+            if match:
+                prettyname = match.group(1)
+                break
+        refs.append(ref)
+        branches.append(prettyname)
         manifests.append(manifest.RepoXmlManifest(manifestdata).projects)
-    return zip(branches, manifests)
+    return zip(refs, branches, manifests)
 
 
 def find_projects(branches):
     """Returns a set of all the projects found in the manifests.
     Input is the tuple-list structure returned by get_manifests."""
     projects = set()
-    for branch, manifest in branches:
+    for ref, branch, manifest in branches:
         projects.update(manifest)
     return projects
 
@@ -59,21 +108,21 @@ def get_branches_html(branches):
  a different name than the manifest branch</h1>\n\n"""
 
     data += '<table style="padding: 10px;"><tr><th></th>'
-    for branch, manifest in branches:
+    for ref, branch, manifest in branches:
         data += "<th>%s</th>" % branch
     data += "</tr>\n"
 
     for project in sorted(projects):
         data += "<tr><td>%s</td>" % (project)
         branchcount = {}
-        for branch, manifest in branches:
+        for ref, branch, manifest in branches:
             if project in manifest:
                 rev = manifest[project]["revision"]
                 if rev not in branchcount:
                     branchcount[rev] = 0
                 branchcount[rev] += 1
 
-        for branch, manifest in branches:
+        for ref, branch, manifest in branches:
             if project in manifest:
                 rev = manifest[project]["revision"]
                 style = ""
@@ -127,7 +176,9 @@ def _main():
     if not options.page:
         parser.error("You have to supply a name for the wikipage.")
 
-    branches = get_manifests(branchnames, options.manifestpath)
+    branches = []
+    for branch in branchnames:
+        branches += get_manifests(branch, options.manifestpath)
     data = get_branches_html(branches)
 
     w = semcwikitools.get_wiki(options.wiki)
