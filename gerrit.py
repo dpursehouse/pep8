@@ -2,12 +2,20 @@
 the Gerrit Code Review software.
 """
 
+import json
 import sys
 import urllib
 
 import processes
 
 GERRIT_SSH_INFO_URL_TEMPLATE = "http://%s/ssh_info"
+
+
+class GerritQueryError(Exception):
+    """GerritQueryError exceptions are raised when Gerrit returns an
+    error for a posted query, typically indicating a syntax error in
+    the query string.
+    """
 
 
 class GerritSshConfigError(Exception):
@@ -121,6 +129,38 @@ class GerritSshConnection():
                              "and patchset must be supplied." %
                              (self.__class__.__name__,
                               sys._getframe().f_code.co_name))
+
+    def query(self, querystring):
+        """Sends the query `querystring` to Gerrit and returns the
+        response as a (possibly empty) list of dictionaries. The keys
+        and values of the dictionaries are defined by Gerrit. Throws a
+        GerritQueryError exception if Gerrit rejects the query. If the
+        command execution itself fails (e.g. because of an SSH-related
+        error), a ChildExecutionError exception (or a subclass
+        thereof) will be thrown.
+        """
+
+        args = ["query", "--all-approvals", "--format", "JSON",
+                self.escape_string(querystring)]
+        response, err = self.run_gerrit_command(args)
+
+        result = []
+        json_decoder = json.JSONDecoder()
+        for line in response.splitlines():
+            # Gerrit's response to the query command contains one or more
+            # lines of JSON-encoded strings.  The last one is a status
+            # dictionary containing the key "type" whose value indicates
+            # whether or not the operation was successful.
+            # According to http://goo.gl/h13HD it should be safe to use the
+            # presence of the "type" key to determine whether the dictionary
+            # represents a change or if it's the query status indicator.
+            data = json_decoder.decode(line)
+            if "type" in data:
+                if data["type"] == "error":
+                    raise GerritQueryError(data["message"])
+            else:
+                result.append(data)
+        return result
 
     def review_patchset(self, commit_sha1=None, change_nr=None,
                         patchset=None, message=None, codereview=None,
