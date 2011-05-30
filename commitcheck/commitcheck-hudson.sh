@@ -17,8 +17,6 @@ See commit message check log for details:
 
 $BUILD_URL"
 
-PASS_MESSAGE="Commit message review OK"
-
 rm -rf $WORKSPACE
 mkdir $WORKSPACE
 cd $WORKSPACE
@@ -48,14 +46,11 @@ if [ -n "$GERRIT_CHANGE_NUMBER" ]; then
     python cm_tools/commitcheck/commitcheck.py < out/commit_message.txt | tee out/commit_message_check_log.txt
     COMMIT_MESSAGE_STATUS=${PIPESTATUS[0]}
 
-    # Send the review comment to Gerrit
+    # If commit message check failed, send a review comment to Gerrit
     if [ 0 -ne "$COMMIT_MESSAGE_STATUS" ]; then
-        REVIEW_MESSAGE=$FAIL_MESSAGE
-    else
-        REVIEW_MESSAGE=$PASS_MESSAGE
+        ssh -p 29418 review.sonyericsson.net -l $GERRIT_USER gerrit review \
+        --project=$GERRIT_PROJECT $GERRIT_PATCHSET_REVISION \'--message="$FAIL_MESSAGE"\'
     fi
-    ssh -p 29418 review.sonyericsson.net -l $GERRIT_USER gerrit review \
-    --project=$GERRIT_PROJECT $GERRIT_PATCHSET_REVISION \'--message="$REVIEW_MESSAGE"\'
 
     # Exit
     exit $COMMIT_MESSAGE_STATUS
