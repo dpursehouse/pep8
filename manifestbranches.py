@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 
-import semcutil
-import sys
-import os
 from optparse import OptionParser
+import os
+import sys
 
 cm_tools = os.path.dirname(os.path.abspath(sys.argv[0]))
 sys.path.append(os.path.join(cm_tools, "external-modules"))
 sys.path.append(os.path.join(cm_tools, "semcwikitools"))
-import wikitools
+import processes
+import semcutil
 import semcwikitools
+import wikitools
+
 
 def get_manifests(branchlist, manifestpath):
     """Returns a list of tuples containing:
@@ -19,12 +21,13 @@ def get_manifests(branchlist, manifestpath):
     manifests = []
     branches = []
     for branch in branchlist:
-        code, out, err = semcutil.run_cmd("git", "show", "%s:default.xml" % \
+        code, out, err = processes.run_cmd("git", "show", "%s:default.xml" % \
                 (branch), path=manifestpath)
         manifestdata = out.strip()
-        branches.append(branch.replace("origin/",""))
+        branches.append(branch.replace("origin/", ""))
         manifests.append(semcutil.RepoXmlManifest(manifestdata).projects)
     return zip(branches, manifests)
+
 
 def find_projects(branches):
     """Returns a set of all the projects found in the manifests.
@@ -34,6 +37,7 @@ def find_projects(branches):
         projects.update(manifest)
     return projects
 
+
 def isstatic(s):
     """Tries to guess if a ref points to a static version or not.
     Returns None if not.
@@ -41,7 +45,8 @@ def isstatic(s):
     if len(s) == 40 and s.isalnum():
         return s[:6]
     elif s.startswith("refs/tags"):
-        return s.replace("refs/tags","")
+        return s.replace("refs/tags", "")
+
 
 def get_branches_html(branches):
     """Builds a big html table with all the branches of all components in the
@@ -99,6 +104,7 @@ def get_branches_html(branches):
     data += "</table>\n"
 
     return data
+
 
 def _main():
     usage = "usage: %prog [options] origin/branch1 [origin/branch2 ...]"

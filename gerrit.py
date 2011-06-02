@@ -2,9 +2,10 @@
 the Gerrit Code Review software.
 """
 
-import semcutil
 import sys
 import urllib
+
+import processes
 
 GERRIT_SSH_INFO_URL_TEMPLATE = "http://%s/ssh_info"
 
@@ -49,8 +50,8 @@ class GerritSshConnection():
         else:
             self.username = None
             try:
-                exitcode, out, err = semcutil.run_cmd("git", "config",
-                                                      "user.email")
+                exitcode, out, err = processes.run_cmd("git", "config",
+                                                       "user.email")
                 # Extract localpart and domain from the first line of the
                 # stdout stream. This will fail if the stream is empty or
                 # isn't a reasonably-looking email address. "git config"
@@ -58,7 +59,7 @@ class GerritSshConnection():
                 localpart, domain = out.splitlines()[0].split("@")
                 if len(localpart):
                     self.username = localpart
-            except (semcutil.ChildExecutionError, IndexError, ValueError):
+            except (processes.ChildExecutionError, IndexError, ValueError):
                 # Ignore and default to self.username = None
                 pass
 
@@ -188,5 +189,5 @@ class GerritSshConnection():
             command += ["-l", self.username]
         command += [self.ssh_hostname, "gerrit"]
         command += args
-        exitcode, out, err = semcutil.run_cmd(command)
+        exitcode, out, err = processes.run_cmd(command)
         return out, err

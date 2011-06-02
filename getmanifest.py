@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 
-import sys
-import semcutil
-import os
-import tempfile
-import shutil
 from optparse import OptionParser
+import os
+import shutil
+import sys
+import tempfile
+
+import processes
+
 
 class GetManifestError(Exception):
     def __init__(self, message, error):
@@ -15,12 +17,14 @@ class GetManifestError(Exception):
     def __str__(self):
         return self.message + ":\n" + str(self.error)
 
+
 def run_or_fail(command, message):
     try:
-        r = semcutil.run_cmd(command)
-    except semcutil.ChildExecutionError, e:
+        r = processes.run_cmd(command)
+    except processes.ChildExecutionError, e:
         raise GetManifestError(message, e)
     return r
+
 
 def get_package_version(label, package, repo_name=None, repo_url=None):
     args = ["repository", "list", label]
@@ -47,6 +51,7 @@ def get_package_version(label, package, repo_name=None, repo_url=None):
     else:
         return version
 
+
 def get_and_extract_package(label, package, outdir, repo_name=None,
                             repo_url=None):
     pversion = get_package_version(label, package, repo_name, repo_url)
@@ -69,6 +74,7 @@ def get_and_extract_package(label, package, outdir, repo_name=None,
     run_or_fail(["dpkg-deb", "-x", debpath, outdir],
         "Failed to extract package %s to %s:" % (package, outdir))
 
+
 def get_file_from_package(label, package, outfile, frompath,
                           repo_name=None, repo_url=None):
     tempdir = tempfile.mkdtemp()
@@ -82,10 +88,12 @@ def get_file_from_package(label, package, outfile, frompath,
     finally:
         shutil.rmtree(tempdir)
 
+
 def get_manifest(label, outfile="manifest_static.xml",
-                 frompath="manifest_static.xml", repo_name=None, repo_url=None):
-    get_file_from_package(label, "build-metadata", outfile, frompath, repo_name,
-                          repo_url)
+                 frompath="manifest_static.xml", repo_name=None,
+                 repo_url=None):
+    get_file_from_package(label, "build-metadata", outfile, frompath,
+                          repo_name, repo_url)
 
 
 def _main(argv):
@@ -112,7 +120,8 @@ def _main(argv):
         parser.print_help()
         parser.error("Incorrect number of arguments")
     if options.repo_name and options.repo_url:
-        parser.error("You can't supply repo_name and repo_url at the same time")
+        parser.error("You can't supply repo_name and repo_url at the same " \
+                        "time")
     try:
         label = args[0]
         get_file_from_package(label, options.package, options.outfile,

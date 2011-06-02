@@ -1,23 +1,27 @@
 #!/usr/bin/env python
 
-import sys
+import optparse
 import os
 import os.path
-import getmanifest
-import semcutil
-from xml.dom.minidom import parse
+import sys
 import tempfile
-import optparse
+from xml.dom.minidom import parse
+
+import getmanifest
+import processes
+import run_cmd
 
 OK_MESSAGE = "OK"
 MISSING_MESSAGE = "Path doesn't exist in workspace"
 OFFICIALTAG_MESSAGE = "Won't delete official tags"
+
 
 class DictList(dict):
     def add(self, key, value):
         if key not in self:
             self[key] = []
         self[key].append(value)
+
 
 class CheckRunCmd():
     def __init__(self, f):
@@ -26,23 +30,25 @@ class CheckRunCmd():
     def __call__(self, *args):
         try:
             return self.f(*args)
-        except semcutil.ChildRuntimeError, e:
+        except processes.ChildRuntimeError, e:
             return e.result[2].strip()
-        except semcutil.ChildExecutionError, e:
+        except processes.ChildExecutionError, e:
             # Unknown error occurred!
             return str(e)
+
 
 @CheckRunCmd
 def apply_tag(path, name, revision):
     cmd = ["git", "tag", name, revision]
-    r = semcutil.run_cmd(cmd, path=path)
+    r = processes.run_cmd(cmd, path=path)
     return OK_MESSAGE
+
 
 @CheckRunCmd
 def delete_tag(path, name):
     # Check tag type
     cmd = ["git", "cat-file", "-t", name]
-    r = semcutil.run_cmd(cmd, path=path)
+    r = processes.run_cmd(cmd, path=path)
     tagtype = r[1].strip()
 
     if tagtype != "commit":
@@ -50,8 +56,9 @@ def delete_tag(path, name):
 
     # Delete it
     cmd = ["git", "tag", "-d", name]
-    r = semcutil.run_cmd(cmd, path=path)
+    r = processes.run_cmd(cmd, path=path)
     return OK_MESSAGE
+
 
 def tag_official_release(manifestdata, label, delete=False, verbose=False):
     manifestinfo = semcutil.RepoXmlManifest(manifestdata)
@@ -70,6 +77,7 @@ def tag_official_release(manifestdata, label, delete=False, verbose=False):
         else:
             statuslist.add(MISSING_MESSAGE, info["path"])
     return statuslist
+
 
 def _handle_status(statuslist, label, options):
     okcount = 0
@@ -102,6 +110,7 @@ def _handle_status(statuslist, label, options):
     else:
         return []
 
+
 def _main(argv):
     usage = "usage: %prog [options] LABEL1 [LABEL2...]"
     parser = optparse.OptionParser(usage=usage)
@@ -123,7 +132,8 @@ def _main(argv):
         parser.error("You must pass at least one label to this script")
 
     if options.repo_name and options.repo_url:
-        parser.error("You can't supply repo_name and repo_url at the same time.")
+        parser.error("You can't supply repo_name and repo_url at the same "\
+                        "time.")
 
     fatal_errors = []
 
