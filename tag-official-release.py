@@ -8,8 +8,9 @@ import tempfile
 from xml.dom.minidom import parse
 
 import getmanifest
+import manifest
 import processes
-import run_cmd
+import semcutil
 
 OK_MESSAGE = "OK"
 MISSING_MESSAGE = "Path doesn't exist in workspace"
@@ -61,7 +62,7 @@ def delete_tag(path, name):
 
 
 def tag_official_release(manifestdata, label, delete=False, verbose=False):
-    manifestinfo = semcutil.RepoXmlManifest(manifestdata)
+    manifestinfo = manifest.RepoXmlManifest(manifestdata)
     statuslist = DictList()
     for proj, info in manifestinfo.projects.items():
         if verbose:
@@ -155,7 +156,7 @@ def _main(argv):
             try:
                 statuslist = tag_official_release(manifestdata, label,
                                                options.delete, options.verbose)
-            except semcutil.ManifestParseError, e:
+            except manifest.ManifestParseError, e:
                 semcutil.fatal(1, "Failed to parse manifest: " + str(e))
 
             fatal_errors.extend(_handle_status(statuslist, label, options))

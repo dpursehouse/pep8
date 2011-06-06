@@ -7,8 +7,8 @@ import sys
 cm_tools = os.path.dirname(os.path.abspath(sys.argv[0]))
 sys.path.append(os.path.join(cm_tools, "external-modules"))
 sys.path.append(os.path.join(cm_tools, "semcwikitools"))
+import manifest
 import processes
-import semcutil
 import semcwikitools
 import wikitools
 
@@ -25,7 +25,7 @@ def get_manifests(branchlist, manifestpath):
                 (branch), path=manifestpath)
         manifestdata = out.strip()
         branches.append(branch.replace("origin/", ""))
-        manifests.append(semcutil.RepoXmlManifest(manifestdata).projects)
+        manifests.append(manifest.RepoXmlManifest(manifestdata).projects)
     return zip(branches, manifests)
 
 
@@ -112,8 +112,10 @@ def _main():
     parser.add_option("-p", "--page", dest="page",
                         help="Name of the page on the wiki to write.")
     parser.add_option("-w", "--wiki", dest="wiki",
-                        default="https://wiki.sonyericsson.net/wiki_androiki/api.php",
-                        help="Api script of the wiki to use. [default: %default]")
+                        default="https://wiki.sonyericsson.net/" +
+                                    "wiki_androiki/api.php",
+                        help="Api script of the wiki to use. " +
+                                "[default: %default]")
     parser.add_option("-m", "--manifest", dest="manifestpath",
                         default="manifest",
                         help="Path to the manifest-git. [default: %default]")
