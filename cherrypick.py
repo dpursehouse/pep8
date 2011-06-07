@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.1.1
+@version: 0.1.2
 
 @bug: not verified against gerrit if the commit is already in gerrit for review
 '''
@@ -69,15 +69,14 @@ OPT_PARSER = None
 OPT = None
 
 #Error codes
-ERROR_OK = 0
-ERROR_CHERRYPICK_FAILED = 1
-ERROR_REPO = 2
-ERROR_DMS_SRV = 3
-ERROR_MANIFEST = 4
-ERROR_ARGS = 5
-ERROR_FILE = 6
-ERROR_GIT_USR = 7
-
+STATUS_OK = 0
+STATUS_CHERRYPICK_FAILED = 1
+STATUS_REPO = 2
+STATUS_DMS_SRV = 3
+STATUS_MANIFEST = 4
+STATUS_ARGS = 5
+STATUS_FILE = 6
+STATUS_GIT_USR = 7
 
 class Httpdump:
     """Http dump class"""
@@ -178,17 +177,17 @@ def cherry_pick_exit(exit_code):
     Exit this script with exit code and message
     """
     reason = {
-              ERROR_OK: "Cherry pick completed.",
-              ERROR_CHERRYPICK_FAILED : "Some or all cherry pick failed.",
-              ERROR_REPO: "Repo error",
-              ERROR_DMS_SRV: "DMS tag server is not reachable",
-              ERROR_MANIFEST: "Manifest file error",
-              ERROR_ARGS: "Using wrong arguments",
-              ERROR_FILE: "File error",
-              ERROR_GIT_USR: "Git config error"
+              STATUS_OK: "Cherry pick completed.",
+              STATUS_CHERRYPICK_FAILED : "Some or all cherry picks failed.",
+              STATUS_REPO: "Repo error",
+              STATUS_DMS_SRV: "DMS tag server is not reachable",
+              STATUS_MANIFEST: "Manifest file error",
+              STATUS_ARGS: "Using wrong arguments",
+              STATUS_FILE: "File error",
+              STATUS_GIT_USR: "Git config error"
               }
     msg = reason.get(exit_code)
-    if exit_code != ERROR_OK:
+    if exit_code != STATUS_OK:
         print_err(msg)
     else:
         do_log(msg, echo=True)
@@ -204,7 +203,7 @@ def repo_sync():
     do_log(result, file_name='repo_sync.log')
     if ret != 0:
         print_err("Repo sync error %s" %err)
-        cherry_pick_exit(ERROR_REPO)
+        cherry_pick_exit(STATUS_REPO)
 
 def get_dms_list(target_branch):
     """
@@ -218,7 +217,7 @@ def get_dms_list(target_branch):
                       '/manifest.xml','r').read()
     except IOError, err:
         print_err(err)
-        cherry_pick_exit(ERROR_MANIFEST)
+        cherry_pick_exit(STATUS_MANIFEST)
     base_proj_rev_dict = {}
     dom = xml.dom.minidom.parseString(base_manifest)
     def_rev = dom.getElementsByTagName("default")[0].getAttribute('revision')
@@ -245,7 +244,7 @@ def get_dms_list(target_branch):
     dst_manifest, err, ret = execmd(cmd)
     if ret != 0:
         print_err("manifest file for origin/%s not found.\n" % target_branch)
-        cherry_pick_exit(ERROR_MANIFEST)
+        cherry_pick_exit(STATUS_MANIFEST)
     dom = xml.dom.minidom.parseString(dst_manifest)
     dom_nodes = dom.getElementsByTagName("project")
     dst_proj_rev = {}
@@ -402,7 +401,7 @@ def dms_get_fix_for(sha1_dms_list):
             print_err(('Put "machine seldclq140.corpusers.net ' +
                        'login <semcid> password <password>" in ' +
                        '.netrc file and run again.'))
-            cherry_pick_exit(ERROR_DMS_SRV)
+            cherry_pick_exit(STATUS_DMS_SRV)
         #read fix for and ecb decision and add to dms tag list
         fixfor = re.findall(r'_lbFixFor.*>(.*)</span>&nbsp;</td>', contents)
         ecbdecision = re.findall(r'CCBECBDecisionLog.*>(.*)</span>&nbsp;</td>',
@@ -452,14 +451,14 @@ def cherry_pick(unique_commit_list, target_branch):
     7. Checkout source branch
     8. delete topic-cherrypick branch
     """
-    ret_err = ERROR_OK
+    ret_err = STATUS_OK
     gituser = execmd([GIT, 'config', '--get', 'user.email'])[0]
     if gituser != None:
         gituser = gituser.split('@')[0]
     if not gituser:
         print_err("user.email is not configured for git yet")
         print_err("Please run this after git configuration is done.")
-        cherry_pick_exit(ERROR_GIT_USR)
+        cherry_pick_exit(STATUS_GIT_USR)
     #keep the result here
     result_dms_tag_list = []
     dry_run = '_dry_run' if OPT.dry_run else ''
@@ -551,7 +550,7 @@ def cherry_pick(unique_commit_list, target_branch):
         do_log(git_log)
         if (not pick_result.startswith('https://review.sonyericsson.net'
                                        if not OPT.dry_run else 'Dry-run ok')):
-            ret_err = ERROR_CHERRYPICK_FAILED
+            ret_err = STATUS_CHERRYPICK_FAILED
 
         result_dms_tag_list.append(pick_candidate + ',' + pick_result)
     os.chdir(OPT.cwd)
@@ -607,12 +606,12 @@ def main():
     OPT = OPT_PARSER.parse_args()[0]
     args = ["%s = %s" % (key, value) for key, value in OPT.__dict__.iteritems()]
     do_log("Arguments are:\n%s\n" %"\n".join(args), echo=False)
-    ret_code = ERROR_OK
+    status_code = STATUS_OK
 
     if not os.path.exists(OPT.cwd+'/.repo' ):
         print_err(('repo not installed, Use "repo init -u url" to '+
                    'install it here. '))
-        cherry_pick_exit(ERROR_REPO)
+        cherry_pick_exit(STATUS_REPO)
 
     print "Cherry pick starting..."
     if OPT.cwd:
@@ -623,15 +622,15 @@ def main():
     if  OPT.csv_file:
         if OPT.target_branch == None:
             print_err("Must pass target (-t) branch name")
-            cherry_pick_exit(ERROR_ARGS)
+            cherry_pick_exit(STATUS_ARGS)
         try:
             csv = open(OPT.csv_file, 'r')
             unique_commit_list = csv.read().splitlines()
         except IOError, err:
             print_err(err)
-            cherry_pick_exit(ERROR_FILE)
-        ret_code = cherry_pick(unique_commit_list, OPT.target_branch)
-        cherry_pick_exit(ret_code)
+            cherry_pick_exit(STATUS_FILE)
+        status_code = cherry_pick(unique_commit_list, OPT.target_branch)
+        cherry_pick_exit(status_code)
 
     if (OPT.base_branches is None or
        OPT.target_branch is None or
@@ -640,24 +639,24 @@ def main():
                               "target branch name (-t) " +
                               "and DMS tag list (-d)"))
         OPT_PARSER.print_help()
-        cherry_pick_exit(ERROR_ARGS)
+        cherry_pick_exit(STATUS_ARGS)
 
     if OPT.target_branch in OPT.base_branches.split(','):
         print_err("Base branch and target branch is same.")
-        cherry_pick_exit(ERROR_ARGS)
+        cherry_pick_exit(STATUS_ARGS)
     sha1_dms_list = get_dms_list(OPT.target_branch)[1]
     if len(sha1_dms_list) == 0:
         do_log("Nothing is found to process ", echo=True)
-        cherry_pick_exit(ERROR_OK)
+        cherry_pick_exit(STATUS_OK)
 
     filtered_dms_list = filter_dms_list(sha1_dms_list)
     dms_tag_list = dms_get_fix_for(filtered_dms_list)
     unique_commit_list = create_cherry_pick_list(dms_tag_list,
                                                  OPT.target_branch)
     if not OPT.no_push_to_gerrit:
-        ret_code = cherry_pick(unique_commit_list, OPT.target_branch)
+        status_code = cherry_pick(unique_commit_list, OPT.target_branch)
 
-    cherry_pick_exit(ret_code)
+    cherry_pick_exit(status_code)
 
 if __name__ == '__main__':
     main()
