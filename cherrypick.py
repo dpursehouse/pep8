@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.1.2
+@version: 0.1.3
 
 @bug: not verified against gerrit if the commit is already in gerrit for review
 '''
@@ -61,7 +61,7 @@ import xml.dom.minidom
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.1.1'
+__version__ = '0.1.3'
 
 REPO = 'repo'
 GIT = 'git'
@@ -170,6 +170,10 @@ def option_parser():
                      dest='dry_run',
                      help='Do not push to Gerrit',
                      action="store_true", default=False)
+    opt_group.add_option('--gerrit-user',
+                     dest='gerrit_user',
+                     help='Use this Gerrit user to push, useful for hudson job',
+                     default=None)
     return opt_parser
 
 def cherry_pick_exit(exit_code):
@@ -257,9 +261,8 @@ def get_dms_list(target_branch):
         path = rev_path.split(',')[1]
         base_rev = rev_path.split(',')[0]
         os.chdir(os.path.join(OPT.cwd, path))
-        #print path + ',' + name
         ret = execmd([GIT, 'show-ref', '-q', '--verify',
-                                'refs/remotes/origin/' + target_branch])[2]
+                      'refs/remotes/origin/' + target_branch])[2]
         if ret != 0:
             if dst_proj_rev.has_key(path):
                 revision = dst_proj_rev[path]
@@ -452,13 +455,16 @@ def cherry_pick(unique_commit_list, target_branch):
     8. delete topic-cherrypick branch
     """
     ret_err = STATUS_OK
-    gituser = execmd([GIT, 'config', '--get', 'user.email'])[0]
-    if gituser != None:
-        gituser = gituser.split('@')[0]
-    if not gituser:
-        print_err("user.email is not configured for git yet")
-        print_err("Please run this after git configuration is done.")
-        cherry_pick_exit(STATUS_GIT_USR)
+    if OPT.gerrit_user:
+        gituser = OPT.gerrit_user
+    else:
+        gituser = execmd([GIT, 'config', '--get', 'user.email'])[0]
+        if gituser:
+            gituser = gituser.split('@')[0]
+        if not gituser:
+            print_err("user.email is not configured for git yet")
+            print_err("Please run this after git configuration is done.")
+            cherry_pick_exit(STATUS_GIT_USR)
     #keep the result here
     result_dms_tag_list = []
     dry_run = '_dry_run' if OPT.dry_run else ''
