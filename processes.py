@@ -85,9 +85,15 @@ def run_cmd(*cmdandargs, **kwargs):
         popenkwargs["cwd"] = kwargs["path"]
         cmddesc += " (In directory: %s)" % kwargs["path"]
 
+    if "input" in kwargs:
+        popenkwargs["stdin"] = subprocess.PIPE
+
     try:
         p = subprocess.Popen(cmdandargs, **popenkwargs)
-        stdout, stderr = p.communicate()
+        if "input" in kwargs:
+            stdout, stderr = p.communicate(input=kwargs["input"])
+        else:
+            stdout, stderr = p.communicate()
         result = (p.returncode, stdout, stderr)
         if p.returncode == 0:
             return result
