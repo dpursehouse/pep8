@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.2.6
+@version: 0.2.7
 '''
 
 DESCRIPTION = \
@@ -89,7 +89,7 @@ import threading
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.2.6'
+__version__ = '0.2.7'
 
 REPO = 'repo'
 GIT = 'git'
@@ -107,6 +107,7 @@ STATUS_FILE = 6
 STATUS_GIT_USR = 7
 STATUS_GERRIT_ERR = 8
 STATUS_RM_PROJECTLIST = 9
+STATUS_USER_ABORTED = 10
 
 #Server communication tags
 SRV_DMS_STATUS = 'DMS_STATUS'
@@ -461,7 +462,8 @@ def cherry_pick_exit(exit_code):
               STATUS_FILE: "File error",
               STATUS_GIT_USR: "Git config error",
               STATUS_GERRIT_ERR: "Gerrit server is not reachable",
-              STATUS_RM_PROJECTLIST: "Failed to remove .repo/project.list"
+              STATUS_RM_PROJECTLIST: "Failed to remove .repo/project.list",
+              STATUS_USER_ABORTED: "Aborted by user"
               }
     msg = reason.get(exit_code)
     if exit_code != STATUS_OK:
@@ -1006,6 +1008,11 @@ def execmd(cmd, timeout=30):
         return result_out, result_err, process.poll()
     except OSError, exp:
         print_err(exp)
+    except KeyboardInterrupt:
+        kill_process_after_timeout(process.pid)
+        watchdog.cancel()
+        print
+        cherry_pick_exit(STATUS_USER_ABORTED)
 
 def print_err(err):
     """print error message"""
