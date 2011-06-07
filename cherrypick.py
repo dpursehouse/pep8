@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.1.3
+@version: 0.1.4
 
 @bug: not verified against gerrit if the commit is already in gerrit for review
 '''
@@ -61,7 +61,7 @@ import xml.dom.minidom
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.1.3'
+__version__ = '0.1.4'
 
 REPO = 'repo'
 GIT = 'git'
@@ -115,6 +115,39 @@ class HelpFormatter(optparse.IndentedHelpFormatter):
             print "Description:", description
         return ''
 
+class Commit:
+    """Data structure for a single commit"""
+    base, path, name, = None, None, None
+    author_date, commit, title, dms = None, None, None, None
+    def __init__(self, base=None, path=None, name=None,
+                 author_date=None, commit=None, dms=None, title=None):
+        self.base = base
+        self.path = path
+        self.name = name
+        self.author_date = author_date
+        self.commit = commit
+        self.dms = dms
+        self.title = title
+    def cmp(self, commit):
+        """compare itself with another commit"""
+        if (((self.base, self.name, self.dms) ==
+            (commit.base, commit.name, commit.dms)) and
+            (self.author_date == commit.author_date or
+             self.title == commit.title)) :
+            #check author date and title if either one match, to detect
+            #manual cherry pick which has different author date in base
+            #and target
+            return True
+        return False
+    def __str__(self):
+        return "%s,%s,%s,%s,%s" % (self.base, self.path,
+                   self.name, self.commit, self.dms)
+
+def str_list(commit_list):
+    """Helper function to convert a list of Commit to list of strings"""
+    commit_list = [str(cmt) for cmt in commit_list]
+    commit_list.sort()
+    return commit_list
 
 def option_parser():
     """
@@ -213,7 +246,7 @@ def get_dms_list(target_branch):
     """
     Collect the DMSs from all projects, from MERGE_BASE to  BASE_BRANCH and
     from MERGE_BASE to  TARGET_BRANCH. Return the DMSs list which are not in
-    TARGET_BRANCH (one with commit id and another without commit id).
+    TARGET_BRANCH.
     """
     base_manifest = None
     try:
@@ -238,11 +271,8 @@ def get_dms_list(target_branch):
 
     merge_base_log = open('merge-base.log', 'wb')
     base_log = open('source_commit.log', 'wb')
-    target_log = open(target_branch + '_destination_commit.log', 'wb')
-
-    base_dms_list, target_dms_list = [], []
-    base_dms_commit_list = []
-
+    target_log = open(target_branch + '_commit.log', 'wb')
+    base_commit_list, target_commit_list = [], []
     os.chdir(os.path.join(OPT.cwd, '.repo/manifests'))
     cmd = [GIT, 'show', 'origin/' + target_branch +':default.xml']
     dst_manifest, err, ret = execmd(cmd)
@@ -290,83 +320,74 @@ def get_dms_list(target_branch):
         if target_revision is None:
             target_revision = 'origin/' + target_branch
 
-        cmd = [GIT, 'merge-base', 'origin/'
-                 + base_rev, target_revision]
-        mergebase, err, ret = execmd(cmd)
-
-        if mergebase == '':
-            merge_base_log.write('No merge-base for '
-                           + base_rev + 'and' + target_branch + '\n')
-            print >> sys.stderr, err, ret
+        mergebase, err, ret = execmd([GIT, 'merge-base', 'origin/' +
+                                      base_rev, target_revision])
+        if not mergebase:
+            merge_base_log.write('No merge-base for %s and %s\n' %
+                                 (base_rev, target_branch))
+            print_err(err)
             continue
         merge_base_log.write(mergebase + '\n')
         #read merge base to base branch log
-        dms_list, dms_commit_list = collect_fix_dms('origin/' + base_rev,
-                                                    mergebase,
-                                                    rev_path + ',' + name,
-                                                    base_log)
-        base_dms_list.extend(dms_list)
-        base_dms_commit_list.extend(dms_commit_list)
-        #read merge base to destination branch log
-        dms_list, dms_commit_list = collect_fix_dms(target_revision,
-                                                     mergebase,
-                                                     rev_path + ',' + name,
-                                                     target_log)
-
-        target_dms_list.extend(dms_list)
+        b_commit_list = collect_fix_dms('origin/' + base_rev, mergebase,
+                                   rev_path + ',' + name, base_log)
+        if b_commit_list:
+            base_commit_list += b_commit_list
+        #read merge base to target branch log
+        t_commit_list = collect_fix_dms(target_revision, mergebase,
+                                   rev_path + ',' + name, target_log)
+        if t_commit_list:
+            target_commit_list += t_commit_list
         os.chdir(OPT.cwd)
 
-    base_dms_list.sort()
-    do_log('\n'.join(base_dms_list), file_name='source_dms_list.log')
-    target_dms_list.sort()
-    do_log('\n'.join(target_dms_list), file_name=
-            target_branch + '_destination_dms_list.log')
-    #Only keep the diff
-    diff_list = list(set(base_dms_list) - set(target_dms_list))
-    diff_list.sort()
-
-    #now keep the project,git_name,sha1(of source),dms
-    project_sha1_dms_list = []
-    for dms in diff_list:
-        for commit in base_dms_commit_list:
-            if dms.split(',')[1] in commit and dms.split(',')[3] in commit:
-                project_sha1_dms_list.append(commit)
-
-    do_log('\n'.join(diff_list),
+    do_log('\n'.join(str_list(base_commit_list)), file_name='base_dms_list.log')
+    do_log('\n'.join(str_list(target_commit_list)), file_name=
+            target_branch + '_dms_list.log')
+    #remove the common commits both in base and target
+    final_commit_list = []
+    final_commit_list += base_commit_list
+    for cmt in base_commit_list:
+        for t_cmt in target_commit_list:
+            if cmt.cmp(t_cmt):
+                final_commit_list.remove(cmt)
+                break
+    do_log('\n'.join(str_list(final_commit_list)),
             file_name=target_branch + '_diff_dms_list.log',
             info='Diff list')
-    project_sha1_dms_list = list(set(project_sha1_dms_list))
-    return diff_list, project_sha1_dms_list
+    return final_commit_list
 
 
 def collect_fix_dms(branch, commit_begin, project, log_file):
     """
     Collect FIX=DMSxxxxxxx and commit id from the logs.
-    return list with and without commit id.
+    return the list of commits.
     """
-    #return sorted dms list
-    dms_list = []
-    dms_commit_list = []
-    r_cmd = [GIT, 'log', '--pretty=fuller', commit_begin + '..' + branch]
-    git_log = execmd(r_cmd)[0]
+    commit_list = []
+    git_log = execmd([GIT, 'log', '--pretty=fuller',
+                      commit_begin + '..' + branch])[0]
     log_file.write(git_log + '\n')
     git_log_list = git_log.split('\n')
-    commit_id, author_date = '', ''
+    commit_id, author_date, title = '', '', ''
     for log_str in git_log_list:
         if re.match(r'^commit\s.*?', log_str):
             commit_id = log_str.split(' ')[1] #sha1
         elif re.match(r'AuthorDate: ', log_str):
             author_date = log_str
+        elif re.match(r'CommitDate:', log_str): #get the title 2 lines bellow it
+            title = git_log_list[git_log_list.index(log_str) + 2].strip()
         elif re.match(r'^\s*?FIX\s*=\s*DMS[0-9].*?', log_str):   #"FIX=DMSxxxxx"
-            str_list = log_str.split('=')
-            dms_id = str_list[1].strip()     #DMSxxxxxxx
-            dms_list.append(project + ',' + dms_id + ',' + author_date)
-            dms_commit_list.append(project + ',' + commit_id + ',' + dms_id)
+            dms_str = log_str.split('=')
+            dms_id = dms_str[1].strip()     #DMSxxxxxxx
+            rev, path, name = project.split(',')
+            cmt = Commit(base=rev, path=path, name=name, dms=dms_id,
+                         commit=commit_id, author_date=author_date,
+                         title=title)
+            commit_list.append(cmt)
 
-    return dms_list, dms_commit_list
+    return commit_list
 
 
-def filter_dms_list(dms_list):
+def filter_dms_list(commit_list):
     """
     Filter the DMSs which are mentioned in dms_filter.txt file.
     Commit that matches the filter will be excluded.
@@ -374,27 +395,27 @@ def filter_dms_list(dms_list):
     if not os.path.exists(OPT.dms_filter):
         print_err("File not found " + OPT.dms_filter)
         print_err("Continue without DMS filter.")
-        return dms_list
+        return commit_list
 
     dms_filter_file = open(OPT.dms_filter, 'r')
     dms_filter = dms_filter_file.read()
-    filtered_dms_list = []
-    for dms in dms_list:
-        if not dms.split(',')[4] in dms_filter:
-            filtered_dms_list.append(dms)
-    return filtered_dms_list
+    filtered_commit_list = []
+    for cmt in commit_list:
+        if cmt.dms not in dms_filter:
+            filtered_commit_list.append(cmt)
+    return filtered_commit_list
 
-def dms_get_fix_for(sha1_dms_list):
+def dms_get_fix_for(commit_list):
     """
     Collect DMS status from DMS server. Collect only the commits match with
     OPT.tag_list
     """
-    dms_tag_list = []
+    commit_tag_list = []
     progress = 0
-    total = len(sha1_dms_list)
+    total = len(commit_list)
 
-    for commit_dms in sha1_dms_list:
-        dms = commit_dms.split(',')[4]
+    for cmt in commit_list:
+        dms = cmt.dms
         dump = Httpdump(DMS_URL + "?q=0___" + str(dms) + "___issue")
         progress += 1
         dump.perform()
@@ -409,39 +430,39 @@ def dms_get_fix_for(sha1_dms_list):
         fixfor = re.findall(r'_lbFixFor.*>(.*)</span>&nbsp;</td>', contents)
         ecbdecision = re.findall(r'CCBECBDecisionLog.*>(.*)</span>&nbsp;</td>',
                                   contents)
-        if len(fixfor) and len(ecbdecision):
+        if fixfor and ecbdecision:
             fixfor = fixfor[0]
             ecbdecision = ecbdecision[0]
             if fixfor in OPT.dms_tags.split(','):
-                dms_tag_list.append(commit_dms + ','+ fixfor + ',' +
-                                    ecbdecision)
+                commit_tag_list.append(cmt)
         print 'Collecting DMS info[' + int(progress*50/total) * '+',
         print int((total - progress)*50/total) * '-' + "]", str(progress),
         print '/' + str(total), "\r",
         sys.stdout.flush()
 
     print ''
-    return dms_tag_list
+    return commit_tag_list
 
-def create_cherry_pick_list(dms_tag_list, target_branch):
+def create_cherry_pick_list(commit_tag_list):
     """
     Make unique list and save it to file
     """
+    target_branch = OPT.target_branch
     #make single commit for multiple dms
-    commit_list = {}
-    for commit in dms_tag_list:
-        words = commit.split(',')
-        key = words[0] + ',' + words[1] + ',' + words[2] + ','+ words[3]
-        if commit_list.has_key(key):
-            commit_list[key] = commit_list[key] + '-' + words[4]
+    commit_dict = {}
+    for cmt in commit_tag_list:
+        key = cmt.commit
+        if commit_dict.has_key(key):
+            commit_dict[key].dms += '-' + cmt.dms
         else:
-            commit_list[key] = words[4]
-    unique_dms_tag_list = [k + ',' + v for k, v in commit_list.iteritems()]
+            commit_dict[key] = cmt
+    unique_commit_tag_list = [v for v in commit_dict.values()]
+
     os.chdir(OPT.cwd)
-    unique_dms_tag_list.sort()
-    do_log('\n'.join(unique_dms_tag_list), echo=True, file_name=
-          "%s_cherrypick.csv" %(target_branch), info="Cherrys..")
-    return unique_dms_tag_list
+    do_log('\n'.join(str_list(unique_commit_tag_list)), echo=True,
+           file_name="%s_cherrypick.csv" %(target_branch),
+           info="Cherrys..")
+    return unique_commit_tag_list
 
 def cherry_pick(unique_commit_list, target_branch):
     """
@@ -468,15 +489,12 @@ def cherry_pick(unique_commit_list, target_branch):
     #keep the result here
     result_dms_tag_list = []
     dry_run = '_dry_run' if OPT.dry_run else ''
-    #now we have path,git,commitid,dms
-    for pick_candidate in unique_commit_list:
+
+    do_log("Cherry pick starting...", echo=True)
+    for cmt in unique_commit_list:
         pick_result = ''
-        print 'Cherry picking %s ..' % pick_candidate
-        picks = pick_candidate.split(',')
-        if len(picks) < 5: # base,path,name,commit,dms
-            continue
-        proj_path, proj_name, commit = picks[1], picks[2], picks[3]
-        os.chdir(os.path.join(OPT.cwd, proj_path))
+        do_log( 'Cherry picking %s ..' % cmt, echo=True)
+        os.chdir(os.path.join(OPT.cwd, cmt.path))
         #checkout the topic branch
         r_cmd = [GIT, 'checkout', '-b', 'topic-cherrypick', 'origin/'
                  + target_branch]
@@ -486,8 +504,11 @@ def cherry_pick(unique_commit_list, target_branch):
             r_cmd = ['ssh', '-p', '29418', 'review.sonyericsson.net', '-l',
                      gituser, 'gerrit', 'query', '--format=JSON',
                      'status:merged', 'limit:1', '--current-patch-set',
-                     'commit:' + commit]
+                     'commit:' + cmt.commit]
             out, err, ret = execmd(r_cmd)
+            if ret != 0:
+                print_err("%s %s" %(out, err))
+                cherry_pick_exit(STATUS_GIT_USR)
             #collect email addresses from gerrit
             gerrit_patchsets = json.JSONDecoder().raw_decode(out)[0]
             if gerrit_patchsets:
@@ -497,7 +518,7 @@ def cherry_pick(unique_commit_list, target_branch):
                 emails = list(set([a["by"]["email"] for a in approvals_email]))
 
             # now cherry pick
-            git_log, err, ret = execmd([GIT, 'cherry-pick', '-x', commit])
+            git_log, err, ret = execmd([GIT, 'cherry-pick', '-x', cmt.commit])
             if ret == 0:
                 #now edit commit msg to remove change id
                 commit_msg = open(".git/COMMIT_EDITMSG", 'r').read().split('\n')
@@ -517,7 +538,7 @@ def cherry_pick(unique_commit_list, target_branch):
                        '--receive-pack=git receive-pack %s' %
                        ' '.join(['--reviewer %s' %r for r in reviewers]),
                        'ssh://%s@review.sonyericsson.net:29418/%s.git' %
-                       (gituser,proj_name),
+                       (gituser,cmt.name),
                        'HEAD:refs/for/%s' % target_branch ]
                 if OPT.dry_run:
                     cmd.append('--dry-run')
@@ -529,7 +550,7 @@ def cherry_pick(unique_commit_list, target_branch):
                     else:
                         match = re.search('https://review.sonyericsson.net.*',
                                           err)
-                        if match is not None:
+                        if match:
                             #collect the gerrit id
                             pick_result = match.group(0)
                         else:
@@ -558,7 +579,7 @@ def cherry_pick(unique_commit_list, target_branch):
                                        if not OPT.dry_run else 'Dry-run ok')):
             ret_err = STATUS_CHERRYPICK_FAILED
 
-        result_dms_tag_list.append(pick_candidate + ',' + pick_result)
+        result_dms_tag_list.append(str(cmt) + ',' + pick_result)
     os.chdir(OPT.cwd)
     do_log('\n'.join(result_dms_tag_list), echo=True, file_name=
           "%s_cherrypick%s_result.csv" %
@@ -619,13 +640,16 @@ def main():
                    'install it here. '))
         cherry_pick_exit(STATUS_REPO)
 
-    print "Cherry pick starting..."
+    do_log("Cherrypick.py " +__version__, info="Cherry pick script", echo=True)
     if OPT.cwd:
         OPT.cwd = os.path.abspath(OPT.cwd)
         os.chdir(OPT.cwd)
+
     if not OPT.no_repo_sync:
         repo_sync()
+
     if  OPT.csv_file:
+        commit_list = []
         if OPT.target_branch == None:
             print_err("Must pass target (-t) branch name")
             cherry_pick_exit(STATUS_ARGS)
@@ -635,7 +659,17 @@ def main():
         except IOError, err:
             print_err(err)
             cherry_pick_exit(STATUS_FILE)
-        status_code = cherry_pick(unique_commit_list, OPT.target_branch)
+        for commit in unique_commit_list:
+            prts = commit.split(',')
+            if len(prts) < 5:
+                print_err('Not enough parameters in %s' %commit)
+                continue
+            else:
+                cmt = Commit(base=prts[0], path=prts[1], name=prts[2],
+                             commit=prts[3], dms=prts[4])
+                commit_list.append(cmt)
+        if commit_list:
+            status_code = cherry_pick(commit_list, OPT.target_branch)
         cherry_pick_exit(status_code)
 
     if (OPT.base_branches is None or
@@ -650,15 +684,15 @@ def main():
     if OPT.target_branch in OPT.base_branches.split(','):
         print_err("Base branch and target branch is same.")
         cherry_pick_exit(STATUS_ARGS)
-    sha1_dms_list = get_dms_list(OPT.target_branch)[1]
-    if len(sha1_dms_list) == 0:
+
+    commit_list = get_dms_list(OPT.target_branch)
+    if not commit_list :
         do_log("Nothing is found to process ", echo=True)
         cherry_pick_exit(STATUS_OK)
 
-    filtered_dms_list = filter_dms_list(sha1_dms_list)
-    dms_tag_list = dms_get_fix_for(filtered_dms_list)
-    unique_commit_list = create_cherry_pick_list(dms_tag_list,
-                                                 OPT.target_branch)
+    filtered_commit_list = filter_dms_list(commit_list)
+    commit_tag_list = dms_get_fix_for(filtered_commit_list)
+    unique_commit_list = create_cherry_pick_list(commit_tag_list)
     if not OPT.no_push_to_gerrit:
         status_code = cherry_pick(unique_commit_list, OPT.target_branch)
 
