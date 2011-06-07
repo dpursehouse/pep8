@@ -31,6 +31,10 @@ import semcutil
 # examined.
 DEFAULT_GIT_BRANCH_INCLUDES = [r"^"]
 
+# The default value of the command line option to select which
+# gits that should be examined.
+DEFAULT_GIT_INCLUDES = [r"^"]
+
 # The default value of the command line option to select which refs
 # from the manifest that should be examined.
 DEFAULT_MANIFEST_REF_INCLUDES = [r"^refs/remotes/origin/"]
@@ -121,6 +125,22 @@ def _main():
                            "higher precedence than inclusion. This option " \
                            "can also be used multiple times to add more " \
                            "expressions (default: <empty>).")
+    options.add_option("", "--include-git", dest="git_in",
+                       action="append", metavar="REGEXP",
+                       default=DEFAULT_GIT_INCLUDES,
+                       help="A regular expression that will be matched " \
+                           "against the name of the git to which the " \
+                           "change has been uploaded. This option can be " \
+                           "used multiple times to add more expressions. " \
+                           "The first use of this option will clear the " \
+                           "default value (%s) before appending the new " \
+                           "expression." % ", ".join(DEFAULT_GIT_INCLUDES))
+    options.add_option("", "--exclude-git", dest="git_ex",
+                       action="append", metavar="REGEXP",
+                       help="Same as --include-git but for excluding " \
+                           "gits. This option can also be used " \
+                           "multiple times to add more expressions " \
+                           "(default: <empty>).")
     options.add_option("", "--include-git-branch", dest="git_branch_in",
                        action="append", metavar="REGEXP",
                        default=DEFAULT_GIT_BRANCH_INCLUDES,
@@ -173,6 +193,10 @@ def _main():
         semcutil.fatal(2, "Query was expected to return a single change "
                        "but instead returned %d changes: %s" %
                        (len(change_info), querystring))
+
+    git_matcher = IncludeExcludeMatcher(options.git_in, options.git_ex)
+    if not git_matcher.match(affected_git):
+        return 0
 
     branch_matcher = IncludeExcludeMatcher(options.git_branch_in,
                                            options.git_branch_ex)
