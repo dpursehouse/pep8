@@ -987,7 +987,7 @@ def cherry_pick(unique_commit_list, target_branch):
                     if OPT.dry_run:
                         pick_result = 'Dry-run ok'
                     else:
-                        match = re.search('http[s]?://review.sonyericsson.net/[0-9]+', err)
+                        match = re.search('https?://review.sonyericsson.net/[0-9]+', err)
                         if match:
                             #collect the gerrit id
                             pick_result = match.group(0)
@@ -1023,8 +1023,11 @@ def cherry_pick(unique_commit_list, target_branch):
         do_log(git_log)
         git_log, err, ret = execmd([GIT, 'branch', '-D' , 'topic-cherrypick'])
         do_log(git_log)
-        if (not pick_result.startswith('https://review.sonyericsson.net'
-                                       if not OPT.dry_run else 'Dry-run ok')):
+        if OPT.dry_run:
+            match = re.search('Dry-run ok', pick_result)
+        else:
+            match = re.search('https?://review.sonyericsson.net', pick_result)
+        if not match:
             ret_err = STATUS_CHERRYPICK_FAILED
 
         cherrypick_result.append(str(cmt) + ',' + pick_result)
