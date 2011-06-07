@@ -89,7 +89,7 @@ import tempfile
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.2.9'
+__version__ = '0.2.10'
 
 REPO = 'repo'
 GIT = 'git'
@@ -329,9 +329,13 @@ class DMSTagServer():
 
 class Commit:
     """Data structure for a single commit"""
-    def __init__(self, target=None, path=None, name=None,
+    def __init__(self, target=None, target_origin=None, path=None, name=None,
                  author_date=None, commit=None, dms=None, title=None):
         self.target = target
+        if target_origin:
+            self.target_origin = target_origin
+        else:
+            self.target_origin = 'origin/' + self.target
         self.path = path
         self.name = name
         self.author_date = author_date
@@ -679,8 +683,11 @@ def get_dms_list(target_branch):
                                    rev_path + ',' + name, target_log)
         #handle new branch creation if target git rev is sha1
         if target_is_sha1 and b_commit_list:
-            if not create_branch(target_branch, b_commit_list,
+            if create_branch(target_branch, b_commit_list,
                                  t_commit_list, name, target_revision):
+                for commit in b_commit_list:
+                    commit.target_origin = target_revision
+            else:
                 os.chdir(OPT.cwd)
                 continue # nothing is to cherry pick in this git, so go next
         if b_commit_list:
@@ -946,8 +953,7 @@ def cherry_pick(unique_commit_list, target_branch):
         do_log( 'Cherry picking %s ..' % cmt, echo=True)
         os.chdir(os.path.join(OPT.cwd, cmt.path))
         #checkout the topic branch
-        r_cmd = [GIT, 'checkout', '-b', 'topic-cherrypick', 'origin/'
-                 + cmt.target]
+        r_cmd = [GIT, 'checkout', '-b', 'topic-cherrypick', cmt.target_origin]
         git_log, err, ret = execmd(r_cmd)
         if ret == 0:
             reviewers, url = gerrit.collect_email_addresses(cmt.commit)
