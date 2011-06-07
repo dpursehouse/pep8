@@ -3,7 +3,6 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.2.7
 '''
 
 DESCRIPTION = \
@@ -85,16 +84,18 @@ import socket
 import errno
 import signal
 import threading
+import tempfile
 
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.2.7'
+__version__ = '0.2.8'
 
 REPO = 'repo'
 GIT = 'git'
 OPT_PARSER = None
 OPT = None
+dst_manifest = None
 
 #Error codes
 STATUS_OK = 0
@@ -349,6 +350,52 @@ class Commit:
         return "%s,%s,%s,%s,%s" % (self.target, self.path,
                    self.name, self.commit, self.dms)
 
+
+class ManifestData():
+    """Functionality for handling manifest XML data"""
+    def __init__(self, xml_input_data):
+        """Raises xml.parsers.expat.ExpatError
+           if fails to parse data as valid XML"""
+        self.dom = xml.dom.minidom.parseString(xml_input_data)
+
+    def update_revision(self, project_name, new_revision):
+        for element in self.get_projects():
+            if (element.attributes['name'].nodeValue.encode('utf-8') ==
+                    project_name):
+                element.setAttribute('revision', new_revision)
+                return True
+        return False
+
+    def write_xmldata_to_file(self, file_path):
+        """Raises IOError if fails to write data to file"""
+        path = os.path.dirname(file_path)
+        fd, tmppath = tempfile.mkstemp(dir=path)
+        self.dom.writexml(os.fdopen(fd, "w"), encoding="UTF-8")
+        os.rename(tmppath, file_path)
+
+    def get_def_rev(self):
+        """Raises KeyError if fails to find tag name and/or revision"""
+        return self.dom.getElementsByTagName("default")[0]. \
+                    getAttribute('revision').encode('utf-8')
+
+    def get_projects(self):
+        """Raises KeyError if fails to find tag name"""
+        return self.dom.getElementsByTagName("project")
+
+def get_manifest_str(commit_ref):
+    """Reads the manifest file and returns the content as a string"""
+    current_path = os.getcwd()
+    os.chdir(os.path.join(OPT.cwd, '.repo/manifests'))
+    try:
+        manifest_str, err, ret = execmd([GIT, 'show', commit_ref + ':default.xml'])
+    finally:
+        os.chdir(current_path)
+    if ret != 0:
+        print_err("Can't read the manifest file for %s:\n%s" %
+                  (commit_ref, err))
+        cherry_pick_exit(STATUS_MANIFEST)
+    return manifest_str
+
 def str_list(commit_list):
     """Helper function to convert a list of Commit to list of strings"""
     commit_list = [str(cmt) for cmt in commit_list]
@@ -453,8 +500,8 @@ def cherry_pick_exit(exit_code):
     Exit this script with exit code and message
     """
     reason = {
-              STATUS_OK: "Cherry pick completed.",
-              STATUS_CHERRYPICK_FAILED : "Some or all cherry picks failed.",
+              STATUS_OK: "Cherry pick completed",
+              STATUS_CHERRYPICK_FAILED : "Some or all cherry picks failed",
               STATUS_REPO: "Repo error",
               STATUS_DMS_SRV: "DMS tag server is not reachable",
               STATUS_MANIFEST: "Manifest file error",
@@ -473,46 +520,39 @@ def cherry_pick_exit(exit_code):
     exit(exit_code)
 
 def parse_base_and_target_manifest(target_branch):
-    """Parse base and target manifest file"""
-    base_manifest = None
+    """Parses base and target manifest files"""
+    #parse base manifest
     try:
-        base_manifest = open(os.path.join(OPT.cwd, '.repo')+
-                             '/manifest.xml','r').read()
-    except IOError, err:
-        print_err(err)
+        base_manifest = ManifestData(get_manifest_str('HEAD'))
+        base_proj_rev = {}
+        for node in base_manifest.get_projects():
+            rev = node.getAttribute('revision')
+            path = node.getAttribute('path')
+            name = node.getAttribute('name')
+            rev = base_manifest.get_def_rev() if rev == '' else rev
+            if OPT.base_branches: #if any base branches mentioned, consider these
+                for base_branch in  OPT.base_branches.split(','):
+                    if rev == base_branch:
+                        base_proj_rev[name] = base_branch + ',' + path
+                        break
+            else:               #otherwise consider all
+                base_proj_rev[name] = rev + ',' + path
+    except (KeyError, xml.parsers.expat.ExpatError), err:
+        print_err("Failed to parse base manifest: %s" % err)
         cherry_pick_exit(STATUS_MANIFEST)
-    base_proj_rev = {}
-    dom = xml.dom.minidom.parseString(base_manifest)
-    def_rev = dom.getElementsByTagName("default")[0].getAttribute('revision')
-    dom_nodes = dom.getElementsByTagName("project")
-    for node in dom_nodes:
-        rev = node.getAttribute('revision')
-        path = node.getAttribute('path')
-        name = node.getAttribute('name')
-        rev = def_rev if rev == '' else rev
-        if OPT.base_branches: #if any base branches mentioned, consider these
-            for base_branch in  OPT.base_branches.split(','):
-                if rev == base_branch:
-                    base_proj_rev[name] = base_branch + ',' + path
-                    break
-        else:               #otherwise consider all
-            base_proj_rev[name] = rev + ',' + path
-
     #parse target manifest
-    os.chdir(os.path.join(OPT.cwd, '.repo/manifests'))
-    cmd = [GIT, 'show', 'origin/' + target_branch +':default.xml']
-    dst_manifest, err, ret = execmd(cmd)
-    if ret != 0:
-        print_err("manifest file for origin/%s not found.\n" % target_branch)
+    try:
+        global dst_manifest
+        dst_manifest = ManifestData(get_manifest_str('origin/' +
+                                                     target_branch))
+        dst_proj_rev = {}
+        for node in dst_manifest.get_projects():
+            rev = node.getAttribute('revision')
+            rev = dst_manifest.get_def_rev() if rev == '' else rev
+            dst_proj_rev[node.getAttribute('path')] = rev
+    except (KeyError, xml.parsers.expat.ExpatError), err:
+        print_err("Failed to parse target manifest: %s" % err)
         cherry_pick_exit(STATUS_MANIFEST)
-    dom = xml.dom.minidom.parseString(dst_manifest)
-    dom_nodes = dom.getElementsByTagName("project")
-    def_rev = dom.getElementsByTagName("default")[0].getAttribute('revision')
-    dst_proj_rev = {}
-    for node in dom_nodes:
-        rev = node.getAttribute('revision')
-        rev = def_rev if rev == '' else rev
-        dst_proj_rev[node.getAttribute('path')] = rev
     return base_proj_rev, dst_proj_rev
 
 def repo_sync():
