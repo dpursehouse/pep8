@@ -89,13 +89,15 @@ import tempfile
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.2.10'
+__version__ = '0.3.0'
 
 REPO = 'repo'
 GIT = 'git'
 OPT_PARSER = None
 OPT = None
 dst_manifest = None
+manifest_change_required = False
+upd_project_list = []
 
 #Error codes
 STATUS_OK = 0
@@ -109,6 +111,9 @@ STATUS_GIT_USR = 7
 STATUS_GERRIT_ERR = 8
 STATUS_RM_PROJECTLIST = 9
 STATUS_USER_ABORTED = 10
+STATUS_RM_MANIFEST_DIR = 11
+STATUS_CLONE_MANIFEST = 12
+STATUS_UPDATE_MANIFEST = 13
 
 #Server communication tags
 SRV_DMS_STATUS = 'DMS_STATUS'
@@ -488,6 +493,11 @@ def option_parser():
                      dest='no_repo_sync',
                      help='Do not repo sync', action="store_true",
                      default=False)
+    opt_group.add_option('--skip-review',
+                     dest='skip_review',
+                     help='Skip Gerrit review of manifest changes',
+                     action="store_true",
+                     default=False)
     opt_group.add_option('-n', '--no-push-to-gerrit',
                      dest='no_push_to_gerrit',
                      help='Do not cherry pick and push to Gerrit',
@@ -513,7 +523,7 @@ def cherry_pick_exit(exit_code):
     """
     reason = {
               STATUS_OK: "Cherry pick completed",
-              STATUS_CHERRYPICK_FAILED : "Some or all cherry picks failed",
+              STATUS_CHERRYPICK_FAILED: "Some or all cherry picks failed",
               STATUS_REPO: "Repo error",
               STATUS_DMS_SRV: "DMS tag server is not reachable",
               STATUS_MANIFEST: "Manifest file error",
@@ -522,7 +532,10 @@ def cherry_pick_exit(exit_code):
               STATUS_GIT_USR: "Git config error",
               STATUS_GERRIT_ERR: "Gerrit server is not reachable",
               STATUS_RM_PROJECTLIST: "Failed to remove .repo/project.list",
-              STATUS_USER_ABORTED: "Aborted by user"
+              STATUS_USER_ABORTED: "Aborted by user",
+              STATUS_RM_MANIFEST_DIR: "Failed to remove /manifest directory",
+              STATUS_CLONE_MANIFEST: "Failed to clone the manifest git",
+              STATUS_UPDATE_MANIFEST: "Failed to update the manifest"
               }
     msg = reason.get(exit_code)
     if exit_code != STATUS_OK:
@@ -712,10 +725,105 @@ def get_dms_list(target_branch):
             info='Diff list')
     return final_commit_list
 
+def clone_manifest_git(branch):
+    """Clone the manifest git"""
+    do_log("Removing the old manifest clone directory...", echo=True)
+    ret = execmd(['rm', '-f', '-r', 'manifest'])[2]
+    if (ret != 0):
+        cherry_pick_exit(STATUS_RM_MANIFEST_DIR)
+    do_log("Cloning the manifest git of branch %s..." % branch, echo=True)
+    out, err, ret = execmd([GIT, 'clone',
+                  'git://review.sonyericsson.net/platform/manifest',
+                  '-b', branch], 300)
+    if (ret != 0):
+        do_log(err, echo=True)
+        cherry_pick_exit(STATUS_CLONE_MANIFEST)
+
+def update_manifest(branch, skip_review):
+    """
+    Uploads the manifest changes upon rebase
+    """
+    #Clone the target manifest git
+    clone_manifest_git(branch)
+
+    global upd_project_list
+    do_log("Updating the target manifest...", echo=True)
+    gituser = get_git_user()
+    recipient = [gituser + '@sonyericsson.com']
+    os.chdir(OPT.cwd + '/manifest')
+    #Creates a topic branch for the manifest changes
+    #and writes the changes to default.xml
+    out, err, ret = execmd([GIT, 'branch', 'manifest-change'])
+    if (ret != 0):
+        do_log(err, echo=True)
+        return STATUS_UPDATE_MANIFEST
+    out, err, ret = execmd([GIT, 'checkout', 'manifest-change'])
+    if (ret != 0):
+        do_log(err, echo=True)
+        return STATUS_UPDATE_MANIFEST
+    global dst_manifest
+    try:
+        dst_manifest.write_xmldata_to_file('default.xml')
+    except IOError, err:
+        do_log(err, echo=True)
+        return STATUS_UPDATE_MANIFEST
+    out, err, ret = execmd([GIT, 'add', 'default.xml'])
+    if (ret != 0):
+        do_log(err, echo=True)
+        return STATUS_UPDATE_MANIFEST
+    proj_list = ''
+    for upl in upd_project_list:
+        proj_list += '    ' + upl + '\n'
+    commit_msg = 'Auto cherry-pick change\n\n' \
+                 'The following project(s) revision was updated to ' + \
+                  branch + ':\n' + proj_list
+    out, err, ret = execmd([GIT, 'commit', '-m', commit_msg])
+    if (ret != 0):
+        do_log(err, echo=True)
+        return STATUS_UPDATE_MANIFEST
+    #Rebase the manifest git
+    out, err, ret = execmd([GIT, 'fetch'], 300)
+    if (ret != 0):
+        do_log(err, echo=True)
+        return STATUS_UPDATE_MANIFEST
+    out, err, ret = execmd([GIT, 'rebase', 'origin/' + branch], 300)
+    if (ret != 0):
+        do_log("Can't rebase the manifest: %s" % err, echo=True)
+        update_manifest_mail(branch, 'manifest', recipient)
+        return STATUS_UPDATE_MANIFEST
+    #Push the updated manifest
+    if (skip_review):
+        dst_push = 'heads'
+    else:
+        dst_push = 'for'
+    cmd = [GIT, 'push',
+           'ssh://%s@review.sonyericsson.net:29418/platform/manifest' %
+           gituser,'HEAD:refs/%s/%s' % (dst_push, branch)]
+    out, err, ret = execmd(cmd, 300)
+    if (ret != 0):
+        do_log(err, echo=True)
+        return STATUS_UPDATE_MANIFEST
+    elif skip_review:
+        email('[Cherrypick] [%s] Manifest updated' % branch,
+              'Hello,\n\nThe manifest file of %s was updated and merged. '
+              'Updated project(s):\n%s\n\nCherry-picker' %
+              (branch, proj_list),
+              recipient)
+    else:
+        email('[Cherrypick] [%s] Manifest updated' % branch,
+              'Hello,\n\nThe manifest file of %s was updated and uploaded '
+              'for review. Updated project(s):\n%s\n\nCherry-picker' %
+              (branch, proj_list),
+              recipient)
+    return STATUS_OK
+
 def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
     """
     Create branch from sha1 if somethig to cherry pick
     """
+    global dst_manifest
+    global manifest_change_required
+    global upd_project_list
     delta_list = []
     delta_list += b_commit_list
     for cmt in b_commit_list:
@@ -739,10 +847,11 @@ def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
         ret = execmd([GIT, 'show-ref', '-q', '--verify',
                       'refs/remotes/origin/' + target_branch])[2]
         if ret == 0:
-            do_log("Branch %s already available for %s. Please update manifest."
+            do_log("Branch %s already available for %s. Manifest file will be updated."
                    % (target_branch, git_name), echo=True)
-            #mail to inform manifest updated is needed
-            update_manifest_mail(cmt.target, cmt.name, recipient)
+            dst_manifest.update_revision(git_name, target_branch)
+            manifest_change_required = True
+            upd_project_list.append(git_name)
             return True
         cmd = [GIT, 'push','ssh://%s@review.sonyericsson.net:29418/%s.git' %
                (gituser,git_name),'%s:refs/heads/%s'%(sha1, target_branch)]
@@ -753,7 +862,9 @@ def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
             do_log(log)
             do_log(err)
             execmd([GIT, 'fetch'])
-            #mail to inform manifest updated is needed
+            dst_manifest.update_revision(git_name, target_branch)
+            manifest_change_required = True
+            upd_project_list.append(git_name)
             create_branch_mail(cmt.target, cmt.name, recipient)
             return True
         else:
@@ -1019,7 +1130,7 @@ def cherry_pick(unique_commit_list, target_branch):
             pick_result = '%s %s' % (git_log, err)
             do_log(pick_result)
         #move to origin and delete topic branch
-        git_log, err, ret = execmd([GIT, 'checkout', 'origin/' + cmt.target])
+        git_log, err, ret = execmd([GIT, 'checkout', cmt.target_origin])
         do_log(git_log)
         git_log, err, ret = execmd([GIT, 'branch', '-D' , 'topic-cherrypick'])
         do_log(git_log)
@@ -1117,23 +1228,24 @@ def create_branch_mail(branch, name, recipient):
     """
     Mail to notify branch creation.
     """
-    subject = ('[Cherrypick] [%s] New branch created for %s.'%
+    subject = ('[Cherrypick] [%s] New branch created for %s' %
                (branch, name))
     body = ('Hello,\n\nNew branch has been created for %s.' % name +
-            '\nPlease update manifest file of %s branch and reply '% branch +
-            'this mail with change id.\n\nThanks,\nCherry-picker.')
+            '\nThe manifest file of %s branch will be updated.'% branch +
+            '\n\nCherry-picker')
     email(subject, body, recipient)
 
 def update_manifest_mail(branch, name, recipient):
     """
     Mail to update manifest request.
     """
-    subject = ('[Cherrypick] [%s] Manifest is not updated for %s.'%
+    subject = ('[Cherrypick] [%s] Manifest is not updated for %s' %
                (branch, name))
-    body = ('Hello,\n\nManifest file of %s branch is not updated ' % branch +
-            'for %s.\nPlease update manifest file for %s '% (name, branch) +
-            'branch and reply this mail with change id.' +
-            '\n\nThanks,\nCherry-picker.')
+    body = ('Hello,\n\nThe manifest file of %s branch ' % branch +
+            'can\'t be updated for the following project(s):\n%s\n\n' % name +
+            'Please update the manifest file ' +
+            'and reply to this mail with the change id.' +
+            '\n\nThanks,\nCherry-picker')
     email(subject, body, recipient)
 
 def conflict_mail(branch, url, change_id, recipient, result):
@@ -1223,11 +1335,12 @@ def main():
     """
     Cherry pick main function
     """
+    global manifest_change_required
     global OPT_PARSER, OPT
     OPT_PARSER = option_parser()
     OPT = OPT_PARSER.parse_args()[0]
 
-    if len(sys.argv) <2:
+    if len(sys.argv) < 2:
         OPT_PARSER.error("Insufficient arguments")
     if OPT.config_file:
         if not OPT.target_branch:
@@ -1292,6 +1405,10 @@ def main():
     unique_commit_list = create_cherry_pick_list(commit_tag_list)
     if not OPT.no_push_to_gerrit:
         status_code = cherry_pick(unique_commit_list, OPT.target_branch)
+    if (not OPT.dry_run and manifest_change_required):
+        status_manifest = update_manifest(OPT.target_branch, OPT.skip_review)
+        if (status_manifest != STATUS_OK):
+            do_log("Failed to update the manifest", echo=True)
 
     cherry_pick_exit(status_code)
 
