@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.1.7
+@version: 0.1.8
 '''
 
 DESCRIPTION = \
@@ -19,6 +19,9 @@ list and a _result.csv file with the result of each cherry pick execution.
 During each cherry pick, commit id will be checked in Gerrit commit message,
 and cherry pick of this commit will be skipped if corresponding commit is found
 in open or abandoned state.
+
+Email will be sent to corresponding persons for each cherry-pick failure with
+reason and Gerrit URL. And in dry-run mode, email will be sent only to executor.
 
 It is possible to simulate the whole process by using the --dry-run option and
 possible to create only the cherry pick list and skip the push to Gerrit
@@ -67,7 +70,7 @@ import socket
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.1.7'
+__version__ = '0.1.8'
 
 REPO = 'repo'
 GIT = 'git'
@@ -164,13 +167,14 @@ class Gerrit():
             cherry_pick_exit(STATUS_GERRIT_ERR)
         #collect email addresses from Gerrit
         gerrit_patchsets = json.JSONDecoder().raw_decode(out)[0]
-        emails = None
+        emails, url = None, None
         if gerrit_patchsets:
             approvals_email = filter(lambda a: "email" in a["by"],
                                      gerrit_patchsets["currentPatchSet"]
                                      ["approvals"])
             emails = list(set([a["by"]["email"] for a in approvals_email]))
-        return emails
+            url = gerrit_patchsets['url'].strip()
+        return emails, url
 
     def is_commit_available(self, commit, target_branch, prj_name):
         '''
@@ -657,7 +661,8 @@ def cherry_pick(unique_commit_list, target_branch):
         tag_server = DMSTagServer(OPT.dms_tag_server)
         records = tag_server.retrieve(target_branch + dry_run)
         if not records:
-            print_err("Server is not reachable to check old cherry pick")
+            print_err("No old cherries found or server is not "+
+                      "reachable to check old cherries")
         elif 'Unavailable' not in records:
             do_log(records, info="Old cherries", echo=True)
             old_cherries =  records.strip().split('\n')
@@ -694,7 +699,9 @@ def cherry_pick(unique_commit_list, target_branch):
                  + target_branch]
         git_log, err, ret = execmd(r_cmd)
         if ret == 0:
-            emails = gerrit.collect_email_addresses(cmt.commit)
+            reviewers, url = gerrit.collect_email_addresses(cmt.commit)
+            if  OPT.reviewers:
+                reviewers +=  OPT.reviewers.split(',')
             # now cherry pick
             git_log, err, ret = execmd([GIT, 'cherry-pick', '-x', cmt.commit])
             if ret == 0:
@@ -709,9 +716,6 @@ def cherry_pick(unique_commit_list, target_branch):
                 #amend to add a new change id
                 git_log, err, ret = execmd([GIT, 'commit', '--amend',
                                             '-F', '.git/COMMIT_EDITMSG'])
-                reviewers = emails
-                if  OPT.reviewers:
-                    reviewers +=  OPT.reviewers.split(',')
                 cmd = [GIT, 'push',
                        '--receive-pack=git receive-pack %s' %
                        ' '.join(['--reviewer %s' %r for r in reviewers]),
@@ -731,9 +735,9 @@ def cherry_pick(unique_commit_list, target_branch):
                             #collect the gerrit id
                             pick_result = match.group(0)
                         else:
-                            pick_result = 'Failed'
+                            pick_result = 'Gerrit URL not found after push'
                 else:
-                    pick_result = 'Failed'
+                    pick_result = 'Failed to push to Gerrit'
             else:
                 if 'the conflicts' in err:
                     pick_result = 'Failed due to merge conflict'
@@ -741,12 +745,19 @@ def cherry_pick(unique_commit_list, target_branch):
                     pick_result = 'Already merged, nothing to commit'
                 else:
                     pick_result = 'Failed due to unknown reason'
+                emails = [gituser+'@sonyericsson.com'] if OPT.dry_run else reviewers
+                email('Cherry-pick %s into %s has failed.'%(url, target_branch),
+                       emails,
+                      'Hello,\n Cherry-pick %s into %s '%(url, target_branch) +
+                      'has failed and the reason is %s.\n' %(pick_result) +
+                      'Thanks,\nCherry-picker.')
                 print_err(err)
                 print_err("Resetting to HEAD...")
                 git_log, err, ret = execmd([GIT, 'reset', '--hard'])
                 do_log(git_log)
         else:
-            pick_result = 'Failed'
+            pick_result = '%s, %s' % (git_log, err)
+            do_log(pick_result)
         #move to origin and delete topic branch
         git_log, err, ret = execmd([GIT, 'checkout', 'origin/' + target_branch])
         do_log(git_log)
@@ -807,6 +818,33 @@ def do_log(contents, file_name=None, info=None, echo=False):
             print (10*'=' ) + info + (10*'=' )
         print >> sys.stdout, contents
     sys.stdout.flush()
+
+def email(subject, recepent, body):
+    '''
+    Email function
+    '''
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    msg = MIMEMultipart()
+    msg['Subject'] = subject
+    sender = 'DL-WW-eDream4_0-CM@sonyericsson.com'
+
+    msg['From'] = sender
+    msg['To'] = ', '.join(recepent)
+    msg.preamble = subject
+    text = MIMEText(body)
+    msg.attach(text)
+    # Send the email via our own SMTP server.
+    try:
+        mailer = smtplib.SMTP('smtpem1.sonyericsson.net')
+        mailer.sendmail(sender, recepent, msg.as_string())
+        mailer.quit()
+    except Exception, exp:
+        print_err('Failed to send mail due to SMTP error: %s'%exp[1])
+        return
+    do_log('Mail sent to %s for %s' % (', '.join(recepent), subject))
 
 def main():
     """
