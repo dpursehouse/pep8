@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.2
+@version: 0.2.1
 '''
 
 DESCRIPTION = \
@@ -18,8 +18,8 @@ list and a _result.csv file with the result of each cherry pick execution.
 
 Possible to use configuration file(--config) to set the argument values.
 Config file has higher priority on default command line parameter values
-(e.g. cwd) and command line parameter has higher priority than config file values
-for others.
+(e.g. cwd) and command line parameter has higher priority than config file
+values for others.
 
 During each cherry pick, commit id will be checked in Gerrit commit message,
 and cherry pick of this commit will be skipped if corresponding commit is found
@@ -86,7 +86,7 @@ import socket
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.2'
+__version__ = '0.2.1'
 
 REPO = 'repo'
 GIT = 'git'
@@ -319,9 +319,9 @@ class DMSTagServer():
 
 class Commit:
     """Data structure for a single commit"""
-    def __init__(self, base=None, path=None, name=None,
+    def __init__(self, target=None, path=None, name=None,
                  author_date=None, commit=None, dms=None, title=None):
-        self.base = base
+        self.target = target
         self.path = path
         self.name = name
         self.author_date = author_date
@@ -330,8 +330,8 @@ class Commit:
         self.title = title
     def cmp(self, commit):
         """compare itself with another commit"""
-        if (((self.base, self.name, self.dms) ==
-            (commit.base, commit.name, commit.dms)) and
+        if (((self.target, self.name, self.dms) ==
+            (commit.target, commit.name, commit.dms)) and
             (self.author_date == commit.author_date or
              self.title == commit.title)) :
             #check author date and title if either one match, to detect
@@ -340,7 +340,7 @@ class Commit:
             return True
         return False
     def __str__(self):
-        return "%s,%s,%s,%s,%s" % (self.base, self.path,
+        return "%s,%s,%s,%s,%s" % (self.target, self.path,
                    self.name, self.commit, self.dms)
 
 def str_list(commit_list):
@@ -353,8 +353,8 @@ def option_parser():
     """
     Option parser
     """
-    usage = ("%prog -t TARGET_BRANCH [--config CONF_FILE |-b BASE_BRANCHES," +
-             ".. -d DMS_TAGS,... [options]]")
+    usage = ("%prog -t TARGET_BRANCH [--config CONF_FILE |-d DMS_TAGS" +
+             ",... [options]]")
     opt_parser = optparse.OptionParser(formatter=HelpFormatter(),
                                        usage=usage, description=DESCRIPTION,
                                        version='%prog ' + __version__)
@@ -364,7 +364,7 @@ def option_parser():
                      action="store", default=None, metavar="FILE")
     opt_parser.add_option('-b', '--base-branches',
                      dest='base_branches',
-                     help='base branches (comma separated)',
+                     help='base branches (comma separated), default is all.',
                      action="store", default=None)
     opt_parser.add_option('-t', '--target-branch',
                      dest='target_branch',
@@ -455,6 +455,49 @@ def cherry_pick_exit(exit_code):
         do_log(msg, echo=True)
     exit(exit_code)
 
+def parse_base_and_target_manifest(target_branch):
+    """Parse base and target manifest file"""
+    base_manifest = None
+    try:
+        base_manifest = open(os.path.join(OPT.cwd, '.repo')+
+                             '/manifest.xml','r').read()
+    except IOError, err:
+        print_err(err)
+        cherry_pick_exit(STATUS_MANIFEST)
+    base_proj_rev = {}
+    dom = xml.dom.minidom.parseString(base_manifest)
+    def_rev = dom.getElementsByTagName("default")[0].getAttribute('revision')
+    dom_nodes = dom.getElementsByTagName("project")
+    for node in dom_nodes:
+        rev = node.getAttribute('revision')
+        path = node.getAttribute('path')
+        name = node.getAttribute('name')
+        rev = def_rev if rev == '' else rev
+        if OPT.base_branches: #if any base branches mentioned, consider these
+            for base_branch in  OPT.base_branches.split(','):
+                if rev == base_branch:
+                    base_proj_rev[name] = base_branch + ',' + path
+                    break
+        else:               #otherwise consider all
+            base_proj_rev[name] = rev + ',' + path
+
+    #parse target manifest
+    os.chdir(os.path.join(OPT.cwd, '.repo/manifests'))
+    cmd = [GIT, 'show', 'origin/' + target_branch +':default.xml']
+    dst_manifest, err, ret = execmd(cmd)
+    if ret != 0:
+        print_err("manifest file for origin/%s not found.\n" % target_branch)
+        cherry_pick_exit(STATUS_MANIFEST)
+    dom = xml.dom.minidom.parseString(dst_manifest)
+    dom_nodes = dom.getElementsByTagName("project")
+    def_rev = dom.getElementsByTagName("default")[0].getAttribute('revision')
+    dst_proj_rev = {}
+    for node in dom_nodes:
+        rev = node.getAttribute('revision')
+        rev = def_rev if rev == '' else rev
+        dst_proj_rev[node.getAttribute('path')] = rev
+    return base_proj_rev, dst_proj_rev
+
 def repo_sync():
     """
     Repo sync
@@ -473,80 +516,48 @@ def get_dms_list(target_branch):
     from MERGE_BASE to  TARGET_BRANCH. Return the DMSs list which are not in
     TARGET_BRANCH.
     """
-    base_manifest = None
-    try:
-        base_manifest = open(os.path.join(OPT.cwd, '.repo')+
-                      '/manifest.xml','r').read()
-    except IOError, err:
-        print_err(err)
-        cherry_pick_exit(STATUS_MANIFEST)
-    base_proj_rev_dict = {}
-    dom = xml.dom.minidom.parseString(base_manifest)
-    def_rev = dom.getElementsByTagName("default")[0].getAttribute('revision')
-    dom_nodes = dom.getElementsByTagName("project")
-    for node in dom_nodes:
-        rev = node.getAttribute('revision')
-        path = node.getAttribute('path')
-        name = node.getAttribute('name')
-        if OPT.exclude_git and name in OPT.exclude_git.split(','):
-            continue    #exclude gits
-        rev = def_rev if rev == '' else rev
-        for base_branch in  OPT.base_branches.split(','):
-            if rev == base_branch:
-                base_proj_rev_dict[name] = base_branch + ',' + path
-                break
+    #Parse base and target manifest file
+    base_proj_rev, dst_proj_rev = parse_base_and_target_manifest(target_branch)
 
     merge_base_log = open('merge-base.log', 'wb')
     base_log = open('source_commit.log', 'wb')
     target_log = open(target_branch + '_commit.log', 'wb')
     base_commit_list, target_commit_list = [], []
-    os.chdir(os.path.join(OPT.cwd, '.repo/manifests'))
-    cmd = [GIT, 'show', 'origin/' + target_branch +':default.xml']
-    dst_manifest, err, ret = execmd(cmd)
-    if ret != 0:
-        print_err("manifest file for origin/%s not found.\n" % target_branch)
-        cherry_pick_exit(STATUS_MANIFEST)
-    dom = xml.dom.minidom.parseString(dst_manifest)
-    dom_nodes = dom.getElementsByTagName("project")
-    dst_proj_rev = {}
-    for node in dom_nodes:
-        dst_proj_rev[node.getAttribute('path')] = node.getAttribute('revision')
 
-    for name, rev_path in base_proj_rev_dict.iteritems():
-        #-------check if current git is available in destination ------
+    for name, rev_path in base_proj_rev.iteritems():
         target_revision = None
+        target_is_sha1 = False
         path = rev_path.split(',')[1]
         base_rev = rev_path.split(',')[0]
+        if OPT.exclude_git and name in OPT.exclude_git.split(','):
+            continue    #exclude gits
+
         os.chdir(os.path.join(OPT.cwd, path))
+        #check base rev is sha1 or branch
         ret = execmd([GIT, 'show-ref', '-q', '--verify',
-                      'refs/remotes/origin/' + target_branch])[2]
+                      'refs/remotes/origin/' + base_rev])[2]
         if ret != 0:
-            if dst_proj_rev.has_key(path):
-                revision = dst_proj_rev[path]
-                if revision :
-                    target_revision = revision
-                    os.chdir(os.path.join(OPT.cwd, path))
-                    ret = execmd([GIT, 'show-ref', '-q', '--verify',
-                                'refs/remotes/origin/' + target_revision])[2]
-                    #if target_revision exits
-                    if ret == 0:
-                        #its a branch name
-                        target_revision = 'origin/' + target_revision
-                    #otherwise its sha1 or tag
-                else:
-                    target_revision = 'origin/' + target_branch #use default
-            else:
-                print_err("Branch not found in destination for git %s" % name)
+            continue #it is sha1 or tag, so ignore
+        #check target branch for this git is available
+        if not dst_proj_rev.has_key(path):
+            print_err("Branch not found in destination for git %s" % name)
+            continue
+        t_revision = dst_proj_rev[path]
+        if t_revision == base_rev:
+            #no need to proceed if both has same revision
+            continue
+        ret = execmd([GIT, 'show-ref', '-q', '--verify',
+                      'refs/remotes/origin/' + t_revision])[2]
+        if ret != 0:
+            ret = execmd([GIT, 'show-ref', '-q', '--verify', t_revision])[2]
+            if ret == 0: # it is a tag??
                 continue
-            if target_revision == 'origin/' + base_rev:
-                #no need to merge
-                continue
-        #------------end of unspecified git in destination handle--------------
+            target_revision = t_revision #its a sha1
+            target_is_sha1 = True
+        else:
+            target_revision = 'origin/' + t_revision
 
         os.chdir(os.path.join(OPT.cwd, path))
-        if target_revision is None:
-            target_revision = 'origin/' + target_branch
-
         mergebase, err, ret = execmd([GIT, 'merge-base', 'origin/' +
                                       base_rev, target_revision])
         if not mergebase:
@@ -555,14 +566,24 @@ def get_dms_list(target_branch):
             print_err(err)
             continue
         merge_base_log.write(mergebase + '\n')
+        if target_is_sha1: # add traget rev and path to commit
+            rev_path = target_branch + ',' + path
+        else:
+            rev_path = t_revision + ',' + path
         #read merge base to base branch log
         b_commit_list = collect_fix_dms('origin/' + base_rev, mergebase,
                                    rev_path + ',' + name, base_log)
-        if b_commit_list:
-            base_commit_list += b_commit_list
         #read merge base to target branch log
         t_commit_list = collect_fix_dms(target_revision, mergebase,
                                    rev_path + ',' + name, target_log)
+        #handle new branch creation if target git rev is sha1
+        if target_is_sha1 and b_commit_list:
+            if not create_branch(target_branch, b_commit_list,
+                                 t_commit_list, name, target_revision):
+                os.chdir(OPT.cwd)
+                continue # nothing is to cherry pick in this git, so go next
+        if b_commit_list:
+            base_commit_list += b_commit_list
         if t_commit_list:
             target_commit_list += t_commit_list
         os.chdir(OPT.cwd)
@@ -583,6 +604,58 @@ def get_dms_list(target_branch):
             info='Diff list')
     return final_commit_list
 
+def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
+    """
+    Create branch from sha1 if somethig to cherry pick
+    """
+    delta_list = []
+    delta_list += b_commit_list
+    for cmt in b_commit_list:
+        for t_cmt in t_commit_list:
+            if cmt.cmp(t_cmt):
+                delta_list.remove(cmt)
+                break
+    if not delta_list:
+        return False
+    delta_list = dms_get_fix_for(delta_list)
+    if delta_list:
+        #We have some change to cherry pick, so need to create branch
+        gituser = get_git_user()
+        gerrit = Gerrit(gerrit_user=gituser)
+        #take a commit
+        cmt = delta_list[0]
+        if OPT.dry_run:
+            recipient = [gituser + '@sonyericsson.com']
+        else:
+            recipient = gerrit.collect_email_addresses(cmt.commit)[0]
+        ret = execmd([GIT, 'show-ref', '-q', '--verify',
+                      'refs/remotes/origin/' + target_branch])[2]
+        if ret == 0:
+            do_log("Branch %s already available for %s. Please update manifest."
+                   % (target_branch, git_name), echo=True)
+            #mail to inform manifest updated is needed
+            update_manifest_mail(cmt.target, cmt.name, recipient)
+            return True
+        cmd = [GIT, 'push','ssh://%s@review.sonyericsson.net:29418/%s.git' %
+               (gituser,git_name),'%s:refs/heads/%s'%(sha1, target_branch)]
+        log, err, ret = execmd(cmd)
+        if ret == 0:
+            do_log("Branch %s created for %s." % (target_branch, git_name),
+                   echo=True)
+            do_log(log)
+            do_log(err)
+            execmd([GIT, 'fetch'])
+            #mail to inform manifest updated is needed
+            create_branch_mail(cmt.target, cmt.name, recipient)
+            return True
+        else:
+            do_log("Failed to create %s branch for %s." %
+                   (target_branch, git_name), echo=True)
+            do_log(log)
+            do_log(err)
+            return False
+    else:
+        return False
 
 def collect_fix_dms(branch, commit_begin, project, log_file):
     """
@@ -605,12 +678,13 @@ def collect_fix_dms(branch, commit_begin, project, log_file):
         elif re.match(r'^\s*?FIX\s*=\s*DMS[0-9]+', log_str):   #"FIX=DMSxxxxx"
             dms_str = log_str.split('=')
             dms_id = dms_str[1].strip()     #DMSxxxxxxx
-            if OPT.exclude_commit and commit_id in OPT.exclude_commit.split(','):
+            if (OPT.exclude_commit and
+                commit_id in OPT.exclude_commit.split(',')):
                 continue                    #exclude commit
             if OPT.exclude_dms and dms_id in OPT.exclude_dms.split(','):
                 continue                    #exclude dms
             rev, path, name = project.split(',')
-            cmt = Commit(base=rev, path=path, name=name, dms=dms_id,
+            cmt = Commit(target=rev, path=path, name=name, dms=dms_id,
                          commit=commit_id, author_date=author_date,
                          title=title)
             commit_list.append(cmt)
@@ -690,6 +764,23 @@ def create_cherry_pick_list(commit_tag_list):
            info="Cherrys..")
     return unique_commit_tag_list
 
+def get_git_user():
+    """
+    Collect git user id
+    """
+    gituser = None
+    if OPT.gerrit_user:
+        gituser = OPT.gerrit_user
+    else:
+        gituser = execmd([GIT, 'config', '--get', 'user.email'])[0]
+        if gituser:
+            gituser = gituser.split('@')[0]
+        if not gituser:
+            print_err("user.email is not configured for git yet")
+            print_err("Please run this after git configuration is done.")
+            cherry_pick_exit(STATUS_GIT_USR)
+    return gituser
+
 def cherry_pick(unique_commit_list, target_branch):
     """
     1. Create the topic-cherrypick branch
@@ -702,19 +793,9 @@ def cherry_pick(unique_commit_list, target_branch):
     8. delete topic-cherrypick branch
     """
     ret_err = STATUS_OK
-    if OPT.gerrit_user:
-        gituser = OPT.gerrit_user
-    else:
-        gituser = execmd([GIT, 'config', '--get', 'user.email'])[0]
-        if gituser:
-            gituser = gituser.split('@')[0]
-        if not gituser:
-            print_err("user.email is not configured for git yet")
-            print_err("Please run this after git configuration is done.")
-            cherry_pick_exit(STATUS_GIT_USR)
-
+    gituser = get_git_user()
     if not OPT.mail_sender:
-        OPT.mail_sender = gituser+'@sonyericsson.com'
+        OPT.mail_sender = gituser + '@sonyericsson.com'
 
     #keep the result here
     cherrypick_result = []
@@ -745,7 +826,7 @@ def cherry_pick(unique_commit_list, target_branch):
                     go_next = True
                     break
         #end of old cherry check
-        url_date = gerrit.is_commit_available(cmt.commit, target_branch,
+        url_date = gerrit.is_commit_available(cmt.commit, cmt.target,
                                               cmt.name)
         if url_date[0]:
             do_log('%s is %s in Gerrit, url %s, last updated on %s' %
@@ -765,7 +846,7 @@ def cherry_pick(unique_commit_list, target_branch):
         os.chdir(os.path.join(OPT.cwd, cmt.path))
         #checkout the topic branch
         r_cmd = [GIT, 'checkout', '-b', 'topic-cherrypick', 'origin/'
-                 + target_branch]
+                 + cmt.target]
         git_log, err, ret = execmd(r_cmd)
         if ret == 0:
             reviewers, url = gerrit.collect_email_addresses(cmt.commit)
@@ -790,7 +871,7 @@ def cherry_pick(unique_commit_list, target_branch):
                        ' '.join(['--reviewer %s' %r for r in reviewers]),
                        'ssh://%s@review.sonyericsson.net:29418/%s.git' %
                        (gituser,cmt.name),
-                       'HEAD:refs/for/%s' % target_branch ]
+                       'HEAD:refs/for/%s' % cmt.target]
                 if OPT.dry_run:
                     cmd.append('--dry-run')
                 git_log, err, ret = execmd(cmd)
@@ -813,14 +894,16 @@ def cherry_pick(unique_commit_list, target_branch):
                 emails = [gituser+'@sonyericsson.com'] if OPT.dry_run else reviewers
                 if 'the conflicts' in err:
                     pick_result = 'Failed due to merge conflict'
-                    email(target_branch, url, cmt.commit, emails, pick_result)
+                    conflict_mail(target_branch, url, cmt.commit,
+                                  emails, pick_result)
                 elif 'is a merge but no -m' in err:
                     pick_result = 'It is a merge commit'
                 elif 'nothing to commit' in git_log:
                     pick_result = 'Already merged, nothing to commit'
                 else:
                     pick_result = 'Failed due to unknown reason'
-                    email(target_branch, url, cmt.commit, emails, pick_result)
+                    conflict_mail(target_branch, url, cmt.commit,
+                                  emails, pick_result)
                 print_err(err)
                 print_err("Resetting to HEAD...")
                 git_log, err, ret = execmd([GIT, 'reset', '--hard'])
@@ -829,7 +912,7 @@ def cherry_pick(unique_commit_list, target_branch):
             pick_result = '%s %s' % (git_log, err)
             do_log(pick_result)
         #move to origin and delete topic branch
-        git_log, err, ret = execmd([GIT, 'checkout', 'origin/' + target_branch])
+        git_log, err, ret = execmd([GIT, 'checkout', 'origin/' + cmt.target])
         do_log(git_log)
         git_log, err, ret = execmd([GIT, 'branch', '-D' , 'topic-cherrypick'])
         do_log(git_log)
@@ -889,7 +972,49 @@ def do_log(contents, file_name=None, info=None, echo=False):
         print >> sys.stdout, contents
     sys.stdout.flush()
 
-def email(branch, url, change_id, recipient, result):
+def create_branch_mail(branch, name, recipient):
+    """
+    Mail to notify branch creation.
+    """
+    subject = ('[Cherrypick] [%s] New branch created for %s.'%
+               (branch, name))
+    body = ('Hello,\n\nNew branch has been created for %s.' % name +
+            '\nPlease update manifest file of %s branch and reply '% branch +
+            'this mail with change id.\n\nThanks,\nCherry-picker.')
+    email(subject, body, recipient)
+
+def update_manifest_mail(branch, name, recipient):
+    """
+    Mail to update manifest request.
+    """
+    subject = ('[Cherrypick] [%s] Manifest is not updated for %s.'%
+               (branch, name))
+    body = ('Hello,\n\nManifest file of %s branch is not updated ' % branch +
+            'for %s.\nPlease update manifest file for %s '% (name, branch) +
+            'branch and reply this mail with change id.' +
+            '\n\nThanks,\nCherry-picker.')
+    email(subject, body, recipient)
+
+def conflict_mail(branch, url, change_id, recipient, result):
+    """
+    Mail for cherry pick conflict.
+    """
+    subject = ('[Cherrypick] [%s] cherry-pick of change %s has failed.'%
+               (branch, change_id))
+    body = ('Hello,\n\nAutomated cherry-pick of %s into %s '%(url, branch) +
+            'branch has failed.\n\n%s.\n\nPlease ' %(result) +
+            'manually upload this if it is needed for %s branch and ' %branch +
+            'add the following persons as reviewers:\n%s' %'\n'.join(recipient)+
+            '\nPlease reply to this mail with the new change ID once it is'+
+            ' done.\n\nThanks,\nCherry-picker.'+
+            '\n\nUseful links:'+
+            '\n\nHow to cherry pick:'+
+            ' https://wiki.sonyericsson.net/androiki/How_to_cherry-pick' +
+            '\nCherry pick status page:' +
+            ' http://android-cm-web.sonyericsson.net/cherrypick/index.php')
+    email(subject, body, recipient)
+
+def email(subject, body, recipient):
     '''
     Email function
     '''
@@ -898,11 +1023,6 @@ def email(branch, url, change_id, recipient, result):
     from email.header import Header
 
     sender = OPT.mail_sender
-    subject = ('[Cherrypick] [%s] cherry-pick of change %s has failed.'%
-               (branch, change_id))
-    body = ('Hello,\n\nAutomated cherry-pick of %s into %s '%(url, branch) +
-            'branch has failed.\n\nThe reason is %s.\n\nPlease ' %(result) +
-            'manually upload this cherry-pick.\n\nThanks,\nCherry-picker.')
     msg = MIMEText(body)
     msg['Subject'] = Header(subject)
     if not OPT.dry_run:
@@ -1007,24 +1127,17 @@ def main():
                 print_err('Not enough parameters in %s' %commit)
                 continue
             else:
-                cmt = Commit(base=prts[0], path=prts[1], name=prts[2],
+                cmt = Commit(target=prts[0], path=prts[1], name=prts[2],
                              commit=prts[3], dms=prts[4])
                 commit_list.append(cmt)
         if commit_list:
             status_code = cherry_pick(commit_list, OPT.target_branch)
         cherry_pick_exit(status_code)
 
-    if (OPT.base_branches is None or
-       OPT.target_branch is None or
-       OPT.dms_tags is None):
-        print_err(("Must provide base branch name(s) (-b), " +
-                              "target branch name (-t) " +
+    if (OPT.target_branch is None or OPT.dms_tags is None):
+        print_err(("Must provide target branch name (-t) " +
                               "and DMS tag list (-d)"))
         OPT_PARSER.print_help()
-        cherry_pick_exit(STATUS_ARGS)
-
-    if OPT.target_branch in OPT.base_branches.split(','):
-        print_err("Base branch and target branch is same.")
         cherry_pick_exit(STATUS_ARGS)
 
     commit_list = get_dms_list(OPT.target_branch)
