@@ -89,7 +89,7 @@ import tempfile
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.2.8'
+__version__ = '0.2.9'
 
 REPO = 'repo'
 GIT = 'git'
@@ -116,6 +116,9 @@ SRV_CHERRY_UPDATE = 'CHERRY_UPDATE'
 SRV_CHERRY_GET = 'CHERRY_GET'
 SRV_ERROR = 'SRV_ERROR'
 SRV_END = '|END'
+
+#Commit SHA1 string length
+SHA1_STR_LEN = 40
 
 class Httpdump:
     """Http dump class"""
@@ -422,6 +425,11 @@ def option_parser():
     opt_parser.add_option('-t', '--target-branch',
                      dest='target_branch',
                      help='target branch')
+    opt_parser.add_option('--target-branch-patterns',
+                     dest='target_branch_patterns',
+                     help='List of branch patterns accepted in the target ' \
+                          'manifest for cherry picking to (comma separated)',
+                     default='(?!refs/tags)',)
     opt_parser.add_option('-d', '--dms-tags',
                      dest='dms_tags',
                      help='DMS tags (comma separated)',
@@ -575,6 +583,32 @@ def repo_sync():
         print_err("Repo sync error %s" %err)
         cherry_pick_exit(STATUS_REPO)
 
+def is_str_git_sha1(input_string):
+    """
+    Checks if the input string is a valid commit SHA1.
+    A character string is considered to be a commit SHA1 if it has exactly
+    the expected length and is a base 16 represented integer.
+    """
+    if (len(input_string) != SHA1_STR_LEN):
+        return False
+    else:
+        try:
+            #convert from base 16 to base 10 to ensure it's a valid base 16
+            #integer
+            sha10 = int(input_string, 16)
+        except:
+            return False
+    return True
+
+def loop_match(patterns, string):
+    """
+    Checks if the input string matches one of the provided patterns.
+    """
+    for pattern in patterns:
+        if (re.match(pattern, string) != None):
+            return True
+    return False
+
 def get_dms_list(target_branch):
     """
     Collect the DMSs from all projects, from MERGE_BASE to  BASE_BRANCH and
@@ -613,18 +647,16 @@ def get_dms_list(target_branch):
             continue
         t_revision = dst_proj_rev[path]
         if t_revision == base_rev:
-            #no need to proceed if both has same revision
+            #no need to proceed if both have same revision
             continue
-        ret = execmd([GIT, 'show-ref', '-q', '--verify',
-                      'refs/remotes/origin/' + t_revision])[2]
-        if ret != 0:
-            ret = execmd([GIT, 'show-ref', '-q', '--verify', t_revision])[2]
-            if ret == 0: # it is a tag??
-                continue
-            target_revision = t_revision #its a sha1
+
+        if (is_str_git_sha1(t_revision)):
+            target_revision = t_revision #it's a sha1
             target_is_sha1 = True
-        else:
+        elif (loop_match(OPT.target_branch_patterns.split(','), t_revision)):
             target_revision = 'origin/' + t_revision
+        else:
+            continue
 
         os.chdir(os.path.join(OPT.cwd, path))
         mergebase, err, ret = execmd([GIT, 'merge-base', 'origin/' +
@@ -1165,6 +1197,8 @@ def config_parser():
         if items.has_key(key):
             if value: #handle default values here and give priority to config
                 if key == 'cwd':
+                    OPT.__dict__[key] = items[key]
+                if key == 'target_branch_patterns':
                     OPT.__dict__[key] = items[key]
             else:     # cmd line parameter has higher priority on non-defaults
                 if items[key].lower() == 'true':
