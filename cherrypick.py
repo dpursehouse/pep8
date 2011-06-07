@@ -3,7 +3,7 @@
 '''
 @author: Ekramul Huq
 
-@version: 0.1.6
+@version: 0.1.7
 '''
 
 DESCRIPTION = \
@@ -11,10 +11,10 @@ DESCRIPTION = \
 Find cherry pick candidates in source branch(es) by processing the git log of
 each base branch and target branch. From the log, list of DMSs will be checked
 with DMS tag server and commits with correct DMS tag (--dms-tags) will be
-considered. Commits with the DMSs mentioned in dms_filter.txt will be excluded.
-Then the potential commits will be pushed to Gerrit for review. As a byproduct
-a .csv file will be created with the commit list and a _result.csv file with
-the result of each cherry pick execution.
+considered. Exclusion filters which are mentioned in --exlude-git,--exclude-dms
+and --exclude-commit will be excluded. Then the potential commits will be pushed
+to Gerrit for review. As a byproduct a .csv file will be created with the commit
+list and a _result.csv file with the result of each cherry pick execution.
 
 During each cherry pick, commit id will be checked in Gerrit commit message,
 and cherry pick of this commit will be skipped if corresponding commit is found
@@ -67,7 +67,7 @@ import socket
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.1.6'
+__version__ = '0.1.7'
 
 REPO = 'repo'
 GIT = 'git'
@@ -319,10 +319,6 @@ def option_parser():
                      dest='reviewers',
                      help='default reviewers (comma separated)',
                      action="store", default=None)
-    opt_parser.add_option('--dms-filter',
-                     dest='dms_filter',
-                     help='DMS filter file name', default='dms_filter.txt',
-                     metavar="FILE")
     opt_parser.add_option('-w', '--work-dir',
                      dest='cwd',
                      help='working directory, default is current directory',
@@ -331,7 +327,18 @@ def option_parser():
                      dest='dms_tag_server',
                      help='IP address or name of DMS tag server',
                      action="store", default=None)
-
+    opt_parser.add_option('--exclude-git',
+                     dest='exclude_git',
+                     help='List of gits to be excluded (comma separated)',
+                     default=None,)
+    opt_parser.add_option('--exclude-commit',
+                     dest='exclude_commit',
+                     help='List of commits to be excluded (comma separated)',
+                     default=None,)
+    opt_parser.add_option('--exclude-dms',
+                     dest='exclude_dms',
+                     help='List of DMSs to be excluded (comma separated)',
+                     default=None,)
     #debug options
     opt_group = opt_parser.add_option_group('Debug options')
     opt_group.add_option('-v', '--verbose',
@@ -415,6 +422,8 @@ def get_dms_list(target_branch):
         rev = node.getAttribute('revision')
         path = node.getAttribute('path')
         name = node.getAttribute('name')
+        if OPT.exclude_git and name in OPT.exclude_git.split(','):
+            continue    #exclude gits
         rev = def_rev if rev == '' else rev
         for base_branch in  OPT.base_branches.split(','):
             if rev == base_branch:
@@ -530,6 +539,10 @@ def collect_fix_dms(branch, commit_begin, project, log_file):
         elif re.match(r'^\s*?FIX\s*=\s*DMS[0-9]+', log_str):   #"FIX=DMSxxxxx"
             dms_str = log_str.split('=')
             dms_id = dms_str[1].strip()     #DMSxxxxxxx
+            if OPT.exclude_commit and commit_id in OPT.exclude_commit.split(','):
+                continue                    #exclude commit
+            if OPT.exclude_dms and dms_id in OPT.exclude_dms.split(','):
+                continue                    #exclude dms
             rev, path, name = project.split(',')
             cmt = Commit(base=rev, path=path, name=name, dms=dms_id,
                          commit=commit_id, author_date=author_date,
@@ -537,25 +550,6 @@ def collect_fix_dms(branch, commit_begin, project, log_file):
             commit_list.append(cmt)
 
     return commit_list
-
-
-def filter_dms_list(commit_list):
-    """
-    Filter the DMSs which are mentioned in dms_filter.txt file.
-    Commit that matches the filter will be excluded.
-    """
-    if not os.path.exists(OPT.dms_filter):
-        print_err("File not found " + OPT.dms_filter)
-        print_err("Continue without DMS filter.")
-        return commit_list
-
-    dms_filter_file = open(OPT.dms_filter, 'r')
-    dms_filter = dms_filter_file.read()
-    filtered_commit_list = []
-    for cmt in commit_list:
-        if cmt.dms not in dms_filter:
-            filtered_commit_list.append(cmt)
-    return filtered_commit_list
 
 def dms_get_fix_for(commit_list):
     """
@@ -884,8 +878,7 @@ def main():
         do_log("Nothing is found to process ", echo=True)
         cherry_pick_exit(STATUS_OK)
 
-    filtered_commit_list = filter_dms_list(commit_list)
-    commit_tag_list = dms_get_fix_for(filtered_commit_list)
+    commit_tag_list = dms_get_fix_for(commit_list)
     unique_commit_list = create_cherry_pick_list(commit_tag_list)
     if not OPT.no_push_to_gerrit:
         status_code = cherry_pick(unique_commit_list, OPT.target_branch)
