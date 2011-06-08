@@ -43,7 +43,7 @@ if [ -n "$GERRIT_CHANGE_NUMBER" ]; then
 
     # Run the commit message check tool
     cd $WORKSPACE
-    python cm_tools/commitcheck/commitcheck.py < out/commit_message.txt | tee out/commit_message_check_log.txt
+    python cm_tools/commit_message_check.py < out/commit_message.txt | tee out/commit_message_check_log.txt
     COMMIT_MESSAGE_STATUS=${PIPESTATUS[0]}
 
     # If commit message check failed, send a review comment to Gerrit
