@@ -27,6 +27,19 @@ class CommitMessage:
     the "git cat-file -p HEAD" command.
     '''
 
+    def get_dms(self):
+        '''Get a list of DMS that are recorded in the commit message
+        with correctly formatted FIX= tags.
+        Return list of DMS numbers, or empty list if no DMS were found.
+        '''
+        result = []
+        lines = self.message.split('\n')
+        for line in lines:
+            match = re.match("^FIX=(DMS\d{6,8})$", line)
+            if match:
+                result.append(match.groups(1))
+        return result
+
     def __init__(self, data):
         '''Initializes the class with the commit mesage in `data`.
         Raises CommitMessageError if the message header or body
