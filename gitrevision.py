@@ -24,7 +24,7 @@ class GitError(Exception):
 
 
 class GitPermissionError(GitError):
-    """Indicate that the GIT server responded Permission Denied."""
+    """Indicate that the git server responded Permission Denied."""
 
     def __init__(self, value):
         super(GitPermissionError, self).__init__(value)
@@ -53,7 +53,7 @@ class GitUrlError(GitError):
 
 
 class GitReadError(GitError):
-    """Indicate that the output of GIT could not be understood."""
+    """Indicate that the output of git could not be understood."""
 
     def __init__(self, value):
         super(GitReadError, self).__init__(value)
@@ -61,12 +61,12 @@ class GitReadError(GitError):
         return None
 
     def __str__(self):
-        consequence = ("Could not understand GIT output: %s" % (self.value))
+        consequence = ("Could not understand git output: %s" % (self.value))
         return consequence
 
 
 class GitExecutionError(GitError):
-    """Indicates that GIT did not execute properly. (syntax errors)"""
+    """Indicates that git did not execute properly. (syntax errors)"""
 
     def __init__(self, value):
         super(GitExecutionError, self).__init__(value)
@@ -74,7 +74,7 @@ class GitExecutionError(GitError):
         return None
 
     def __str__(self):
-        consequence = ("GIT command execution failed: %s" % (self.value))
+        consequence = ("git command execution failed: %s" % (self.value))
         return consequence
 
 
@@ -86,40 +86,36 @@ class GitWorkspace:
     self.revision store git version of current HEAD
     self.repopath store GIT_WORK_TREE
     """
-    # TODO Change structure of arguments in GitWorkspace:
-    # __init__(url, gitpath, worpath)
-    # clone(to, since) Where since is optional
-    # log(to, since) Where since is optional
 
-    def __init__(self, giturl, revision, gitpath, workpath):
-        """Take `giturl`, `revision`, `gitpath` and `workpath`.
-        Run git clone in path and store path.
+    def __init__(self, giturl, gitpath, workpath):
+        """Take `giturl`, `gitpath` and `workpath`,
+        store workspace data and allow for clone and log operations.
 
-        Design principle is to let GIT do as much work as possible,
+        Design principle is to let git do as much work as possible,
         and avoid looping over revisions.
 
         Example::
 
             mygit = GitWorkspace("url", "sha-1", "/tmp/mygit/")
-            mygit.clone()
-            mygit.log()
+            mygit.clone(revision)
+            mygit.log(revision)
 
-        Raise IOError if file system fails to store GIT repo.
-        Raise GitPermissionError if GIT denies access to repo.
-        Raise GitUrlError if GIT fails to find repo on server.
-        Raise GitReadError if GIT execution output can't be understood.
-        Raise GitExecutionError if GIT execution fails.
+        Raise IOError if file system fails to store git repo.
+        Raise GitPermissionError if git denies access to repo.
+        Raise GitUrlError if git fails to find repo on server.
+        Raise GitReadError if git execution output can't be understood.
+        Raise GitExecutionError if git execution fails.
         Raise NotImplementedError if an unfinished method is called.
         """
         self.giturl = giturl
         self.gitpath = gitpath
         self.workpath = workpath
-        self.revision = revision
+        self.revision = str()
         self.repopath = os.path.join(self.workpath,
                                      self.gitpath.lstrip("/"))
 
     def __str__(self):
-        """Overload __str__ with path of GIT repo."""
+        """Overload __str__ with path of git repo."""
         afterclone = os.path.join(self.repopath, self.revision)
         if os.path.isdir(afterclone):
             return afterclone
@@ -127,22 +123,19 @@ class GitWorkspace:
             path = self.repopath
             return path
 
-    def clone(self):
-        """Execute git clone on `giturl`, revision to `workpath`
+    def clone(self, revision):
+        """Execute git clone on `giturl`.
+        Clone and store cloned workspace in `workpath`/`revision`.
         Return path if git already exists.
 
-        Raise GitPermissionError if GIT denies access to repo.
-        Raise GitUrlError if GIT fails to find repo on server.
-        Raise GitReadError if GIT execution output cant be understood.
-        Raise GitExecutionError if GIT execution fails.
+        Raise GitPermissionError if git denies access to repo.
+        Raise GitUrlError if git fails to find repo on server.
+        Raise GitReadError if git execution output cant be understood.
+        Raise GitExecutionError if git execution fails.
         """
-        # TODO Change arguments to take to and since (optional) for clone().
         giturl = self.giturl
-        revision = self.revision
+
         repopath = str(self.repopath)
-        #Not yet used:
-        #gitpath = self.gitpath
-        #workpath = self.workpath
         try:
             os.makedirs(repopath)
         except EnvironmentError, err:
@@ -167,14 +160,16 @@ class GitWorkspace:
                 raise GitExecutionError(out)
         except (IndexError, ValueError):
             raise GitExecutionError(cmdargs)
+
+        self.revision = revision
         return out
 
-    def log(self):
-        """Collect GIT log of repository.
-        Raising GitExecutionError if git execution fail.
-        Raises GitReadError if git log parsing fails.
+    def log(self, untilrev, sincerev=""):
+        """Collect git log of repository (from `sincerev`) to `untilrev`.
+
+        Raise GitExecutionError if git execution fail.
+        Raise GitReadError if git log parsing fails.
         """
-        # TODO Add to and since as revision inputs.
         fhash = '%H'
         fauthorname = '%an'
         fauthordate = '%ai'
@@ -189,7 +184,13 @@ class GitWorkspace:
         delimiter = '\x01'
         lineterminator = '\x02'
 
-        path = os.path.join(self.repopath, self.revision)
+        if sincerev != "":
+            revision = ("%s..%s" % (sincerev, untilrev))
+        else:
+            revision = untilrev
+
+        self.revision = untilrev  # Set revision to HEAD.
+        path = self.__str__()
 
         logfields = ["revision",
                      "author_name",
@@ -212,8 +213,8 @@ class GitWorkspace:
                                    fsubject, fdelimiter,
                                    fbody, flineterminator])
 
-        self.run_checkout(self.revision, path)
-        csv_messages = self.run_log(formatstring, \
+        self.run_checkout(untilrev, path)
+        csv_messages = self.run_log(revision, formatstring, \
                                     path, "--encoding=utf-8")
         try:
             logmessages = parse_csv(csv_messages,
@@ -234,7 +235,7 @@ class GitWorkspace:
         formatstring = str().join([flineterminator,
                                    fhash, fdelimiter])
         filenamefields = ["revision", "filenames"]
-        csv_filenames = self.run_log(formatstring, \
+        csv_filenames = self.run_log(revision, formatstring, \
                                      path, "--numstat", "--encoding=utf-8")
         try:
             logfilenames = parse_csv(csv_filenames,
@@ -252,7 +253,7 @@ class GitWorkspace:
                                            delimiter,
                                            lineterminator))
 
-        #TODO Make helper function for dict merging etc.
+        #TODO Make helper function for dict merging etc. (lowprio)
         revfileslist = list()
         for revision in logfilenames:
             revfilesdict = dict()
@@ -292,13 +293,14 @@ class GitWorkspace:
                 pass
             except (IndexError, ValueError):
                 pass
+        self.revision = revision
 
-    def run_log(self, formatstring, path, *args):
+    def run_log(self, revision, formatstring, path, *args):
         """Execute git log with `formatstring` in `path` and `args` list,
         Return string of result"""
 
-        cmdargs = ["git", "log", \
-        "--pretty=format:" + formatstring + ""]
+        cmdargs = ["git", "log", revision, \
+                   "--pretty=format:" + formatstring + ""]
         cmdargs.extend(args)
         try:
             exitcode, out, err = processes.run_cmd(cmdargs, path=path)
@@ -403,18 +405,16 @@ def list_git_files(workpath, url, revision, filetype, gitpath, findpaths):
 
     Raise TypeError if findpaths is not a list.
     Raise GitExecutionError if git clone fails.
-    Raise OSError workspace could not be created.
+    Raise OSError if workspace could not be created or listed.
     """
-    # TODO adapt argument list to new argument standard for GitWorkspace.
     if type(findpaths) is not list:
         # Typechecking is LBYL not EAFP but it has to be done here.
         raise TypeError("Argument findpaths must be list.")
 
     workspace = GitWorkspace(url,
-                             revision,
                              gitpath,
                              workpath)
-    workspace.clone()
+    workspace.clone(revision)
     path = workspace.__str__()
     workspace.run_checkout(revision, path)
 

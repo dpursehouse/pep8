@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Fetch build (GIT) revisions of Debian packages.
+"""Fetch build (git) revisions of Debian packages.
 Depends on gitrevision and processes"""
 import collections
 import os
@@ -219,10 +219,10 @@ def fetch_package(label, packagename, path):
     """
 
     output = processes.run_cmd("repository",
-                              "getpackage",
-                              "-o", path,
-                              packagename,
-                              label)
+                               "getpackage",
+                               "-o", path,
+                               packagename,
+                               label)
 
     fullname = output[1].strip()
     return fullname
@@ -255,9 +255,9 @@ def get_log(workdir, url, gitpath, version):
 
     Raise gitrevision.GitError if there was a problem fetching git.
     """
-    mygit = gitrevision.GitWorkspace(url, version, gitpath, workdir)
-    mygit.clone()
-    return mygit.log()
+    mygit = gitrevision.GitWorkspace(url, gitpath, workdir)
+    mygit.clone(version)
+    return mygit.log(version)
 
 
 def _test(tmp):
