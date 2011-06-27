@@ -45,10 +45,8 @@ class GerritSshConnection():
         """
 
         self.hostname = hostname
-        if username:
-            self.username = username
-        else:
-            self.username = None
+        self.username = username
+        if not self.username:
             try:
                 exitcode, out, err = processes.run_cmd("git", "config",
                                                        "user.email")
