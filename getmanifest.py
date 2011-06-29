@@ -10,6 +10,10 @@ import processes
 
 
 class GetManifestError(Exception):
+    '''
+    Raised when there is a problem downloading the debian package or
+    extracting the specified file from the downloaded debian package.
+    '''
     def __init__(self, message, error):
         self.message = message
         self.error = error
@@ -19,6 +23,13 @@ class GetManifestError(Exception):
 
 
 def run_or_fail(command, message):
+    '''
+    Runs the specified command and returns the result.
+    If the command fails raises GetManifestError exception
+    with the supplied error message.
+    `command` -- List containing the command parts
+    `message` -- Error message to pass on to the exception class
+    '''
     try:
         r = processes.run_cmd(command)
     except processes.ChildExecutionError, e:
@@ -27,6 +38,15 @@ def run_or_fail(command, message):
 
 
 def get_package_version(label, package, repo_name=None, repo_url=None):
+    '''
+    Retrieves the package version from a given snapshot label.
+    Returns the version of the package.
+    Raises GetManifestError exception if fails.
+    `label` -- Snapshot label
+    `package` -- Name of the debian package
+    `repo_name` -- Type of the repository used, for example, 'protected'
+    `repo_url` -- Qualified URL to the C2D repository
+    '''
     args = ["repository", "list", label]
     if repo_name and repo_url:
         raise GetManifestError("You can't supply repo_name "
@@ -54,6 +74,16 @@ def get_package_version(label, package, repo_name=None, repo_url=None):
 
 def get_and_extract_package(label, package, outdir, repo_name=None,
                             repo_url=None):
+    '''
+    Downloads the correct version of the debian package from a given
+    snapshot label and extracts it to the specified output directory.
+    Raises GetManifestError exception if it fails.
+    `label` -- Snapshot label
+    `package` -- Name of the debian package
+    `outdir` -- Path to the output directory
+    `repo_name` -- Type of the repository used, for example, 'protected'
+    `repo_url` -- Qualified URL to the C2D repository
+    '''
     pversion = get_package_version(label, package, repo_name, repo_url)
     args = ["repository", "getpackage", "-o", outdir, package, pversion]
     if repo_name and repo_url:
@@ -77,13 +107,24 @@ def get_and_extract_package(label, package, outdir, repo_name=None,
 
 def get_file_from_package(label, package, outfile, frompath,
                           repo_name=None, repo_url=None):
+    '''
+    Downloads the `package` package from the `label` software build and
+    extracts the file `frompath` and saves it as `outfile`.
+    Raises GetManifestError exception if it fails.
+    `label` -- Snapshot label
+    `package` -- Name of the debian package
+    `outfile` -- Path to the output file
+    `frompath` -- Path to the file to be extracted from the debian package
+    `repo_name` -- Type of the repository used, for example, 'protected'
+    `repo_url` -- Qualified URL to the C2D repository
+    '''
     tempdir = tempfile.mkdtemp()
     try:
         get_and_extract_package(label, package, tempdir, repo_name, repo_url)
         try:
             shutil.copyfile(os.path.join(tempdir, frompath), outfile)
         except IOError, e:
-            raise GetManifestError("Failed to move manifest to %s" % (outfile),
+            raise GetManifestError("Failed to copy manifest to %s" % (outfile),
                                    e)
     finally:
         shutil.rmtree(tempdir)
@@ -92,6 +133,15 @@ def get_file_from_package(label, package, outfile, frompath,
 def get_manifest(label, outfile="manifest_static.xml",
                  frompath="manifest_static.xml", repo_name=None,
                  repo_url=None):
+    '''
+    Retrieves the static manifest file from the build-metadata
+    debian package from a given snapshot label.
+    `label` -- Snapshot label
+    `outfile` -- Path to the output file
+    `frompath` -- Path to the file to be copied from the debian package
+    `repo_name` -- Type of the repository used, for example, 'protected'
+    `repo_url` -- Qualified URL to the C2D repository
+    '''
     get_file_from_package(label, "build-metadata", outfile, frompath,
                           repo_name, repo_url)
 
