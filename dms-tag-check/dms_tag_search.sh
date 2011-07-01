@@ -5,12 +5,12 @@
 #-------------------------------------------------------------------------------------
 
 if [ -z "$DMS_TAG_LIST" ]; then
-    echo "No DMS Tag list defined to validate. Exiting.."
+    echo "Error: DMS_TAG_LIST is not defined."
     exit 1
 fi
 
 if [ -z "$HUDSON_REVIEWER" ]; then
-    echo "No Hudson reviewer defined to review. Exiting.."
+    echo "Error: HUDSON_REVIEWER is not defined."
     exit 1
 fi
 
