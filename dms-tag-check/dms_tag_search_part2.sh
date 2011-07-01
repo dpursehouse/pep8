@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash -ex
 #-------------------------------------------------------------------------------------
 #Part 2: The following job validates the tag value for the tag-only branch
 #-------------------------------------------------------------------------------------
@@ -86,7 +86,12 @@ else
     cat $DMS_DETAILS >> $RESULT_FILE
     MSG=`cat $RESULT_FILE`
 fi
+
 #Update the gerrit with the review message for the change
 ssh -p 29418 review.sonyericsson.net -l $HUDSON_REVIEWER gerrit review \
 --project=$GERRIT_PROJECT $GERRIT_PATCHSET_REVISION --code-review $CODE_REVIEW \
 \'--message="$MSG"\'
+
+#Set build description
+BUILD_DESC=`cat build_description.txt | sed 's/ /%20/g' | sed 's/=/%3d/g'`
+curl -s "${BUILD_URL}submitDescription?description=${BUILD_DESC}"
