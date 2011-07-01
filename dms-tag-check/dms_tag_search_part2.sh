@@ -14,7 +14,7 @@ CODE_REVIEW=-1
 #Check if the commit message has DMS issue
 DMS_FOUND=`cat $FILE_PATH`
 if [ -z "$DMS_FOUND" ];then
-    echo "No FIX=DMS tag" > build_description.txt
+    echo "No FIX=DMS tags found" > build_description.txt
     MSG="Commit message does not include any FIX=DMS tag.  Build URL - $BUILD_URL"
 else
     DMS_COUNT=`cat $FILE_PATH |wc -l`
@@ -81,7 +81,7 @@ else
     else
         echo "None of the DMS are tagged" >> $RESULT_FILE
     fi
-    echo `cat $RESULT_FILE` | sed 's/ /%20/g' > build_description.txt
+    echo `cat $RESULT_FILE` > build_description.txt
     echo "Build URL - $BUILD_URL" >> $RESULT_FILE
     cat $DMS_DETAILS >> $RESULT_FILE
     MSG=`cat $RESULT_FILE`
