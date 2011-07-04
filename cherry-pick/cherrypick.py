@@ -92,7 +92,7 @@ import tempfile
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 REPO = 'repo'
 GIT = 'git'
@@ -396,7 +396,12 @@ class ManifestData():
         """Raises IOError if fails to write data to file"""
         path = os.path.dirname(file_path)
         fd, tmppath = tempfile.mkstemp(dir=path)
-        self.dom.writexml(os.fdopen(fd, "w"), encoding="UTF-8")
+        data = self.dom.toxml(encoding="UTF-8")
+        # Minidom currently doesn't return a newline-terminated string.
+        if data.endswith("\n"):
+            os.write(fd, data)
+        else:
+            os.write(fd, data + "\n")
         os.rename(tmppath, file_path)
 
     def get_def_rev(self):
