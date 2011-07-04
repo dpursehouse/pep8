@@ -853,26 +853,31 @@ def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
             manifest_change_required = True
             upd_project_list.append(git_name)
             return True
-        cmd = [GIT, 'push','ssh://%s@review.sonyericsson.net:29418/%s.git' %
-               (gituser,git_name),'%s:refs/heads/%s'%(sha1, target_branch)]
-        log, err, ret = execmd(cmd)
-        if ret == 0:
-            do_log("Branch %s created for %s." % (target_branch, git_name),
-                   echo=True)
-            do_log(log)
-            do_log(err)
-            execmd([GIT, 'fetch'])
-            dst_manifest.update_revision(git_name, target_branch)
-            manifest_change_required = True
-            upd_project_list.append(git_name)
-            create_branch_mail(cmt.target, cmt.name, recipient)
+        if OPT.dry_run:
+            do_log("Dry run: %s branch for %s will not be created." %
+                    (target_branch, git_name), echo=True)
             return True
         else:
-            do_log("Failed to create %s branch for %s." %
-                   (target_branch, git_name), echo=True)
-            do_log(log)
-            do_log(err)
-            return False
+            cmd = [GIT, 'push','ssh://%s@review.sonyericsson.net:29418/%s.git' %
+                   (gituser,git_name),'%s:refs/heads/%s'%(sha1, target_branch)]
+            log, err, ret = execmd(cmd)
+            if ret == 0:
+                do_log("Branch %s created for %s." % (target_branch, git_name),
+                       echo=True)
+                do_log(log)
+                do_log(err)
+                execmd([GIT, 'fetch'])
+                dst_manifest.update_revision(git_name, target_branch)
+                manifest_change_required = True
+                upd_project_list.append(git_name)
+                create_branch_mail(cmt.target, cmt.name, recipient)
+                return True
+            else:
+                do_log("Failed to create %s branch for %s." %
+                       (target_branch, git_name), echo=True)
+                do_log(log)
+                do_log(err)
+                return False
     else:
         return False
 
