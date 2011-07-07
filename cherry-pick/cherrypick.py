@@ -92,7 +92,7 @@ import tempfile
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.1'
+__version__ = '0.3.2'
 
 REPO = 'repo'
 GIT = 'git'
@@ -1021,7 +1021,7 @@ def create_cherry_pick_list(commit_tag_list):
     os.chdir(OPT.cwd)
     do_log('\n'.join(str_list(unique_commit_tag_list)), echo=True,
            file_name="%s_cherrypick.csv" % (target_branch),
-           info="Cherrys..")
+           info="Cherries")
     return unique_commit_tag_list
 
 
@@ -1061,14 +1061,13 @@ def cherry_pick(unique_commit_list, target_branch):
 
     #keep the result here
     cherrypick_result = []
-    dry_run = '_dry_run' if OPT.dry_run else ''
 
     #check cherry pick history
     old_cherries = None
     tag_server = None
     if OPT.dms_tag_server:
         tag_server = DMSTagServer(OPT.dms_tag_server)
-        records = tag_server.retrieve(target_branch + dry_run)
+        records = tag_server.retrieve(target_branch)
         if not records:
             print_err("No old cherries found or server is not " +
                       "reachable to check old cherries")
@@ -1076,7 +1075,7 @@ def cherry_pick(unique_commit_list, target_branch):
             do_log(records, info="Old cherries", echo=True)
             old_cherries = records.strip().split('\n')
 
-    do_log("", info="Cherry pick starting...", echo=True)
+    do_log("", info="Cherry pick starting", echo=True)
     gerrit = Gerrit(gerrit_user=gituser)
     for cmt in unique_commit_list:
         #Check old cherries
@@ -1096,8 +1095,8 @@ def cherry_pick(unique_commit_list, target_branch):
                     time.ctime(url_date[1])),
                     echo=True)
             if not go_next:  # if not in tag server, but in Gerrit, add it
-                if tag_server:
-                    if not tag_server.update(target_branch + dry_run,
+                if tag_server and not OPT.dry_run:
+                    if not tag_server.update(target_branch,
                                        [str(cmt) + ',' + url_date[0]]):
                         print_err("Server is not reachable to update")
             continue
@@ -1190,8 +1189,8 @@ def cherry_pick(unique_commit_list, target_branch):
             ret_err = STATUS_CHERRYPICK_FAILED
 
         cherrypick_result.append(str(cmt) + ',' + pick_result)
-        if tag_server:
-            if not tag_server.update(target_branch + dry_run,
+        if tag_server and not OPT.dry_run:
+            if not tag_server.update(target_branch,
                                        [str(cmt) + ',' + pick_result]):
                 print_err("Server is not reachable to update")
 
@@ -1199,11 +1198,14 @@ def cherry_pick(unique_commit_list, target_branch):
     #report the result if any cherry pick done
     if cherrypick_result:
         cherrypick_result.sort()
+        infomsg = "New cherries picked"
+        if OPT.dry_run:
+            infomsg += " (dry run)"
         do_log('\n'.join(cherrypick_result), echo=True,
-              file_name="%s_cherrypick%s_result.csv" %
-              (target_branch, dry_run), info="New cherries picked:")
+              file_name="%s_cherrypick_result.csv" %
+              (target_branch), info=infomsg)
     else:
-        do_log("No new cherry", echo=True)
+        do_log("No new cherries", echo=True)
     return ret_err
 
 
