@@ -540,6 +540,12 @@ def option_parser():
                      help='Use this Gerrit user to push, useful for ' +
                      'hudson job',
                      default=None)
+    opt_group.add_option('--amss-manifest',
+                     dest='amss_manifest',
+                     help='To specify platform/amssmanifest instead of ' +
+                     'platform/manifest',
+                     action="store_true",
+                     default=False)
     return opt_parser
 
 
@@ -765,9 +771,15 @@ def clone_manifest_git(branch):
     if (ret != 0):
         cherry_pick_exit(STATUS_RM_MANIFEST_DIR)
     do_log("Cloning the manifest git of branch %s..." % branch, echo=True)
-    out, err, ret = execmd([GIT, 'clone',
+    if OPT.amss_manifest:
+        out, err, ret = execmd([GIT, 'clone',
+                           'git://%s/platform/amssmanifest'
+                            % (GERRIT_URL), 'manifest', '-b', branch], 300)
+    else:
+        out, err, ret = execmd([GIT, 'clone',
                            'git://%s/platform/manifest' % (GERRIT_URL),
                            '-b', branch], 300)
+
     if (ret != 0):
         do_log(err, echo=True)
         cherry_pick_exit(STATUS_CLONE_MANIFEST)
@@ -830,9 +842,15 @@ def update_manifest(branch, skip_review):
         dst_push = 'heads'
     else:
         dst_push = 'for'
-    cmd = [GIT, 'push',
-           'ssh://%s@%s:29418/platform/manifest' %
-           (gituser, GERRIT_URL), 'HEAD:refs/%s/%s' % (dst_push, branch)]
+    if OPT.amss_manifest:
+        cmd = [GIT, 'push',
+               'ssh://%s@%s:29418/platform/amssmanifest' %
+               (gituser, GERRIT_URL), 'HEAD:refs/%s/%s' % (dst_push, branch)]
+    else:
+        cmd = [GIT, 'push',
+               'ssh://%s@%s:29418/platform/manifest' %
+               (gituser, GERRIT_URL), 'HEAD:refs/%s/%s' % (dst_push, branch)]
+
     out, err, ret = execmd(cmd, 300)
     if (ret != 0):
         do_log(err, echo=True)
