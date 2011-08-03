@@ -8,7 +8,7 @@ if [ -z "$HUDSON_REVIEWER" ]; then
 fi
 
 rm -rf .repo/
-grep "hudsonslave" ${WORKSPACE}
+basename $WORKSPACE | grep $JOB_NAME
 if [ "$?" -eq 0 ];then
     rm -rf ${WORKSPACE}/*
 else
