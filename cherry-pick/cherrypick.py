@@ -1189,7 +1189,7 @@ def cherry_pick(unique_commit_list, target_branch):
         if OPT.dry_run:
             match = re.search('Dry-run ok', pick_result)
         else:
-            match = re.search('https?://$s' % GERRIT_URL, pick_result)
+            match = re.search('https?://%s' % GERRIT_URL, pick_result)
         if not match:
             ret_err = STATUS_CHERRYPICK_FAILED
 
