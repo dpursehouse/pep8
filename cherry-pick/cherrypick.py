@@ -92,7 +92,7 @@ import tempfile
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.3'
+__version__ = '0.3.4'
 
 REPO = 'repo'
 GIT = 'git'
@@ -379,10 +379,15 @@ class Commit:
 
 class ManifestData():
     """Functionality for handling manifest XML data"""
-    def __init__(self, xml_input_data):
-        """Raises xml.parsers.expat.ExpatError
-           if fails to parse data as valid XML"""
+    def __init__(self, xml_input_data, base_sha1):
+        """Raises xml.parsers.expat.ExpatError if fails to parse data as valid
+           XML or ValueError if the passed base SHA1 isn't a valid commit
+           SHA1"""
         self.dom = xml.dom.minidom.parseString(xml_input_data)
+        if (is_str_git_sha1(base_sha1)):
+            self.base_sha1 = base_sha1
+        else:
+            raise ValueError('Invalid base SHA1')
 
     def update_revision(self, project_name, new_revision):
         for element in self.get_projects():
@@ -413,21 +418,29 @@ class ManifestData():
         """Raises KeyError if fails to find tag name"""
         return self.dom.getElementsByTagName("project")
 
+    def get_base_sha1(self):
+        return self.base_sha1
+
 
 def get_manifest_str(commit_ref):
-    """Reads the manifest file and returns the content as a string"""
+    """Reads the manifest file and returns the content as a string and
+       the last manifest change SHA1"""
     current_path = os.getcwd()
     os.chdir(os.path.join(OPT.cwd, '.repo/manifests'))
     try:
         manifest_str, err, ret = execmd([GIT, 'show', commit_ref +
                                         ':default.xml'])
+        sha1, err1, ret1 = execmd([GIT, 'rev-parse', commit_ref])
     finally:
         os.chdir(current_path)
     if ret != 0:
         print_err("Can't read the manifest file for %s:\n%s" %
                   (commit_ref, err))
         cherry_pick_exit(STATUS_MANIFEST)
-    return manifest_str
+    if ret1 != 0:
+        print_err("Can't get the last manifest change SHA1:\n%s" % err1)
+        cherry_pick_exit(STATUS_MANIFEST)
+    return manifest_str, sha1
 
 
 def str_list(commit_list):
@@ -581,7 +594,8 @@ def parse_base_and_target_manifest(target_branch):
     """Parses base and target manifest files"""
     #parse base manifest
     try:
-        base_manifest = ManifestData(get_manifest_str('HEAD'))
+        manifest_str, base_sha1 = get_manifest_str('HEAD')
+        base_manifest = ManifestData(manifest_str, base_sha1)
         base_proj_rev = {}
         for node in base_manifest.get_projects():
             rev = node.getAttribute('revision')
@@ -595,20 +609,20 @@ def parse_base_and_target_manifest(target_branch):
                         break
             else:                  # otherwise consider all
                 base_proj_rev[name] = rev + ',' + path
-    except (KeyError, xml.parsers.expat.ExpatError), err:
+    except (KeyError, xml.parsers.expat.ExpatError, ValueError), err:
         print_err("Failed to parse base manifest: %s" % err)
         cherry_pick_exit(STATUS_MANIFEST)
     #parse target manifest
     try:
         global dst_manifest
-        dst_manifest = ManifestData(get_manifest_str('origin/' +
-                                                     target_branch))
+        manifest_str, base_sha1 = get_manifest_str('origin/' + target_branch)
+        dst_manifest = ManifestData(manifest_str, base_sha1)
         dst_proj_rev = {}
         for node in dst_manifest.get_projects():
             rev = node.getAttribute('revision')
             rev = dst_manifest.get_def_rev() if rev == '' else rev
             dst_proj_rev[node.getAttribute('path')] = rev
-    except (KeyError, xml.parsers.expat.ExpatError), err:
+    except (KeyError, xml.parsers.expat.ExpatError, ValueError), err:
         print_err("Failed to parse target manifest: %s" % err)
         cherry_pick_exit(STATUS_MANIFEST)
     return base_proj_rev, dst_proj_rev
@@ -792,6 +806,7 @@ def update_manifest(branch, skip_review):
     #Clone the target manifest git
     clone_manifest_git(branch)
 
+    global dst_manifest
     global upd_project_list
     do_log("Updating the target manifest...", echo=True)
     gituser = get_git_user()
@@ -799,7 +814,8 @@ def update_manifest(branch, skip_review):
     os.chdir(OPT.cwd + '/manifest')
     #Creates a topic branch for the manifest changes
     #and writes the changes to default.xml
-    out, err, ret = execmd([GIT, 'branch', 'manifest-change'])
+    out, err, ret = execmd([GIT, 'branch', 'manifest-change',
+                            dst_manifest.get_base_sha1()])
     if (ret != 0):
         do_log(err, echo=True)
         return STATUS_UPDATE_MANIFEST
@@ -807,7 +823,6 @@ def update_manifest(branch, skip_review):
     if (ret != 0):
         do_log(err, echo=True)
         return STATUS_UPDATE_MANIFEST
-    global dst_manifest
     try:
         dst_manifest.write_xmldata_to_file('default.xml')
     except IOError, err:
