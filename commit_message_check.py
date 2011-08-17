@@ -6,10 +6,10 @@ from semcutil import fatal
 
 
 # The maximum length of a line in the commit message body
-MAX_LINE_LENGTH = 70
+MAX_LINE_LENGTH = 72
 
 # The maximum length of the commit message subject
-MAX_SUBJECT_LENGTH = 70
+MAX_SUBJECT_LENGTH = 72
 
 
 class CommitMessageChecker:
