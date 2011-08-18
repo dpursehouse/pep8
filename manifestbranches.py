@@ -8,6 +8,7 @@ import sys
 cm_tools = os.path.dirname(os.path.abspath(sys.argv[0]))
 sys.path.append(os.path.join(cm_tools, "external-modules"))
 sys.path.append(os.path.join(cm_tools, "semcwikitools"))
+from include_exclude_matcher import IncludeExcludeMatcher
 import manifest
 import processes
 import semcwikitools
@@ -97,10 +98,13 @@ def isstatic(s):
         return s.replace("refs/tags", "")
 
 
-def get_branches_html(branches):
+def get_branches_html(branches, pattern_matcher):
     """Builds a big html table with all the branches of all components in the
     given manifests.
-    Input is the tuple-list structure returned by get_manifests."""
+    Input:
+        Tuple-list structure returned by get_manifests
+        Function used to filter the gits.
+    """
     projects = find_projects(branches)
 
     data = """<h1>Red: The same component branch is used on another _of these_
@@ -111,6 +115,8 @@ def get_branches_html(branches):
     for ref, branch, manifest in branches:
         data += "<th>%s</th>" % branch
     data += "</tr>\n"
+
+    projects = filter(pattern_matcher, projects)
 
     for project in sorted(projects):
         data += "<tr><td>%s</td>" % (project)
@@ -168,6 +174,17 @@ def _main():
     parser.add_option("-m", "--manifest", dest="manifestpath",
                         default="manifest",
                         help="Path to the manifest-git. [default: %default]")
+    parser.add_option("-i", "--include-git", dest="include_git",
+                        action="append", default=None,
+                        help="Regex pattern of gits to include. Multiple "\
+                        "patterns can be passed as arguments [-i <pattern> -i"\
+                        " <pattern>]")
+    parser.add_option("-x", "--exclude-git", dest="exclude_git",
+                        action="append", default=None,
+                        help="Regex pattern of gits to exclude. Multiple "\
+                        "patterns can be passed as arguments [-x <pattern> -x"\
+                        " <pattern>]. Has precedence over the --include-git "\
+                        "option")
 
     (options, branchnames) = parser.parse_args()
     if len(branchnames) < 1:
@@ -176,10 +193,16 @@ def _main():
     if not options.page:
         parser.error("You have to supply a name for the wikipage.")
 
+    if not options.include_git:
+        options.include_git = [r"^"]
+
+    pattern_matcher = IncludeExcludeMatcher(options.include_git,
+                                            options.exclude_git)
+
     branches = []
     for branch in branchnames:
         branches += get_manifests(branch, options.manifestpath)
-    data = get_branches_html(branches)
+    data = get_branches_html(branches, pattern_matcher.match)
 
     w = semcwikitools.get_wiki(options.wiki)
     semcwikitools.write_page(w, options.page, data)
