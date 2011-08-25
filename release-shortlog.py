@@ -1,11 +1,27 @@
 #! /usr/bin/env python
 
+import glob
+from optparse import OptionParser
+import os
+import shutil
 import subprocess
 import sys
-import os
+import tempfile
 import xml.dom.minidom
 import urllib
-from optparse import OptionParser
+
+import debrevision
+import deltapi
+
+# Handle the case that external_package_gits is not available since that
+# is a scenario likely to occur on older branches
+try:
+    import external_package_gits
+except:
+    print >> sys.stderr, "*** Warning! The python module " \
+        "external_package_gits is not available. No log for decoupled " \
+        "applications will be created."
+
 
 def miniparse(url):
     return xml.dom.minidom.parse(urllib.urlopen(url))
@@ -102,6 +118,15 @@ def main(argv):
     dg = DiffGenerator(count=options.count, query=options.queryFile, gitcmd=options.gitCommand)
 
     dg.generateDiff(oldManifestUrl, newManifestUrl, notFilter)
+    if "external_package_gits" in sys.modules:
+        dg.diffDecoupledApps(oldManifestUrl, newManifestUrl, notFilter)
+    dg.printCommitCount()
+    dg.dmsqueryQry()
+
+
+class GitError(Exception):
+    """Occurs when executing a git command."""
+
 
 class DiffGenerator(object):
 
@@ -109,6 +134,9 @@ class DiffGenerator(object):
         self.count = count
         self.query = query
         self.gitcmd = gitcmd
+        self.concatLog = ""
+        self.commitCountFiltered = 0
+        self.commitCount = 0
 
     def generateDiff(self, oldManifestUri, newManifestUri, notFilter=None):
         print "Old manifest: %s" % oldManifestUri
@@ -118,9 +146,6 @@ class DiffGenerator(object):
 
         newgits = []
         dmslist = []
-        concatLog = ""
-        commitCountFiltered = 0
-        commitCount = 0
 
         for newProject in newManifest.getElementsByTagName("project"):
             matchFound = False
@@ -165,33 +190,29 @@ class DiffGenerator(object):
                                                 oldrev,
                                                 notFilter))
 
-                        concatLog = concatLog + filteredLog
+                        self.concatLog = self.concatLog + filteredLog
 
-                        commitCountFiltered += \
+                        self.commitCountFiltered += \
                             self.countCommits(newProjPath,
-                                         newrev,
-                                         oldrev,
-                                         notFilter)
+                                              newrev,
+                                              oldrev,
+                                              notFilter)
 
-                        commitCount += self.countCommits(newProjPath,
-                                                    newrev,
-                                                    oldrev)
+                        self.commitCount += self.countCommits(newProjPath,
+                                                              newrev,
+                                                              oldrev)
                     else:
-                        concatLog = concatLog + log
+                        self.concatLog = self.concatLog + log
 
-                        commitCountFiltered += self.countCommits(
-                                                    newProjPath,
-                                                    newrev,
-                                                    oldrev)
-                        commitCount += self.countCommits(
-                                            newProjPath,
-                                            newrev, oldrev)
+                        self.commitCountFiltered += \
+                            self.countCommits(newProjPath, newrev, oldrev)
+                        self.commitCount += \
+                            self.countCommits(newProjPath, newrev, oldrev)
 
             # if the project does not exist in the old manifest it must have
             # been added since then.
             if not matchFound:
                 newgits.append(newProject)
-        self.dmsqueryQry(concatLog)
 
         if len(newgits) > 0:
             print "New gits added:"
@@ -216,11 +237,276 @@ class DiffGenerator(object):
         print "DMS issues found:"
         for issue in dmslist:
             print issue
-        if self.count == True:
-            print "\nCommits introduced: %d" % commitCount
-            print "Commits used for DMS query: %d" % commitCountFiltered
 
-    def countCommits(self, path=None, newrev=None, oldrev=None, notFilter=None):
+
+    def getPathAndRev(self, manifest, projectName):
+        """Search for a project tag with name=projectName in the manifest
+        minidom
+        Return the contents of the path and revision attributes"""
+        for project in manifest.getElementsByTagName("project"):
+            if project.getAttribute("name") == projectName:
+                path = project.getAttribute("path")
+                rev = project.getAttribute("revision")
+                break
+        # TODO: Improve this with exception handling instead of sys.exit
+        if (path == ""):
+            print >> sys.stderr, \
+                "Cannot find the path to %s in the manifest" \
+                % (projectName)
+            sys.exit(1)
+        if (rev == ""):
+            print >> sys.stderr, \
+                "Cannot find the revision of %s in the manifest" \
+                % (projectName)
+            sys.exit(1)
+        return (path, rev)
+
+
+    def getPackageListGits(self, manifestUrl, manifest, semcsystemPath,
+                           semcsystemRev, packageFilesFileName, checkoutDir):
+        """Clones the gits that are hit by the patterns in the file
+        semcsystemPath/packageFilesFileName and checks out the version that is
+        stated in the manifest.
+        Returns a list of the cloned gits"""
+        clonedGits = []
+        configFile = os.path.join(semcsystemPath, packageFilesFileName)
+        basePath = os.path.join(checkoutDir, semcsystemPath)
+        baseGitUrl = "git://review.sonyericsson.net/"
+
+        manifestData = external_package_gits.get_manifest_data(manifestUrl)
+        for gitName in \
+            external_package_gits.get_gits_from_config(manifestData,
+                                                       configFile,
+                                                       semcsystemPath):
+            (gitPath, gitRev) = self.getPathAndRev(manifest, gitName)
+            # Checkout the git in the checkoutDir structure
+            gitDir = os.path.join(checkoutDir, gitPath)
+            os.makedirs(gitDir)
+            gitUrl = os.path.join(baseGitUrl, gitName)
+            cmd = "git clone %s %s" % (gitUrl, gitDir)
+            (ret, res) = command(cmd)
+            if ret != 0:
+                raise GitError("Couldn't clone %s" % gitUrl)
+            try:
+                orgcwd = os.getcwd()
+                os.chdir(gitDir)
+                cmd = "git checkout %s" % gitRev
+                (ret, res) = command(cmd)
+                if ret != 0:
+                    raise GitError("Couldn't checkout %s in %s" % (gitRev,
+                                                                   gitUrl))
+                clonedGits.append(gitDir)
+            except OSError:
+                raise GitError("Couldn't enter the cloned git %s" % gitDir)
+            finally:
+                os.chdir(orgcwd)
+
+        return clonedGits
+
+
+    def getPackageDict(self, semcsystemPath, semcsystemRev,
+                       packageFilesFileName, packageFileGits, tdir):
+        """Reads the lists of xml files that lists delivered debian packages,
+        referring to the version semcsystemRev, then calls the debrevision
+        package to get a list of debian packages with their revisions.
+        Returns a dict with debian package names as keys and version as values
+        """
+        packageDict = {}
+
+        # Move to the semcsystem git, save the current dir
+        try:
+            orgdir = os.getcwd()
+            os.chdir(semcsystemPath)
+        except:
+            raise
+        # Checkout and get the path to the gits containing the package
+        # listings
+        # Read the file that lists the patterns for the package files
+        blobRef = "%s:%s" % (semcsystemRev, packageFilesFileName)
+        cmd = "git cat-file blob %s" % blobRef
+        (ret, packageFilePatternsList) = command(cmd)
+        # Read the package file matching each pattern
+        for pattern in packageFilePatternsList:
+            tempPattern = os.path.normpath(os.path.join(tdir,
+                                                        semcsystemPath,
+                                                        pattern))
+            packageFiles = glob.glob(tempPattern)
+            for packageFile in packageFiles:
+                # Store the revision for each package
+                for package in debrevision.parse_xml_package(packageFile):
+                    # If the package is already in the dict but with a
+                    # different revision, we have inconsistency
+                    if package["name"] in packageDict.keys():
+                        if packageDict[package["name"]] != package["revision"]:
+                            # We have found a package with a name that is
+                            # already in the dict but with a different revision
+                            print >> sys.stderr, \
+                                "Package %s used in multiple revisions" \
+                                % package["name"]
+                            sys.exit(1)
+                    else:
+                        # This is the first time we encounter package
+                        packageDict[package["name"]] = package["revision"]
+        # Move back to the original dir
+        try:
+            os.chdir(orgdir)
+        except:
+            raise
+        return packageDict
+
+
+    def createShortLog(self, logList):
+        """Converts a log in list format to shortlog format
+        Returns a shortlog string"""
+        shortlogDict = {}
+        shortlog = ""
+        for logEntry in logList:
+            shortDescr = logEntry['body'].split("\n")[0]
+            author = logEntry['author_name']
+            if author in shortlogDict.keys():
+                shortlogDict[author].append(shortDescr)
+            else:
+                shortlogDict[author] = [shortDescr]
+        # Compose the shortlog from the dict
+        for author in sorted(shortlogDict.keys()):
+            noOfEntries = len(shortlogDict[author])
+            loglines = "\n      ".join(shortlogDict[author])
+            shortlog += "%s (%d):\n      %s\n\n" % (author, noOfEntries,
+                                                    loglines)
+        return shortlog
+
+
+    def createGitLog (self, logList):
+        """Converts a log in list format to normal git log format
+        Returns a log string"""
+        logDict = {}
+        logStr = ""
+        for logEntry in logList:
+            logStr += "commit %s\nAuthor: %s %s\nDate:   %s\n\n%s\n" \
+            % (logEntry['revision'], logEntry['author_name'],
+               logEntry['author_email'], logEntry['author_date'],
+               logEntry['body'])
+        return logStr
+
+
+    def getDmsInfo(self, logList):
+        """Calls the dmsquery script to get DMS info for commits in the logList
+        Returns the number of commits with at least one DMS tag and a list
+        of DMS id's"""
+
+        dmsList = []
+        noOfCommits = 0
+        for logEntry in logList:
+            gitLog = "commit %s\nAuthor: %s %s\nDate:   %s\n%s" % \
+                (logEntry['revision'],
+                 logEntry['author_name'],
+                 logEntry['author_email'],
+                 logEntry['author_date'],
+                 logEntry['body'])
+            dmsInfo = self.dmsqueryShow(gitLog)
+            if dmsInfo:
+                noOfCommits += 1
+            dmsList.extend(dmsInfo)
+        return (noOfCommits, sorted(dmsList))
+
+
+    def diffDecoupledApps(self, oldManifestUrl, newManifestUrl,
+                          notFilter=None):
+        """Looks up the xml files describing the binary delivered packages and
+        generates the shortlog for those"""
+
+        packageFilesFileName = "external-package-files.txt"
+        oldManifest = miniparse(oldManifestUrl)
+        newManifest = miniparse(newManifestUrl)
+        olddir = tempfile.mkdtemp()
+        newdir = tempfile.mkdtemp()
+
+        # Find semcsystem in the old manifest and get the path and sha-1
+        (oldSemcsystemPath, oldSemcsystemRev) = \
+            self.getPathAndRev(oldManifest, "semctools/semcsystem")
+        try:
+            oldPackageFileGits = self.getPackageListGits(oldManifestUrl,
+                                                         oldManifest,
+                                                         oldSemcsystemPath,
+                                                         oldSemcsystemRev,
+                                                         packageFilesFileName,
+                                                         olddir)
+        except GitError, e:
+            print >> sys.stderr, "*** Error when looking for the xml files " \
+                "listing the debian packages: %s" % (e.value)
+            sys.exit(1)
+        oldPackageDict = self.getPackageDict(oldSemcsystemPath,
+                                             oldSemcsystemRev,
+                                             packageFilesFileName,
+                                             oldPackageFileGits,
+                                             olddir)
+
+        # Find semcsystem in the new manifest and get the path and sha-1
+        (newSemcsystemPath, newSemcsystemRev) = \
+            self.getPathAndRev(newManifest, "semctools/semcsystem")
+        try:
+            newPackageFileGits = self.getPackageListGits(newManifestUrl,
+                                                         newManifest,
+                                                         newSemcsystemPath,
+                                                         newSemcsystemRev,
+                                                         packageFilesFileName,
+                                                         newdir)
+        except GitError, e:
+            print >> sys.stderr, "*** Error when looking for the xml files " \
+                "listing the debian packages: %s" % (e.value)
+            sys.exit(1)
+        newPackageDict = self.getPackageDict(newSemcsystemPath,
+                                             newSemcsystemRev,
+                                             packageFilesFileName,
+                                             newPackageFileGits,
+                                             newdir)
+
+        # Check new and updated packages
+        for packName in newPackageDict.keys():
+            newRev = newPackageDict.pop(packName)
+            oldRev = oldPackageDict.pop(packName, "")
+            if newRev != oldRev:
+                try:
+                    logList = deltapi.packagelog(packName, newRev, oldRev)
+                    if logList:
+                        # Generate the shortlog output format and add log text
+                        # to self.concatLog
+                        shortLog = self.createShortLog(logList)
+                        self.concatLog += self.createGitLog(logList)
+                        # Get DMS info
+                        (noOfCorrCommits, dmsList) = self.getDmsInfo(logList)
+                        # Make the printout
+                        print "\n** %s **" % packName
+                        print shortLog
+                        print "DMS issues found:"
+                        for issue in dmsList:
+                            print issue
+                        self.commitCount += len(logList)
+                        self.commitCountFiltered += len(logList)
+                except KeyError:
+                    print >> sys.stderr, "No log for %s" % packName
+                except deltapi.gitrevision.GitExecutionError:
+                    print >> sys.stderr, "No log for %s due to an error " \
+                        "when running git clone" % packName
+                except deltapi.gitrevision.GitReadError:
+                    print >> sys.stderr, "No log for %s due to an error " \
+                        "when running git log" % packName
+                except deltapi.debrevision.processes.ChildRuntimeError:
+                    print >> sys.stderr, "No log for %s due to an error " \
+                        "when extracting the debian package" % packName
+        # Check removed packages
+        for packName in oldPackageDict.keys():
+            oldRev = oldPackageDict.pop(packName)
+            print "Package %s has been removed. Last revision was %s." \
+                % (packName, oldRev)
+
+        # Remove temp dirs, never mind if it fails
+        shutil.rmtree(olddir, ignore_errors=True)
+        shutil.rmtree(newdir, ignore_errors=True)
+
+
+    def countCommits(self, path=None, newrev=None, oldrev=None,
+                     notFilter=None):
         if not self.count:
             return 0
 
@@ -228,7 +514,7 @@ class DiffGenerator(object):
         try:
             os.chdir(path)
         except OSError:
-            print >> sys.stderr, "Could not change direcotory to %s" % path
+            print >> sys.stderr, "Could not change directory to %s" % path
             sys.exit(2)
 
         cmd = "git log --no-merges --pretty=oneline %s..%s" % (oldrev, newrev)
@@ -275,12 +561,21 @@ class DiffGenerator(object):
         os.chdir(rootdir)
         return res
 
-    def dmsqueryQry(self, gitlog):
+
+    def printCommitCount(self):
+        """Prints the number of commits counted by self.commitCount and
+        self.commitCountFiltered"""
+        if self.count == True:
+            print "\nCommits introduced: %d" % self.commitCount
+            print "Commits used for DMS query: %d" % self.commitCountFiltered
+
+
+    def dmsqueryQry(self):
         cmd = "dmsquery -qry %s" % self.query
 
         dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        dmsquery.communicate(input=gitlog)
+        dmsquery.communicate(input=self.concatLog)
         dmsquery.stdin.close()
 
     def dmsqueryShow(self, gitlog):
