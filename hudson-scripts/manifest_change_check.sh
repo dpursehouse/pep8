@@ -1,6 +1,6 @@
 #!/bin/bash -x
 CODE_REVIEW=-1
-MSG="Buidl URL-"$BUILD_URL
+MSG="Build URL-"$BUILD_URL
 
 if [ -z "$HUDSON_REVIEWER" ]; then
     echo "Error:HUDSON_REVIEWER is not defined. Exit."
