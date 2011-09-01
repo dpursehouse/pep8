@@ -25,6 +25,7 @@ use constant MASTERSHIP_FIELD => "ratl_mastership";
 use constant ID_FIELD => "id";
 use constant TITLE_FIELD => "title";
 use constant ISSUE_ENTITY => "Issue";
+use constant DELIVERY_ENTITY => "DeliveryRecord";
 use constant SW_LABEL_ENTITY => "SW_label";
 use constant DMS_ID_LABEL => "DMS ID";
 use constant MASTER_LABEL => "ratl_mastership";
@@ -39,6 +40,14 @@ use constant FINAL_STATE => "Verified";
 use constant PREFERRED_STATUS => "Test OK";
 use constant DEFAULT_SITE => SELD;
 use constant STATE_ACTION => "Pass";
+
+#### NEW DMS APPROACH #####
+use constant DELIVERY_SOLUTION_DONE => "solutiondone";
+use constant DELIVERY_DELIVERED_IN => "delivered_in";
+use constant DELIVERY_DELIVER_TO => "deliver_to";
+use constant DELIVERY_FOUND_IN => "found_in";
+use constant DELIVERY => "Delivery";
+###########################
 
 use constant ERROR => "[ERROR]";
 use constant WARN => "[WARNING]";
@@ -58,15 +67,17 @@ my @sites;
 my $unverified_query;
 my $unlabeled_query;
 my $project;
+my $deliver_to;
+my $create_DR;
 
 my $options_ok;
 my $log_handle;
 
 my $do_log = 1;
 
-################################################################################
-#              ARGUMENT PARSING STARTS HERE!!!                                 #
-################################################################################
+##############################################################################
+#              ARGUMENT PARSING STARTS HERE!!!                               #
+##############################################################################
 
 #If no arguments are supplied, prompt for values.
 if(scalar(@ARGV) == 0) {
@@ -203,6 +214,8 @@ if(scalar(@ARGV) == 0) {
   $options_ok = GetOptions("query=s"        => \$query,
                             "log=s"         => \$log_file,
                             "label=s"       => \$label,
+                            "deliver_to=s"  => \$deliver_to,
+                            "createdr"      => \$create_DR,
                             "pwd=s"         => \$pwd,
                             "user=s"        => \$user,
                             "list"          => \$list,
@@ -230,6 +243,9 @@ if(scalar(@ARGV) == 0) {
     die usage();
   }
   if(defined($update) && defined($list)) {
+    die usage();
+  }
+  if(defined($update) && !defined($deliver_to)) {
     die usage();
   }
   if(defined($project) && !defined($label)) {
@@ -300,7 +316,7 @@ $query_def = $session->OpenQueryDef($query_path);
 my $result_set = $session->BuildResultSet($query_def);
 $result_set->EnableRecordCount();
 $result_set->Execute();
-	
+
 if (Win32::OLE->LastError != 0) {
   print "Problem with DMS Query\n";
   $session->SignOff();
@@ -313,13 +329,22 @@ if(!defined($result_set)) {
 
 #Parse the result set for the values needed for further processing and put them
 #in a hash in memory for fast queries
-my $issues_data = build_issue_hash($session, $result_set, $query_def, MASTERSHIP_FIELD,
-                                                                      RELEASE_LABEL_FIELD,
-                                                                      STATE_FIELD,
-                                                                      INTEGRATED_STATUS_FIELD,
-                                                                      VERIFIED_STATUS_FIELD,
-                                                                      PROJ_ID,
-                                                                      FIX_FOR_FIELD);
+my $issues_data = build_issue_hash($session,
+                                   $result_set,
+                                   $query_def,
+                                   MASTERSHIP_FIELD,
+                                   RELEASE_LABEL_FIELD,
+                                   STATE_FIELD,
+                                   INTEGRATED_STATUS_FIELD,
+                                   VERIFIED_STATUS_FIELD,
+                                   PROJ_ID,
+                                   FIX_FOR_FIELD,
+                                   ID_FIELD,
+                                   DELIVERY,
+                                   DELIVERY.".".DELIVERY_DELIVER_TO,
+                                   DELIVERY.".".DELIVERY_SOLUTION_DONE,
+                                   DELIVERY.".".FIX_FOR_FIELD,
+                                   DELIVERY.".".DELIVERY_DELIVERED_IN);
 
 if(defined($list)) {
   list($issues_data);
@@ -343,6 +368,9 @@ if(defined($list)) {
 }
 
 if(defined($update) && defined($label)){
+  if ($create_DR) {
+    add_DR_if_required($session, $issues_data);
+  }
   update($session, $issues_data);
 }
 
@@ -408,6 +436,8 @@ sub build_issue_hash {
   if($id_column == 0) {
     logg(ERROR, "Could not get column for " . DMS_ID_LABEL);
   }
+  ### Check if issue is of new structure and have DELIVERY Table, ###
+  my $delivery_column = is_field_in_query($query_def, DELIVERY);
   
   my %columns;
   my $field;
@@ -422,20 +452,30 @@ sub build_issue_hash {
   while ($result_set->MoveNext() == $CQPerlExt::CQ_SUCCESS){
     eval {
       my $issue_id = $result_set->GetColumnValue($id_column);
-      $hash{$issue_id} = ();
+      ### Check if issue is of new structure and have DELIVERY Table, ###
+      ###  if YES amend delivery_id to make unique KEY for a record   ###
+      my $issue_delivery_id = $result_set->GetColumnValue($delivery_column);
+      my $issue_hash_key = "";
+      if ($issue_delivery_id) {
+        $issue_hash_key = $issue_id."_".$issue_delivery_id;
+      }
+      else {
+        $issue_hash_key = $issue_id;
+      }
+      $hash{$issue_hash_key} = ();
       foreach $field (@fields) {
         my $field_value = $result_set->GetColumnValue($columns{$field});
         if(!defined($field_value)) {
           $field_value = "";
           logg(WARN, "Could not get value in field $field for issue $issue_id");
         }
-        $hash{$issue_id}->{$field} = $field_value;
+          $hash{$issue_hash_key}->{$field} = $field_value;
       }
     };
-     if($@ ne "") {
-       logg(WARN, "Could not get data from result set.");
-       logg(CQERROR, "$@\n");
-     }
+    if($@ ne "") {
+      logg(WARN, "Could not get data from result set.");
+      logg(CQERROR, "$@\n");
+    }
   }
   return \%hash;
 }
@@ -451,19 +491,24 @@ sub list {
   my $issues_data = shift @_;
   my $first_line = 1;
   print "Issue : ";
+  ### To avoid duplicate listing of DMS ID, and listing at first column ###
   foreach my $issue (keys(%{$issues_data})) {
-      if($first_line) {
-        foreach my $field (keys(%{$issues_data->{$issue}})) {
+    if($first_line) {
+      foreach my $field (keys(%{$issues_data->{$issue}})) {
+        if ($field ne "id"){
           print "$field : ";
         }
-        print "\n";
       }
-      print "$issue : ";
-      foreach my $field (keys(%{$issues_data->{$issue}})) {
-        print $issues_data->{$issue}->{$field}, " : ";
+      print "\n";
     }
-    $first_line = 0;
-    print "\n";
+  print $issues_data->{$issue}->{id}," : ";
+  foreach my $field (keys(%{$issues_data->{$issue}})) {
+    if ($field ne "id"){
+      print $issues_data->{$issue}->{$field}, " : ";
+    }
+  }
+  $first_line = 0;
+  print "\n";
   }
 }
 
@@ -499,17 +544,32 @@ sub update {
     return -1;
   }
 
+  print "\n\nStarting issue update process....\n\n";
   foreach my $issue (keys(%{$issues_data})) {
-    print "checking issue $issue\n";
     my %issue_h = %{$issues_data->{$issue}};
+    my $issue_id = $issue_h{ID_FIELD()};
+    my $deliver_to_in_query = $issue_h{DELIVERY.".".DELIVERY_DELIVER_TO()};
+    print "checking issue $issue_id for branch \"$deliver_to_in_query\"\n";
     if ($issue_h{PROJ_ID()} eq $technical_name) {
-      if(($issue_h{STATE_FIELD()} eq RESTRICTED_STATE) && ($issue_h{INTEGRATED_STATUS_FIELD()} eq PREFERRED_STATUS)) {
-        if(@tags && $issue_h{FIX_FOR_FIELD()} ne "") {
+      ### Check if DMS has Delivery Records as per new DMS structure ###
+      ### If Delivery Records found, then dont check values of main record and ###
+      ### proceed w/o conditions ###
+      ### If DMS is of OLD structure, proceed with conditions like before ###
+      if ($issue_h{DELIVERY()} && ($deliver_to_in_query ne $deliver_to || ($issue_h{DELIVERY.".".DELIVERY_SOLUTION_DONE()} ne "Yes"))) {
+        push(@unverified, $issue);
+        logg(WARN, "Skipping issue $issue_id for branch \"$deliver_to_in_query\", either \"deliver_to\" or \"Solution Done\" not matched with expected value");
+        next;
+      }
+      if(($issue_h{DELIVERY()}) || ((!$issue_h{DELIVERY()}) && ($issue_h{STATE_FIELD()} eq RESTRICTED_STATE) && ($issue_h{INTEGRATED_STATUS_FIELD()} eq PREFERRED_STATUS))) {
+        ### Depending on DMS(Old or New structure),select the FIX_FOR value ###
+        ### In case of New structure, select value from sub-records ###
+        ### In case of Old structure, select value from main-record ###
+        if((@tags && $issue_h{DELIVERY()} && ($issue_h{DELIVERY.".".FIX_FOR_FIELD()} ne "")) || (@tags && (!$issue_h{DELIVERY()}) && ($issue_h{FIX_FOR_FIELD()} ne ""))) {
           my $match_tag = 0;
           foreach my $tag (@tags) {
             $tag =~ s/^\s+//;
             $tag =~ s/\s+$//;
-            if($issue_h{FIX_FOR_FIELD()} eq $tag) {
+            if((($issue_h{DELIVERY()}) && ($issue_h{DELIVERY.".".FIX_FOR_FIELD()} eq $tag)) || ((!$issue_h{DELIVERY()}) && ($issue_h{FIX_FOR_FIELD()} eq $tag))) {
               $match_tag = 1;
               last;
             }
@@ -519,7 +579,14 @@ sub update {
             push(@{$site_issues_update_state{$issue_h{MASTER_LABEL()}}}, $issue);
           } else {
             push(@unverified, $issue);
-            logg(WARN, "Skipping issue $issue with fix_for \"$issue_h{FIX_FOR_FIELD()}\" not in tag list");
+            my $log_fix_for;
+            if ($issue_h{DELIVERY()}) {
+              $log_fix_for = $issue_h{DELIVERY.".".FIX_FOR_FIELD()};
+            }
+            else {
+              $log_fix_for = $issue_h{FIX_FOR_FIELD()};
+            }
+            logg(WARN, "Skipping issue $issue_id for branch \"$deliver_to_in_query\" with fix_for \"$log_fix_for\" not in tag list");
           }
         } else {
           push(@{$site_issues{$issue_h{MASTER_LABEL()}}}, $issue);
@@ -531,19 +598,19 @@ sub update {
             push(@{$site_issues{$issue_h{MASTER_LABEL()}}}, $issue);
           } else {
             push(@unverified, $issue);
-            logg(WARN, "Skipping issue $issue with state \"" . FINAL_STATE . " " . PREFERRED_STATUS . "\" due to SW Official Release field already filled in");
+            logg(WARN, "Skipping issue $issue_id for branch \"$deliver_to_in_query\" with state \"" . FINAL_STATE . " " . PREFERRED_STATUS . "\" due to SW Official Release field already filled in");
           }
         } else {
           push(@unverified, $issue);
-          logg(WARN, "Skipping issue $issue with state \"$issue_h{STATE_FIELD()}\" because \"" . VERIFIED_STATUS_FIELD ."\" not equal to \"" . PREFERRED_STATUS . "\"");
+          logg(WARN, "Skipping issue $issue_id for branch \"$deliver_to_in_query\" with state \"$issue_h{STATE_FIELD()}\" because \"" . VERIFIED_STATUS_FIELD ."\" not equal to \"" . PREFERRED_STATUS . "\"");
         }
       } else {
         push(@unverified, $issue);
-        logg(WARN, "Skipping issue $issue with state \"$issue_h{STATE_FIELD()}, $issue_h{INTEGRATED_STATUS_FIELD()}\" != \"" . RESTRICTED_STATE . " " . PREFERRED_STATUS . "\"");
+        logg(WARN, "Skipping issue $issue_id for branch \"$deliver_to_in_query\" with state \"$issue_h{STATE_FIELD()}, $issue_h{INTEGRATED_STATUS_FIELD()}\" != \"" . RESTRICTED_STATE . " " . PREFERRED_STATUS . "\"");
       }
     }else {
       push(@unverified, $issue);
-      logg(WARN, "Skipping issue $issue, DMS issue proj_id: $issue_h{PROJ_ID()} is not equal to label technical_name:$technical_name");
+      logg(WARN, "Skipping issue $issue_id for branch \"$deliver_to_in_query\", DMS issue proj_id: $issue_h{PROJ_ID()} is not equal to label technical_name:$technical_name");
     }
   }
   DO_SITES:
@@ -579,6 +646,142 @@ sub update {
   logg(OK, "Found $unverified_number unverified issues");
   if($unverified_number > 0) {
     generate_partial_query(\@unverified, "");
+  }
+}
+
+sub add_DR_if_required {
+  my $session_DR  = shift @_;
+  my $issues_data = shift @_;
+  my @checked_issues = ();
+
+  my %site_issues = (
+                      SELD => [],
+                      JPTO => [],
+                      CNBJ => [],
+                      USSV => []
+                    );
+
+  print "\nChecking issues to add Delivery Records....\n";
+  foreach my $issue (keys(%{$issues_data})) {
+    my %issue_h = %{$issues_data->{$issue}};
+    my $issue_id = $issue_h{ID_FIELD()};
+    if (grep {$_ eq $issue_id} @{$site_issues{$issue_h{MASTER_LABEL()}}}) {
+      next;
+    }
+    else {
+      push(@{$site_issues{$issue_h{MASTER_LABEL()}}}, $issue_id);
+    }
+  }
+
+  foreach $site (@sites) {
+    print "\nChecking site $site";
+    if(scalar(@{$site_issues{$site}}) == 0) {
+      print "\nNo issues for site $site\n";
+      logg(OK, "No issues for site $site");
+      next;
+    }
+    my $schema = GENERAL_SCHEMA."$site";
+    $session_DR = CQPerlExt::CQSession_Build();
+    $session_DR->UserLogon($user, $pwd, DB, $schema);
+
+    foreach my $issue_id (@{$site_issues{$site}}) {
+      print "\n\tChecking issue $issue_id";
+      my $proceed_with_issue = 0;
+      my $record = "";
+      eval {
+        $record = $session_DR->GetEntity(ISSUE_ENTITY, $issue_id);
+      };
+      if($@ ne "") {
+        logg(ERROR, "Can't get record for issue $issue_id");
+        logg(CQERROR, "$@\n");
+        return -1;
+      } elsif($record eq ""){
+        logg(WARN, "Issue $issue_id doesn't exist");
+        return 0;
+      }
+      my $Delivery_fieldvalue = $record->GetFieldStringValue(DELIVERY);
+      if ($Delivery_fieldvalue) {
+        my $DR_record = "";
+        my $DR_already_exist = 0;
+        my @array_DR_id = split(/\n/,$Delivery_fieldvalue);
+        foreach my $DR_id (@array_DR_id) {
+          eval {
+            $DR_record = $session_DR->GetEntity(DELIVERY_ENTITY, $DR_id);
+          };
+          if($@ ne "") {
+            logg(ERROR, "Can't get record for DR $DR_id of issue $issue_id");
+            logg(CQERROR, "$@\n");
+            return -1;
+          } elsif($record eq ""){
+            logg(WARN, "DR $DR_id doesn't exist for Issue $issue_id");
+            return 0;
+          }
+          my $DR_deliver_to = $DR_record->GetFieldStringValue(DELIVERY_DELIVER_TO);
+          if ($DR_deliver_to eq $deliver_to) {
+            $DR_already_exist = 1;
+            last;
+          }
+        }
+        if (!$DR_already_exist) {
+          $proceed_with_issue = 1;
+        }
+      }
+      else {
+        $proceed_with_issue = 1;
+      }
+
+      if ($proceed_with_issue) {
+        eval {
+          $record->EditEntity("modify");
+        };
+        if($@ ne "") {
+          logg(ERROR, "Can't make record editable for issue $issue_id");
+          logg(CQERROR, "$@\n");
+        }
+        my $entityObj;
+        $session_DR->SetNameValue("create_new_delivery","yes");
+        $session_DR->SetNameValue("DeliveryIssueId",$issue_id);
+        eval {
+          $entityObj = $session_DR->BuildEntity("DeliveryRecord");
+        };
+        if($@ ne "") {
+          logg(ERROR, "Can't Build Delivery Record for issue $issue_id");
+          logg(CQERROR, "$@\n");
+          return 0;
+        }
+        my $DRdbid = $entityObj->GetDbId();
+        $entityObj->SetFieldValue(DELIVERY_DELIVER_TO,$deliver_to);
+        my $status = $entityObj->Validate();
+        if($status eq ""){
+          $status = $entityObj->Commit();
+          if($status eq ""){
+            print "\tDR \"$deliver_to\" created for $issue_id\n";
+            logg(OK, "DR \"$deliver_to\" created for $issue_id");
+          }
+        }
+        $record->AddFieldValue(DELIVERY,"$DRdbid");
+        $status = $record->Validate();
+        if($status eq ""){
+          $status = $record->Commit();
+          if($status eq ""){
+            print "\t$issue_id updated with DR \"$deliver_to\"\n";
+            logg(OK, "$issue_id updated with DR \"$deliver_to\"");
+          }
+          else{
+            $record->Revert();
+            logg(ERROR, "$issue_id not updated with DR \"$deliver_to\"");
+            print " \[$issue_id\] not updated with DR \"$deliver_to\"\n";
+          }
+        }
+        else{
+          print "$issue_id not valid\n";
+          logg(ERROR,"$issue_id not valid: $status");
+        }
+      }
+    }
+    CQSession::Unbuild($session_DR);
+    print "\nDone with site $site\n";
+    logg(OK, "Done with site $site");
   }
 }
 
@@ -748,9 +951,9 @@ sub get_column {
   my $result_set = shift @_;
   my $column_label = shift @_;
   my $found_column;
-	
-	my $column = 1;
-	eval {
+
+    my $column = 1;
+    eval {
     my $no_of_columns = $result_set->GetNumberOfColumns();
     while($column <= $no_of_columns) {
       my $column_name = $result_set->GetColumnLabel($column);
@@ -815,7 +1018,7 @@ sub label_is_valid {
   } else {
     logg(ERROR, "Failed to validate label $label");
     logg(CQERROR, "$@\n");
-	return 0;
+    return 0;
   }
 }
 
@@ -947,10 +1150,20 @@ sub modify_label {
   my $issue = shift @_;
   my $label = shift @_;
   
+  my %issue_h = %{$issues_data->{$issue}};
+  my $issue_id = $issue_h{ID_FIELD()};
   my $record;
   eval {
-    $record = $session->GetEntity(ISSUE_ENTITY, $issue);
+    ### If Issue have Delivery table, take in the unique id of record. ###
+    ### Else take Issue id ###
+    if ($issue_h{DELIVERY()}) {
+      $record = $session->GetEntity(DELIVERY_ENTITY, $issue_h{DELIVERY()});
+    }
+    else {
+      $record = $session->GetEntity(ISSUE_ENTITY, $issue_id);
+    }
   };
+
   if($@ ne "") {
     logg(ERROR, "Can not get record for issue $issue");
     logg(CQERROR, "$@\n");
@@ -959,13 +1172,21 @@ sub modify_label {
     logg(WARN, "Issue $issue doesn't exist");
     return 0;
   }
-  
-  my $ret = modify($session, $record, RELEASE_LABEL_FIELD, $label);
+
+  my $ret;
+  ### If Issue have Delivery table, update field DELIVERY_DELIVERED_IN ###
+  ### Else update field RELEASE_LABEL_FIELD ###
+  if ($issue_h{DELIVERY()}) {
+    $ret = modify($session, $record, DELIVERY_DELIVERED_IN, $label);
+  }
+  else {
+    $ret = modify($session, $record, RELEASE_LABEL_FIELD, $label);
+  }
   if($ret == 0 || $ret == -1) {
-    logg(ERROR, "Can not modify record for issue $issue");
+    logg(ERROR, "Can not modify record for issue $issue_id");
     return -1;
   } else {
-    logg(OK, "Modified record for issue $issue");
+    logg(OK, "Modified record for issue $issue_id");
     return 1;
   }
 }
@@ -1051,7 +1272,7 @@ sub modify {
     logg(CQERROR, "$ret");
     return -1;
   }
-  
+
   eval {
     $record->Validate();
   };
@@ -1060,7 +1281,7 @@ sub modify {
     logg(CQERROR, "$@\n");
     return -1;
   }
-  
+
   eval {
     $record->Commit();
   };
@@ -1192,13 +1413,16 @@ sub modify_issues {
   @issues = @{$issues_ref};
   my $ret;
   foreach my $issue (@issues) {
+    my %issue_h = %{$issues_data->{$issue}};
+    my $issue_id = $issue_h{ID_FIELD()};
+    my $deliver_to_in_query = $issue_h{DELIVERY.".".DELIVERY_DELIVER_TO()};
     $ret = modify_label($session, $issue, $label);
     if($ret == 1) {
-      my $msg = "Modified issue $issue with label \"$label\"";
+      my $msg = "Modified issue $issue_id for branch \"$deliver_to_in_query\" with label \"$label\"";
       print $msg, "\n";
       logg(OK, $msg);
     } else {
-      logg(ERROR, "Could not modify issue $issue with label $label");
+      logg(ERROR, "Could not modify issue $issue_id for branch \"$deliver_to_in_query\" with label $label");
       $retval++;
     }
   }
@@ -1224,9 +1448,18 @@ sub change_state_issues {
   my $retval       = 0;
 
   @issues = @{$issues_ref};
+
   my $ret;
   foreach my $issue (@issues) {
-    $ret = change_state($session, $issue, $state_action, $status);
+    my %issue_h = %{$issues_data->{$issue}};
+    ### No need to update state of main issue if DMS is of new structure ###
+    ### and have DELIEVRY Table ###
+    if ($issue_h{DELIVERY()}) {
+      $ret = 0;
+    }
+    else {
+      $ret = change_state($session, $issue, $state_action, $status);
+    }
     if($ret == 1) {
       logg(OK, "Performed action $state_action on issue $issue");
     } else {
@@ -1250,7 +1483,6 @@ sub get_query_for_ids {
   my $session = shift @_;
   my $issues_ref = shift @_;
   
-  
   # Build Query
   my $query = $session->BuildQuery(ISSUE_ENTITY);
   $query->BuildField(ID_FIELD);
@@ -1262,11 +1494,28 @@ sub get_query_for_ids {
   $query->BuildField(RELEASE_LABEL_FIELD);
   $query->BuildField(PROJ_ID);
   $query->BuildField(FIX_FOR_FIELD);
+  $query->BuildField(DELIVERY);
+  $query->BuildField(DELIVERY.".".DELIVERY_DELIVER_TO);
+  $query->BuildField(DELIVERY.".".DELIVERY_SOLUTION_DONE);
+  $query->BuildField(DELIVERY.".".FIX_FOR_FIELD);
+  $query->BuildField(DELIVERY.".".DELIVERY_DELIVERED_IN);
 
-  my $filter_node = $query->BuildFilterOperator(CQ_OR);
-  
+  my $filter_node_1 = $query->BuildFilterOperator(CQ_OR);
+
   foreach my $issue(@{$issues_ref}) {
-    $filter_node->BuildFilter(ID_FIELD, CQ_EQ, $issue);
+    my $filter_node_2 = $filter_node_1->BuildFilterOperator(CQ_AND);
+    $filter_node_2->BuildFilter(ID_FIELD, CQ_EQ, $issue);
+    ### Added filter "Deliver_to" which selects exact record from DELIVERY ###
+    ### Table with the combination of DMS ID & "deliver_to" field of record ###
+    ### Its Mandatory to provide "-deliver_to" but would'nt be used in ###
+    ### old DMS structure type of Issues ###
+    if ($list && $deliver_to) {
+      $filter_node_2->BuildFilter(DELIVERY.".".DELIVERY_DELIVER_TO, CQ_EQ, $deliver_to);
+    }
+    if (@tags && (scalar(@tags) == 1))
+    {
+        $filter_node_2->BuildFilter(DELIVERY.".".FIX_FOR_FIELD, CQ_EQ, $tags[0]);
+    }
   }
   return $query;
 }
@@ -1341,22 +1590,22 @@ sub site_exists {
 #######################################'
 
 sub create_time_stamp {
-	#
-	# creates timestamp file names
-	#
+  #
+  # creates timestamp file names
+  #
   my @timedata = localtime(time);
-  
-	my $year = $timedata[5]+1900;
-	
-	#Prepend single digit in date or time with 0
-	for(my $i = 0; $i<5; $i++) {
+
+  my $year = $timedata[5]+1900;
+
+  #Prepend single digit in date or time with 0
+  for(my $i = 0; $i<5; $i++) {
     $timedata[$i] =~ s/^(\d)$/0$1/;
   }
 
   $timedata[4]++;
   
-	my $timeStamp = "$year.$timedata[4].$timedata[3]_$timedata[2].$timedata[1].$timedata[0]";
-	return $timeStamp;
+  my $timeStamp = "$year.$timedata[4].$timedata[3]_$timedata[2].$timedata[1].$timedata[0]";
+  return $timeStamp;
 }
 
 #######################################
@@ -1366,6 +1615,6 @@ sub create_time_stamp {
 #######################################
 
 sub usage {
-  print "cqperl <script> -user <user> -pwd <password> -log <logfile> [-sites <site>[,...]] [-tag <\"tag[,...]\">] (-list [-unv <query> | -unl <query>] | -update -label <label>) (-query <query file> | -issues <issue[,...]>) -createlabel <labelproject>\n";
+  print "cqperl <script> -user <user> -pwd <password> -log <logfile> [-sites <site>[,...]] [-tags <\"tag[,...]\">] (-list [-unv <query> | -unl <query>] | -update -label <label> -deliver_to <branch name>) (-query <query file> | -issues <issue[,...]>) -createlabel <labelproject>\n";
 }
 
