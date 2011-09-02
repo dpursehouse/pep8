@@ -92,7 +92,7 @@ import tempfile
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.5'
+__version__ = '0.3.6'
 
 REPO = 'repo'
 GIT = 'git'
@@ -292,14 +292,16 @@ class DMSTagServer():
         self.server = server
         self.port = port
 
-    def dms_for_tags(self, dmss, dms_tags):
+    def dms_for_tags(self, dmss, dms_tags, target_branch):
         """
-        Connect to tag server and collect dmss for a tag
+        Connect to tag server and collect dmss tagged with one of the
+        `dms_tags`, specific to the `target_branch`
         """
         dms_list = {}
         for tag in dms_tags.split(','):
-            tagged_dms = self.query_srv('%s|%s|%s'
-                                        % (SRV_DMS_STATUS, tag, dmss))
+            tagged_dms = self.query_srv('%s|%s|%s|%s'
+                                        % (SRV_DMS_STATUS,
+                                        tag, dmss, target_branch))
             if tagged_dms == None:
                 return None
             dms_list[tag] = tagged_dms
@@ -1000,7 +1002,7 @@ def dms_get_fix_for(commit_list):
     if OPT.dms_tag_server:
         server = DMSTagServer(OPT.dms_tag_server)
         tags_dmss = server.dms_for_tags(','.join([x.dms for x in commit_list]),
-                                        OPT.dms_tags)
+                                        OPT.dms_tags, OPT.target_branch)
         if tags_dmss != None:
             for cmt in commit_list:
                 dms = cmt.dms
