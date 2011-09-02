@@ -22,11 +22,8 @@ class CommitMessageChecker:
         Check if a given subject should be excluded
         '''
 
-        excludedSubjects = ["Merge remote branch",
-                            "Revert \"",
-                            "Merge \"",
-                            "Merge commit \'",
-                            "Merge branch \'",
+        excludedSubjects = ["Merge ",
+                            "Revert ",
                             "DO NOT MERGE",
                             "DO NOT SUBMIT",
                             "DON\'T SUBMIT"]
