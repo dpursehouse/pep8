@@ -34,4 +34,11 @@ do
     fi
 done< <($GIT_COMMAND diff --name-only --diff-filter=AM HEAD~1..)
 
+# Run unit tests
+TESTDIR="$PROJNAME/tests"
+if [ -d "$TESTDIR" ]; then
+    make --directory $TESTDIR
+    EXIT_STATUS=`expr $EXIT_STATUS + $?`
+fi
+
 exit $EXIT_STATUS
