@@ -140,7 +140,8 @@ class GerritSshConnection():
         thereof) will be thrown.
         """
 
-        args = ["query", "--all-approvals", "--format", "JSON",
+        args = ["query", "--current-patch-set", "--all-approvals",
+                "--format", "JSON",
                 self.escape_string(querystring)]
         response, err = self.run_gerrit_command(args)
 
