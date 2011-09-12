@@ -92,7 +92,7 @@ import tempfile
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.4'
+__version__ = '0.3.5'
 
 REPO = 'repo'
 GIT = 'git'
@@ -836,8 +836,9 @@ def update_manifest(branch, skip_review):
     for upl in upd_project_list:
         proj_list += '    ' + upl + '\n'
     commit_msg = 'Auto cherry-pick change\n\n' \
-                 'The following project(s) revision was updated to ' + \
-                  branch + ':\n' + proj_list
+                 'Update revision(s) to branch:\n' \
+                 '    ' + branch + '\n\n' \
+                 'Project(s):\n' + proj_list
     out, err, ret = execmd([GIT, 'commit', '-m', commit_msg])
     if (ret != 0):
         do_log(err, echo=True)
