@@ -11,6 +11,5 @@ if [ -n "$GERRIT_CHANGE_NUMBER" ]; then
     cd $WORKSPACE
 
     git clone git://review.sonyericsson.net/semctools/cm_tools -b master
-    cd cm_tools/hudson-scripts
-    bash -ex ./cm_tools_verification_hudson.sh
+    bash -ex ./cm_tools/hudson-scripts/cm_tools_verification_hudson.sh
 fi
