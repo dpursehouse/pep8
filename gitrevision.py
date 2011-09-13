@@ -257,11 +257,14 @@ class GitWorkspace:
         revfileslist = list()
         for revision in logfilenames:
             revfilesdict = dict()
-            if len(str(revision["revision"])) != 40:
+            try:
+                if len(str(revision["revision"])) != 40:
+                    continue
+                elif len(str(revision["filenames"]).strip("\r\n")) == 0:
+                    continue
+                revfilesdict["revision"] = revision["revision"]
+            except KeyError:
                 continue
-            elif len(str(revision["filenames"]).strip("\r\n")) == 0:
-                continue
-            revfilesdict["revision"] = revision["revision"]
             try:
                 revfilesdict["filenames"] = parse_csv(
                                            revision["filenames"],
@@ -343,10 +346,12 @@ def inherit_key(heirs, newkey, parentkey):
     """
     heritage = list()
     inheritance = str()
+    if heirs == [{}]:
+        return heirs
     for onedict in reversed(heirs):
-        onedict[newkey] = inheritance
-        heritage.append(onedict)
         try:
+            onedict[newkey] = inheritance
+            heritage.append(onedict)
             inheritance = onedict[parentkey]
         except KeyError:
             pass
@@ -381,6 +386,9 @@ def parse_csv(csvstring, delimiter, lineterminator, fields):
     """
     results = list()
     oneresult = dict()
+    if csvstring == "":
+        results = [{}]
+        return results
     if not delimiter in csvstring or not lineterminator in csvstring:
         raise IndexError("No delimiter or line terminator in csv string.")
     for row in csvstring.split(lineterminator):
