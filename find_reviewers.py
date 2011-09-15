@@ -5,11 +5,18 @@ import json
 import optparse
 
 import gerrit
+from processes import ChildExecutionError
 from semcutil import fatal
 
 
 # Default number of previous reviews from which to find approvers
 DEFAULT_LIMIT = 50
+
+
+class AddReviewersError(Exception):
+    '''AddReviewersError is raised for any kind of error that
+    occurs when attempting to add reviewers to a change.
+    '''
 
 
 class FindReviewersError(Exception):
@@ -19,7 +26,7 @@ class FindReviewersError(Exception):
 
 
 class FindReviewers:
-    '''Class to find reviewers for a change or project
+    '''Class to find and add reviewers for a change or project.
     '''
 
     def __init__(self, user=None):
@@ -41,17 +48,35 @@ class FindReviewers:
             pass
         return None
 
+    def add(self, change, reviewers):
+        '''Calls Gerrit to add `reviewers` onto `change`, where `reviewers`
+        is an iterable object contianing reviwers' email addresses and
+        `change` is any change identifier accepted by Gerrit.
+        Raises AddReviewersError if Gerrit returns an error
+        '''
+        add_cmd = ["set-reviewers", change]
+        for reviewer in reviewers:
+            add_cmd += ["--add", reviewer]
+        try:
+            self.g.run_gerrit_command(add_cmd)
+        except ChildExecutionError, e:
+            raise AddReviewersError("Error adding reviewers: %s" % (e))
+
     def find(self, change=None, project=None, branch=None,
         limit=DEFAULT_LIMIT, exclude=[]):
         '''Finds reviewers for `change`, or for `project` and `branch`.
         `change` may be a SHA-1 or a change number.  Checks the last `limit`
-        number of previously merged changes.
+        number of previously merged changes. `limit` must be 1 or more.
+        Reviewers listed in `exclude` will be ignored.
         Returns a list of (approver, count) tuples, where approver is
         the approver's email address and count it the number of times
         they have approved, sorted by count, in descending order.
+        Raises FindReviewError if any error occurs.
         '''
         _exclude = exclude
         # Validate options
+        if int(limit) < 1:
+            raise FindReviewersError("Parameter `limit` must be 1 or more")
         if not change and not project:
             raise FindReviewersError("Must specify either change ID "
                                      "or project name")
@@ -114,17 +139,37 @@ def main():
         default=DEFAULT_LIMIT, help="Number of previous reviews to check")
     parser.add_option("-e", "--exclude", dest="exclude",
         default="", help="Comma separated list of users to exclude")
+    parser.add_option("-a", "--add", dest="add", action="store_true",
+        default=False, help="Also add the reviewers (default False)")
+    parser.add_option("-n", "--count", dest="count", type="int",
+        default=3, help="Number of reviewers to add")
+    parser.add_option("-v", "--verbose", dest="verbose", action="store_true",
+        default=False, help="Verbose mode")
     (opts, args) = parser.parse_args()
 
+    # Validate options
+    if int(opts.count) < 1:
+        raise FindReviewersError("Parameter `count` must be 1 or more")
+    if opts.add and not opts.change:
+        raise FindReviewersError("Must specify change to add reviewers")
+    if opts.add and opts.project:
+        raise FindReviewersError("Cannot add reviewers for project")
+
+    # Find reviewers
     finder = FindReviewers(user=opts.username)
     exclude_list = set([s.strip() for s in opts.exclude.split(',')])
-    approvers = finder.find(change=opts.change, project=opts.project,
-                            branch=opts.branch, limit=opts.limit,
-                            exclude=exclude_list)
+    approvers = finder.find(opts.change, opts.project, opts.branch,
+                            opts.limit, exclude_list)
+    reviewers = [approver for approver, count in approvers[0:opts.count]]
 
-    # Print out the top 3 approvers
-    for approver, count in approvers[0:3]:
-        print "%s" % (approver)
+    # Print out the list of reviewers
+    if opts.verbose:
+        for reviewer in reviewers:
+            print "%s" % (reviewer)
+
+    # Add reviewers to the change
+    if opts.add:
+        finder.add(opts.change, reviewers)
 
 if __name__ == '__main__':
     try:
