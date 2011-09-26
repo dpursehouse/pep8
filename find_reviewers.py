@@ -71,18 +71,19 @@ class FindReviewers:
         Returns a list of (approver, count) tuples, where approver is
         the approver's email address and count it the number of times
         they have approved, sorted by count, in descending order.
-        Raises FindReviewError if any error occurs.
+        Raises FindReviewError if any error occurs when finding reviewers.
+        Raises ValueError if invalid parameters are passed.
         '''
         _exclude = exclude
         # Validate options
         if int(limit) < 1:
-            raise FindReviewersError("Parameter `limit` must be 1 or more")
+            raise ValueError("Parameter `limit` must be 1 or more")
         if not change and not project:
-            raise FindReviewersError("Must specify either change ID "
-                                     "or project name")
+            raise ValueError("Must specify either change ID or "
+                             "project name")
         if change and (project or branch):
-            raise FindReviewersError("Cannot specify change ID and "
-                                     "project/branch")
+            raise ValueError("Cannot specify both change ID and "
+                             "project/branch")
 
         # Set up the query
         self.query = ["status:merged", "limit:%s" % (limit),
@@ -149,11 +150,11 @@ def main():
 
     # Validate options
     if int(opts.count) < 1:
-        raise FindReviewersError("Parameter `count` must be 1 or more")
+        raise ValueError("Parameter `count` must be 1 or more")
     if opts.add and not opts.change:
-        raise FindReviewersError("Must specify change to add reviewers")
+        raise ValueError("Must specify change to add reviewers")
     if opts.add and opts.project:
-        raise FindReviewersError("Cannot add reviewers for project")
+        raise ValueError("Cannot add reviewers for project")
 
     # Find reviewers
     finder = FindReviewers(user=opts.username)
