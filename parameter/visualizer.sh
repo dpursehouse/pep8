@@ -39,8 +39,8 @@ createwikitext () {
 	    newwikilayer=`./create_structure.py $d/nv $xmlfilename $owner`
 	    cat wiki/$newwikilayer.layer | ../semcwikitools/write_page.py "$wikipage/$newwikiname/layer"
 	    
-	    echo "[[PLD CM/Parameter/Blue/test/$newwikiname|$newwikiname]]" >> wiki/index.wiki
-	    echo "''([[PLD CM/Parameter/Blue/test/$newwikiname/layer|layers]])''<br>" >> wiki/index.wiki
+	    echo "[[$wikipage/$newwikiname|$newwikiname]]" >> wiki/index.wiki
+	    echo "''([[$wikipage/$newwikiname/layer|layers]])''<br>" >> wiki/index.wiki
 	
 	done
     done
