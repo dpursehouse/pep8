@@ -15,7 +15,7 @@ getownerlist () {
 createwikitext () {
     owner=$here/$ownerfile
     products=`find $proddir -mindepth 1 -maxdepth 1 -type d`
-    echo "== Product/band kombinations ==" > wiki/index.wiki
+    echo "== Product/band kombinations ==" > wiki/index.wiki.txt
 	
     for d in $products ; do
 	
@@ -31,16 +31,16 @@ createwikitext () {
 	    xmlfilename="${bc##*/}"
 	    echo Working on $xmlfilename
 	    newwikiname=`echo $xmlfilename | sed s/.xml//`
-	    echo "([[$wikipage/$newwikiname/layer|View the layers]])" > wiki/$newwikiname
+	    echo "([[$wikipage/$newwikiname/layer|View the layers]])" > wiki/$newwikiname.txt
 
 	    ./visualizer.py $d/nv $xmlfilename $owner
-	    cat wiki/$newwikiname | ../semcwikitools/write_page.py "$wikipage/$newwikiname"
+	    cat wiki/$newwikiname.txt | ../semcwikitools/write_page.py "$wikipage/$newwikiname"
 	    
 	    newwikilayer=`./create_structure.py $d/nv $xmlfilename $owner`
-	    cat wiki/$newwikilayer.layer | ../semcwikitools/write_page.py "$wikipage/$newwikiname/layer"
+	    cat wiki/$newwikilayer.layer.txt | ../semcwikitools/write_page.py "$wikipage/$newwikiname/layer"
 	    
-	    echo "[[$wikipage/$newwikiname|$newwikiname]]" >> wiki/index.wiki
-	    echo "''([[$wikipage/$newwikiname/layer|layers]])''<br>" >> wiki/index.wiki
+	    echo "[[$wikipage/$newwikiname|$newwikiname]]" >> wiki/index.wiki.txt
+	    echo "''([[$wikipage/$newwikiname/layer|layers]])''<br>" >> wiki/index.wiki.txt
 	
 	done
     done
@@ -74,7 +74,7 @@ getownerlist
 createwikitext
 
 # Create the main-wiki-page
-cat wiki/index.wiki | ../semcwikitools/write_page.py $wikipage
+cat wiki/index.wiki.txt | ../semcwikitools/write_page.py $wikipage
 
 echo All done!
 

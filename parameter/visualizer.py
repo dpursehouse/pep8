@@ -204,7 +204,7 @@ def parseOne(masterfilepath, masterfile, ownerpath):
     
     # Create WIKI page
     name = masterfile.split('.')
-    filename = "wiki/%s" % name[0]
+    filename = "wiki/%s.txt" % name[0]
     htmltext = createWikiCode (parameters, owners, filename)
 
     return name[0]

@@ -90,7 +90,7 @@ def parseOne(masterfilepath, masterfile, ownerpath):
    
     # Create WIKI page
     name = masterfile.split('.')
-    filename = "wiki/%s.layer" % name[0]
+    filename = "wiki/%s.layer.txt" % name[0]
     with open(filename, 'w') as f:
         f.write(tabletext)
 
