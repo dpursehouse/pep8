@@ -112,6 +112,15 @@ def matchOwners(parameters, owners):
                 reponsiblelist+="%s\n" % str(owner)
     return reponsiblelist
 
+#
+# ----------------------------------------------------------------------
+# Check if this diff from latest run
+#
+
+def diff(param):
+    #if param == 535:
+    #    return True
+    return False
 
 #
 # ----------------------------------------------------------------------
@@ -122,28 +131,31 @@ def createWikiCode (parameters, owners, filename):
     with open(filename, 'a') as f:
      
         f.write("<br>''(default)'' = %s\n" % defaultresponsible)
-        f.write("<br>Higher order overwrites lower order. Striked through indicates overwritten values.\n")
+        f.write("<br><strike>Striked through</strike> = overwritten values\n")
+        f.write("<!-- <br><font style='background: lightgreen'>Green background</font> = value change or added parameter from last run -->\n")
         f.write("{| class='wikitable sortable' border='1'\n")
         f.write("|- \n")
-        f.write("! ID !! Owner !! class='unsortable'|Order !! Source !! class='unsortable'|Name !! class='unsortable'|Value\n")
+        f.write("! ID !! Owner !! Source !! class='unsortable'|Name !! class='unsortable'|Value\n")
         
         previousparam = 0
         
         params = sorted(parameters)
-        
         for i in xrange(len(params)):
+
+            pretext=""
+            afttext=""
+
             if i+1 < len(params):
                 if params[i][0] == params[i+1][0]:
-                    pretext="style='background: silver' | "
                     pretext+="<strike>"
                     afttext="</strike>"
-                else:
-                    pretext=""
-                    afttext=""
-            else:
-                pretext=""
+
+            if diff(params[i][0]):
+                pretext+="style='background: lightgreen' | "
+
             f.write("|- \n")
             f.write("| %s%s%s\n" % (pretext, str(params[i][0]), afttext))
+
             foundowner = 0
             for owner in owners :
                 if (params[i][0] == owner[0]):
@@ -151,7 +163,7 @@ def createWikiCode (parameters, owners, filename):
                     f.write("| %s%s%s\n" % (pretext, str(owner[1]), afttext))
             if foundowner == 0:
                 f.write("| %s''(default)''%s\n" % (pretext, afttext))
-            f.write("| %s%s%s\n" % (pretext, params[i][5], afttext))
+            #f.write("| %s%s%s\n" % (pretext, params[i][5], afttext))
             f.write("| %s%s%s\n" % (pretext, str(params[i][2]).lstrip(), afttext))
             f.write("| %s%s%s\n" % (pretext, str(params[i][3]).lstrip(), afttext))
             f.write("| %s%s%s\n" % (pretext, makeSpace(str(params[i][4])).lstrip().rstrip(), afttext))
