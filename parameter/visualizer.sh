@@ -15,7 +15,7 @@ getownerlist () {
 createwikitext () {
     owner=$here/$ownerfile
     products=`find $proddir -mindepth 1 -maxdepth 1 -type d`
-    echo "==$(date)==" > wiki/index.wiki
+    echo "== Product/band kombinations ==" > wiki/index.wiki
 	
     for d in $products ; do
 	
