@@ -39,35 +39,40 @@ def makePretty(what):
 
 #
 # ----------------------------------------------------------------------
-# Read the parameters
+# Read and format the parameters
 #
 
 order=0
 
-def handleXmls(parameterlist, path, thisfile, level, parameters):
-#    print " - - - - - - - -"
-#    print "path: %s" % path
-#    print "thisfile: %s" % thisfile
-#    print "level: %s" % level
+#;level 1
+#:[[File:1a.gif]]level 2
+#::[[File:1a.gif]]level 3
+#:::[[File:1a.gif]]level 4
 
-    returntext = ""
+def formatLevel(level, text):
+    if level == 1:
+        return ";%s" % text
+    else:
+        return "%s[[File:1a.gif]]%s" % (":" * (level - 1), text)
+
+
+def handleXmls(parameterlist, path, thisfile, level, parameters, savefile):
+
     paraIncludes = parameterlist.getElementsByTagName("xi:include")
-    if paraIncludes == []:
-        return "%s<br/>" % thisfile
+    paraValues   = parameterlist.getElementsByTagName("NvItem")
 
-    returntext += "<table border=1><tr><td><b>%s</b><tr><td>" % thisfile
+    with open(savefile, 'a') as f:
+        f.write("%s (%s)\n" % (formatLevel(level,thisfile), len(paraValues)))
 
     for value in paraIncludes:
         nextfilepath = str(value.getAttribute("href")).split('#')
         filename = os.path.basename(nextfilepath[0])
         filepath = os.path.abspath("%s/%s" % (path, os.path.dirname(nextfilepath[0])))
         dom_temp = parse("%s/%s" % (filepath, filename))
-        returntext += "%s" % handleXmls(dom_temp, filepath, filename, level+1, parameters)
+        handleXmls(dom_temp, filepath, filename, level+1, parameters, savefile)
 
-    returntext += "</td></tr></table>"
-    return returntext
+    return
     
-
 #
 # ----------------------------------------------------------------------
 # MAIN
@@ -83,17 +88,16 @@ def parseOne(masterfilepath, masterfile, ownerpath):
     parameters = []
     tabletext = ""
 
-    # Read the xml files
-    dom_param = parse("%s/%s" % (masterfilepath, masterfile))
-#    tabletext = "<table border=1><tr><td><b>%s</b></td></tr>" % masterfile
-    tabletext += "%s" % handleXmls(dom_param, masterfilepath, masterfile, 1, parameters)
-   
     # Create WIKI page
     name = masterfile.split('.')
     filename = "wiki/%s.layer.txt" % name[0]
     with open(filename, 'w') as f:
-        f.write(tabletext)
+        f.write("The include structure of the nv xml files. The number within parenthesis are the amount of NvItems within that particular xml file.<br><br>\n")
 
+    # Read the xml files
+    dom_param = parse("%s/%s" % (masterfilepath, masterfile))
+    tabletext += "%s" % handleXmls(dom_param, masterfilepath, masterfile, 1, parameters, filename)
+   
     return name[0]
 
 # -----------------------------------------
