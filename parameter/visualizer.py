@@ -174,7 +174,8 @@ def createWikiCode(parameters, owners, filename):
     with open(rawfile, 'w') as r:
         r.write("<NV>")
 
-    with open(filename, 'a') as f:
+    newfile = "%s.txt" % filename
+    with open(newfile, 'a') as f:
 
         f.write("<br>''(default)'' = %s\n" % defaultresponsible)
         f.write("<br><strike>Striked through</strike> = overwritten values\n")
@@ -252,9 +253,11 @@ def parseOne(masterfilepath, masterfile, ownerpath):
     name = masterfile.split('.')
 
     # Read the list of previous parameters
-    if os.path.exists("wiki/%s.txt.xml.old" % name[0]):
-        dom_oldlist = parse("wiki/%s.txt.xml.old" % name[0])
+    try:
+        dom_oldlist = parse("wiki/%s.xml.old" % name[0])
         readOld(dom_oldlist)
+    except IOError:
+        print "The previous-xml-file doesn't exit"
 
     # Read the owner list
     dom_owner = parse(ownerpath)
@@ -268,7 +271,7 @@ def parseOne(masterfilepath, masterfile, ownerpath):
     responsiblelist = matchOwners(parameters, owners)
 
     # Create WIKI page
-    filename = "wiki/%s.txt" % name[0]
+    filename = "wiki/%s" % name[0]
     htmltext = createWikiCode(parameters, owners, filename)
 
     return name[0]

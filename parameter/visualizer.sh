@@ -24,6 +24,8 @@ createwikitext () {
 	    newwikiname=`echo $xmlfilename | sed s/.xml//`
 	    echo "([[$wikipage/$newwikiname/layer|View the layers]])" > wiki/$newwikiname.txt
 
+	    curl -f $oldxml/$newwikiname.xml -o wiki/$newwikiname.xml.old
+
 	    ./visualizer.py $d/nv $xmlfilename $owner
 	    cat wiki/$newwikiname.txt | ../semcwikitools/write_page.py "$wikipage/$newwikiname"
 	    
@@ -43,6 +45,7 @@ here=`pwd`
 repopath=$1
 wikipage=$2
 ownerfile=$3
+oldxml=$4
 fsgenpath=$repopath/fsgen
 datadir=$fsgenpath/data
 proddir=$datadir/products
