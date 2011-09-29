@@ -59,7 +59,7 @@ def readOld(oldlist):
                           str(param.getAttribute("sg")),
                           str(param.getAttribute("source")),
                           str(param.getAttribute("name")),
-                          str(param.getAttribute("value"))])
+                          makeSpace(str(param.getAttribute("value")))])
 
     return
 #
@@ -170,7 +170,7 @@ def diff(pid, sg, source, name, value):
 
 
 def createWikiCode(parameters, owners, filename):
-    rawfile = "%s.raw" % filename
+    rawfile = "%s.xml" % filename
     with open(rawfile, 'w') as r:
         r.write("<NV>")
 
@@ -252,8 +252,8 @@ def parseOne(masterfilepath, masterfile, ownerpath):
     name = masterfile.split('.')
 
     # Read the list of previous parameters
-    if os.path.exists("wiki/%s.txt.raw.old" % name[0]):
-        dom_oldlist = parse("wiki/%s.txt.raw.old" % name[0])
+    if os.path.exists("wiki/%s.txt.xml.old" % name[0]):
+        dom_oldlist = parse("wiki/%s.txt.xml.old" % name[0])
         readOld(dom_oldlist)
 
     # Read the owner list
