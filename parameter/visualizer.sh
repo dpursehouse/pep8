@@ -1,15 +1,6 @@
 #!/bin/bash
 #-x
 
-# ----------------------------------------------------------------------------------------------------
-
-getownerlist () {
-    if [ -f $ownerfile ]; then
-	rm $ownerfile
-    fi
-    ownerlist=https://wiki.sonyericsson.net/wiki_androiki/images/a/a5/$ownerfile
-    wget -q $ownerlist
-}
 
 # ----------------------------------------------------------------------------------------------------
 createwikitext () {
@@ -57,17 +48,14 @@ datadir=$fsgenpath/data
 proddir=$datadir/products
 
 # Repo sync the modem source
-cd $repopath
-repo sync -q -j4
-cd $here
+#cd $repopath
+#repo sync -j4
+#cd $here
 
 # Create the wiki subfolder if it doesn't exist
 if [ ! -d "wiki" ]; then
     mkdir wiki
 fi
-
-# Get the list of owners from the wiki
-getownerlist
 
 # Create the sub-wiki-pages
 createwikitext
