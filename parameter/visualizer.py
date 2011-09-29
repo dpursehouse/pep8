@@ -210,7 +210,7 @@ def createWikiCode(parameters, owners, filename):
 
             diffval = diff(params[i][0], ownertext, str(params[i][2]).lstrip(),
                            str(params[i][3]).lstrip(),
-                           str(params[i][4]).lstrip().rstrip())
+                           makeSpace(str(params[i][4])).lstrip().rstrip())
             if diffval != "":
                 # TODO: mark only the changed in pink, not the entire row
                 pretext = "style='background: pink' | " + pretext
