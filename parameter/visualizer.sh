@@ -41,7 +41,6 @@ createwikitext () {
 	    
 	    echo "[[$wikipage/$newwikiname|$newwikiname]]" >> wiki/index.wiki.txt
 	    echo "''([[$wikipage/$newwikiname/layer|layers]])''<br>" >> wiki/index.wiki.txt
-	
 	done
     done
 
@@ -77,5 +76,3 @@ createwikitext
 cat wiki/index.wiki.txt | ../semcwikitools/write_page.py $wikipage
 
 echo All done!
-
-
