@@ -15,7 +15,7 @@ while IFS= read FILENAME;
 do
     # Run pep8 check on Python files
     if grep -q "\.py$" <<<$FILENAME ; then
-        python cm_tools/pep8.py -r $PROJNAME/$FILENAME | tee temp.txt
+        python cm_tools/pep8.py -r $PROJNAME/$FILENAME | tee pep8_log.txt
         STATUS=${PIPESTATUS[0]}
         if [ "$STATUS" -ne 0 ]; then
             EXIT_STATUS=`expr $EXIT_STATUS + 1`
