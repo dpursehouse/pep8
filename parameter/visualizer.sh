@@ -50,11 +50,6 @@ fsgenpath=$repopath/fsgen
 datadir=$fsgenpath/data
 proddir=$datadir/products
 
-# Repo sync the modem source
-#cd $repopath
-#repo sync -j4
-#cd $here
-
 # Create the wiki subfolder if it doesn't exist
 if [ ! -d "wiki" ]; then
     mkdir wiki
@@ -62,6 +57,12 @@ fi
 
 # Create the sub-wiki-pages
 createwikitext
+
+# Add dependency-tree to the page
+echo "== XML Dependency Tree ==" >> wiki/index.wiki.txt
+echo "The dependency tree of the nv xml files (files included in the MSMxxx-MASTERFILES are excluded). The number within parenthesis are the amount of NvItems within that particular xml file.<br><br>" >> wiki/index.wiki.txt
+./make_tree.sh wiki >> wiki/index.wiki.txt
+
 
 # Create the main-wiki-page
 cat wiki/index.wiki.txt | ../semcwikitools/write_page.py $wikipage
