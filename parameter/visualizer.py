@@ -1,10 +1,20 @@
 #!/usr/bin/env python
 
-#import label_info
-#import semcutil
+# -----------------------------------------------------------------------------
+# visualizer.py
+#
+# Usage: ./visualizer.py <masterfile> <ownerfile>
+#
+# Given one product/band configuration xml file (masterfile) and an xml file
+# containing the owner of all NvItems (ownerfile), this script will generate a
+# file that is wiki formatted displaying a table containing the NvItems:
+#
+# | NvItem ID | SG of the Owner | xmlfile source | NvItem Name | NvItem Value |
+#
+# -----------------------------------------------------------------------------
+
 import sys
 import os
-#import xml.parsers.expat
 from xml.dom.minidom import parse, parseString
 import array
 import optparse
@@ -92,20 +102,18 @@ def handleNV(parameters, owners):
 order = 0
 
 
-def handleParameters(parameterlist, path, thisfile, level, parameters):
-    xmlfiles.append(thisfile)
+def handleParameters(parameterlist, thisfile, level, parameters):
     paraIncludes = parameterlist.getElementsByTagName("xi:include")
     for value in paraIncludes:
-        nextfilepath = str(value.getAttribute("href")).split('#')
-        filename = os.path.basename(nextfilepath[0])
-        filepath = os.path.abspath("%s/%s" % (path,
-                                              os.path.dirname(nextfilepath[0]
-                                                              )))
-        dom_temp = parse("%s/%s" % (filepath, filename))
-        parameters = handleParameters(dom_temp, filepath, filename,
+        nextfile = str(value.getAttribute("href")).split('#')
+        filepath = os.path.abspath(os.path.join(os.path.dirname(thisfile),
+                                                nextfile[0]))
+        dom_temp = parse(filepath)
+        parameters = handleParameters(dom_temp, filepath,
                                       level + 1, parameters)
     paraValues = parameterlist.getElementsByTagName("NvItem")
-    return handleParaValues(paraValues, thisfile, parameters, level)
+    return handleParaValues(paraValues, os.path.basename(thisfile),
+                            parameters, level)
 
 
 def handleParaValues(values, thisfile, parameters, level):
@@ -239,33 +247,27 @@ def createWikiCode(parameters, owners, filename):
 # ----------------------------------------------------------------------
 #
 
-htmlfilename = []
-xmlfiles = []
 
-##
-
-
-def parseOne(masterfilepath, masterfile, ownerpath):
+def parseOne(masterfile, ownerfile):
     owners = []
     parameters = []
     responsiblelist = ""
 
-    name = masterfile.split('.')
+    masterbasename = os.path.basename(masterfile)
+    name = masterbasename.split('.')
 
-    # Read the list of previous parameters
-    try:
+    # Read the list of previous parameters if it exists
+    if os.path.isfile("wiki/%s.xml.old" % name[0]):
         dom_oldlist = parse("wiki/%s.xml.old" % name[0])
         readOld(dom_oldlist)
-    except IOError:
-        print "The previous-xml-file doesn't exit"
 
     # Read the owner list
-    dom_owner = parse(ownerpath)
+    dom_owner = parse(ownerfile)
     handleOwners(dom_owner, owners)
 
     # Read the parameters
-    dom_param = parse("%s/%s" % (masterfilepath, masterfile))
-    handleParameters(dom_param, masterfilepath, masterfile, 1, parameters)
+    dom_param = parse(masterfile)
+    handleParameters(dom_param, masterfile, 1, parameters)
 
     # Match owners to parameters
     responsiblelist = matchOwners(parameters, owners)
@@ -278,16 +280,15 @@ def parseOne(masterfilepath, masterfile, ownerpath):
 
 # -----------------------------------------
 
-usage = "usage: %prog [options] XMLFILE\n"
+usage = "usage: %prog XMLFILE OWNERFILE"
 parser = optparse.OptionParser(usage=usage)
 (options, args) = parser.parse_args()
 
-if len(args) != 3:
+if len(args) != 2:
     parser.print_help()
     parser.error("Incorrect number of arguments")
 
-masterfilepath = args[0]
-masterfile = args[1]
-ownerpath = args[2]
+masterfile = args[0]
+ownerfile = args[1]
 
-parseOne(masterfilepath, masterfile, ownerpath)
+parseOne(masterfile, ownerfile)

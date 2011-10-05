@@ -1,5 +1,16 @@
 #!/usr/bin/env python
 
+# -----------------------------------------------------------------------------
+# create_structure.py
+#
+# Usage: ./create_structure.py <masterfile>
+#
+# Given one product/band configuration xml file (masterfile), this script will
+# generate a file that is wiki formatted and all xml files related to the
+# masterfile and how the relation is.
+#
+# -----------------------------------------------------------------------------
+
 import sys
 import os
 from xml.dom.minidom import parse, parseString
@@ -56,12 +67,13 @@ xmlfiles = []
 ##
 
 
-def parseOne(masterfilepath, masterfile, ownerpath):
+def parseOne(masterfile):
     parameters = []
     tabletext = ""
 
     # Create WIKI page
-    name = masterfile.split('.')
+    masterbasename = os.path.basename(masterfile)
+    name = masterbasename.split('.')
     filename = "wiki/%s.layer.txt" % name[0]
     with open(filename, 'w') as f:
         writetext = "The include structure of the nv xml files. The number"
@@ -70,24 +82,22 @@ def parseOne(masterfilepath, masterfile, ownerpath):
         f.write(writetext)
 
     # Read the xml files
-    dom_param = parse("%s/%s" % (masterfilepath, masterfile))
-    tabletext += "%s" % handleXmls(dom_param, masterfilepath, masterfile,
-                                   1, parameters, filename)
+    dom_param = parse(masterfile)
+    tabletext += "%s" % handleXmls(dom_param, os.path.dirname(masterfile),
+                                   masterbasename, 1, parameters, filename)
 
     return name[0]
 
 # -----------------------------------------
 
-usage = "usage: %prog [options] XMLFILE\n"
+usage = "usage: %prog XMLFILE"
 parser = optparse.OptionParser(usage=usage)
 (options, args) = parser.parse_args()
 
-if len(args) != 3:
+if len(args) != 1:
     parser.print_help()
     parser.error("Incorrect number of arguments")
 
-masterfilepath = args[0]
-masterfile = args[1]
-ownerpath = args[2]
+masterfile = args[0]
 
-print parseOne(masterfilepath, masterfile, ownerpath)
+print parseOne(masterfile)
