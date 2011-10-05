@@ -37,8 +37,11 @@ done< <($GIT_COMMAND diff --name-only --diff-filter=AM HEAD~1..)
 # Run unit tests
 TESTDIR="$PROJNAME/tests"
 if [ -d "$TESTDIR" ]; then
-    make --directory $TESTDIR
-    EXIT_STATUS=`expr $EXIT_STATUS + $?`
+    make --directory $TESTDIR | tee -a $WORKSPACE/out/unit_test_log.txt
+    UNIT_TEST_STATUS=${PIPESTATUS[0]}
+    if [ "$UNIT_TEST_STATUS" -ne 0 ]; then
+        EXIT_STATUS=`expr $EXIT_STATUS + 1`
+    fi
 fi
 
 exit $EXIT_STATUS
