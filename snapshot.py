@@ -3,6 +3,7 @@ import processes
 import sys
 import xml.etree.ElementTree as ET
 from optparse import OptionParser
+import shutil
 import tempfile
 
 
@@ -15,12 +16,19 @@ class Snapshot:
         self.removed = {}
         self.new = {}
         self.server = None
+        self.tempDir = tempfile.mkdtemp()
 
         if from_snapshot:
             self.copy_snapshot(snapshot)
         if from_file:
             self.add_from_file(from_file)
         self.name = name
+
+    def __del__(self):
+        """Destructor. Removes the temporary directory created in the
+           constructor
+        """
+        shutil.rmtree(self.tempDir, ignore_errors=True)
 
     def copy_snapshot(self, snap):
         """Runs repository list <snap> and puts the
@@ -48,7 +56,8 @@ class Snapshot:
         #       we are trying to set an older version than the current one. If
         #       so, print a warning in the log
         cmd = self._repository_cmd()
-        cmd.extend(['getpackage', package[0], package[1]])
+        cmd.extend(['getpackage', package[0], package[1],
+                    "--out=%s" % self.tempDir])
         try:
             (res, ret, err) = processes.run_cmd(cmd)
             if res == 0:
@@ -88,7 +97,12 @@ class Snapshot:
         """
         tags = ET.parse(package_file)
         for package in tags.findall("package"):
-            self.packages[package.attrib("name")] = package.attrib("revision")
+            self.add_package([package.attrib["name"],
+                              package.attrib["revision"]])
+        for packageGroup in tags.findall("package-group"):
+            for package in packageGroup.findall("package"):
+                self.add_package([package.attrib["name"],
+                                  packageGroup.attrib["revision"]])
 
     def remove_from_file(self, package_file):
         """Takes a package list xml file as input and removes
