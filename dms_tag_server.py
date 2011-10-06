@@ -218,10 +218,23 @@ def process_req(SCRIPT_DIR, channel, address, user, password):
             break
         data = channel.recv(1024)
 
-    req_type = request.split('|')[0]
-    tag = request.split('|')[1]
-    issues = request.split('|')[2]
-    deliver_to = request.split('|')[3]
+    data_list = request.split('|')
+    # Error handling for insufficient data in the stream
+    if len(data_list) < 3:
+        error_str = "Insufficient data from %s. Data received was: %s\n" % \
+                     (address, request)
+        open(SCRIPT_DIR + "\\cqperl_log.txt", "ab").write(error_str)
+        channel.send(SRV_ERROR + SRV_END)
+        channel.close()
+        return
+
+    req_type = data_list[0]
+    tag = data_list[1]
+    issues = data_list[2]
+    # Make it compatible with old cherry-pick script
+    deliver_to = ''
+    if len(data_list) > 3:
+        deliver_to = data_list[3]
 
     open(SCRIPT_DIR + "\\new_log.txt", "ab").write(
             'Connected by %s at %s for %s \n' % (address,
