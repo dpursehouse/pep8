@@ -1,45 +1,66 @@
 #!/bin/bash
 #-x
 
+# -----------------------------------------------------------------------------
+# visualizer.sh
+#
+# Usage: ./visualizer.sh <repopath> <wikipage> <ownerfile> <oldxml>
+#         <repopath>  - Path to where the amss has been repo init'ed
+#         <wikipage>  - What base page that should be used on the wiki
+#         <ownerfile> - The name of the xml containing owners of NvItems
+#         <oldxml>    - Where the xml files from the previous run are stored
+#
+# Parses through the fsgen git, searching for all product/band combination
+# files, and creates two wiki pages for each. One by calling visualizer.py
+# which has all the combined NvItem values from each included file. And another
+# by calling create_structure.py that shows all xml files that are included by
+# this combination (and the relation).
+# This script also creates a wiki page that has a link to all subpages.
+# -----------------------------------------------------------------------------
 
-# ----------------------------------------------------------------------------------------------------
 createwikitext () {
     owner=$here/$ownerfile
     products=`find $proddir -mindepth 1 -maxdepth 1 -type d`
     echo "== Product/band kombinations ==" > wiki/index.wiki.txt
-	
+
     for d in $products ; do
-	
-	product=`basename "$d" | tr '[:upper:]' '[:lower:]' `;
+
+        product=`basename "$d" | tr '[:upper:]' '[:lower:]' `;
 
         # The naming convention for band variants is:
         # <product>_[<bandnamealias>_][Cn][Ln][Wn][default_band]
-	# More info:
-	# https://wiki.sonyericsson.net/androiki/PLD_System_Core/Parameter_Handling/Blue#Naming_convention_for_band_variants
-	bcfiles=`find $d/nv -regex ".*/${product}_\([a-z0-9]+_\)?\(C[0-9_]+\)?\(L[0-9_]+\)?\(W[0-9_]+\)?\(default_band\)?\.xml"`
+        # More info:
+        # https://wiki.sonyericsson.net/androiki/PLD_System_Core/...
+        # Parameter_Handling/Blue#Naming_convention_for_band_variants
+        bcfiles=`find $d/nv -regex ".*/${product}_\([a-z0-9]+_\)?\(C[0-9_]+\)?\(L[0-9_]+\)?\(W[0-9_]+\)?\(default_band\)?\.xml"`
 
-	for bc in $bcfiles ; do
-	    xmlfilename="${bc##*/}"
-	    echo Working on $xmlfilename
-	    newwikiname=`echo $xmlfilename | sed s/.xml//`
-	    echo "([[$wikipage/$newwikiname/layer|View the layers]])" > wiki/$newwikiname.txt
+        for bc in $bcfiles ; do
+            xmlfilename="${bc##*/}"
+            echo Working on $xmlfilename
+            newwikiname=`echo $xmlfilename | sed s/.xml//`
+            echo "([[$wikipage/$newwikiname/layer|View the layers]])" > \
+                wiki/$newwikiname.txt
 
-	    curl -f $oldxml/$newwikiname.xml -o wiki/$newwikiname.xml.old
+            curl -f $oldxml/$newwikiname.xml -o wiki/$newwikiname.xml.old
 
-	    ./visualizer.py $d/nv $xmlfilename $owner
-	    cat wiki/$newwikiname.txt | ../semcwikitools/write_page.py "$wikipage/$newwikiname"
-	    
-	    newwikilayer=`./create_structure.py $d/nv $xmlfilename $owner`
-	    cat wiki/$newwikilayer.layer.txt | ../semcwikitools/write_page.py "$wikipage/$newwikiname/layer"
-	    
-	    echo "[[$wikipage/$newwikiname|$newwikiname]]" >> wiki/index.wiki.txt
-	    echo "''([[$wikipage/$newwikiname/layer|layers]])''<br>" >> wiki/index.wiki.txt
-	done
+            ./visualizer.py $d/nv/$xmlfilename $owner
+            cat wiki/$newwikiname.txt | ../semcwikitools/write_page.py \
+                "$wikipage/$newwikiname"
+
+            newwikilayer=`./create_structure.py $d/nv/$xmlfilename`
+            cat wiki/$newwikilayer.layer.txt | ../semcwikitools/write_page.py \
+                "$wikipage/$newwikiname/layer"
+
+            echo "[[$wikipage/$newwikiname|$newwikiname]]" >> \
+                wiki/index.wiki.txt
+            echo "''([[$wikipage/$newwikiname/layer|layers]])''<br>" >> \
+                wiki/index.wiki.txt
+        done
     done
 
 }
 
-# ----------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 here=`pwd`
 repopath=$1
@@ -60,7 +81,11 @@ createwikitext
 
 # Add dependency-tree to the page
 echo "== XML Dependency Tree ==" >> wiki/index.wiki.txt
-echo "The dependency tree of the nv xml files (files included in the MSMxxx-MASTERFILES are excluded). The number within parenthesis are the amount of NvItems within that particular xml file.<br><br>" >> wiki/index.wiki.txt
+echo "The include path between the MSMxxx-MASTERFILES and the product/band combination nv \
+xml files (files included in the MSMxxx-MASTERFILES are excluded). Dead ends (like the \
+semc_common.xml file) are excluded, to see them you need to go to the layer view above. The \
+number within parentheses are the amount of NvItems within that particular xml \
+file.<br /><br />" >> wiki/index.wiki.txt
 ./make_tree.sh wiki >> wiki/index.wiki.txt
 
 
