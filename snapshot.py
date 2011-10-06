@@ -103,8 +103,12 @@ class Snapshot:
                               package.attrib["revision"]])
         for packageGroup in tags.findall("package-group"):
             for package in packageGroup.findall("package"):
-                self.add_package([package.attrib["name"],
-                                  packageGroup.attrib["revision"]])
+                if "revision" in package.attrib:
+                    self.add_package([package.attrib["name"],
+                                      package.attrib["revision"]])
+                else:
+                    self.add_package([package.attrib["name"],
+                                      packageGroup.attrib["revision"]])
 
     def remove_from_file(self, package_file):
         """Takes a package list xml file as input and removes
