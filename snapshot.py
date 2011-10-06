@@ -2,6 +2,7 @@ import glob
 from optparse import OptionParser
 import os
 import processes
+import re
 import shutil
 import sys
 import tempfile
@@ -113,6 +114,12 @@ class Snapshot:
         for package in tags.findall("package"):
             self.remove_package(package.attrib("name"))
 
+    def filter_packages(self, package_filter):
+        filter_exp = re.compile(package_filter)
+        for package in self.packages.keys():
+            if filter_exp.match(package):
+                self.remove_package(package)
+
     def set_name(self, name):
         """Sets the snapshot name
         """
@@ -181,6 +188,8 @@ def main(argv=None):
                         help="Create snapshot and promote packages")
     parser.add_option("-q", "--quiet", action="store_true", default=False,
                         dest="quiet", help="Suppresses reporting")
+    parser.add_option("-f", "--filter", action="append", dest='package_filter',
+                        help="Filter package list using provided regexp")
 
     (options, args) = parser.parse_args()
 
@@ -216,6 +225,9 @@ def main(argv=None):
                 snap.remove_from_file(item)
             else:
                 snap.remove_package(item)
+    if options.package_filter:
+        for f in options.package_filter:
+            snap.filter_packages(f)
     if options.promote:
         snap.promote_from_file()
     else:
