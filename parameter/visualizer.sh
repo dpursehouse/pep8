@@ -76,16 +76,26 @@ if [ ! -d "wiki" ]; then
     mkdir wiki
 fi
 
+# Get the previous build-id
+curl -f $oldxml/buildid.txt -o wiki/buildid.txt.old
+
+# If the previous build-id failed to get fetched or didn't exist, the previous
+# build-id is unknown.
+if [ ! -f "wiki/buildid.txt.old" ]; then
+    echo "(unknown)" > wiki/buildid.txt.old
+fi
+
 # Create the sub-wiki-pages
 createwikitext
 
 # Add dependency-tree to the page
 echo "== XML Dependency Tree ==" >> wiki/index.wiki.txt
-echo "The include path between the MSMxxx-MASTERFILES and the product/band combination nv \
-xml files (files included in the MSMxxx-MASTERFILES are excluded). Dead ends (like the \
-semc_common.xml file) are excluded, to see them you need to go to the layer view above. The \
-number within parentheses are the amount of NvItems within that particular xml \
-file.<br /><br />" >> wiki/index.wiki.txt
+echo "The include path between the MSMxxx-MASTERFILES and the product/band \
+combination nv xml files (files included in the MSMxxx-MASTERFILES are \
+excluded). Dead ends (like the semc_common.xml file) are excluded, to see \
+them you need to go to the layer view above. The number within parentheses \
+are the amount of NvItems within that particular xml file.<br /><br />" \
+    >> wiki/index.wiki.txt
 ./make_tree.sh wiki >> wiki/index.wiki.txt
 
 

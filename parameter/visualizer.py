@@ -178,6 +178,11 @@ def diff(pid, sg, source, name, value):
 
 
 def createWikiCode(parameters, owners, filename):
+
+    oldidfile = "wiki/buildid.txt.old"
+    with open(oldidfile, 'r') as o:
+        oldid = o.readline()
+
     rawfile = "%s.xml" % filename
     with open(rawfile, 'w') as r:
         r.write("<NV>")
@@ -188,7 +193,7 @@ def createWikiCode(parameters, owners, filename):
         f.write("<br>''(default)'' = %s\n" % defaultresponsible)
         f.write("<br><strike>Striked through</strike> = overwritten values\n")
         f.write("<br><font style='background: lightpink'>Pink background")
-        f.write("</font> = changed parameter from previous run\n")
+        f.write("</font> = changed parameter from previous run (%s)\n" % oldid)
         f.write("{| class='wikitable sortable' border='1'\n")
         f.write("|- \n")
         f.write("! ID !! Owner !! Source !! class='unsortable'|")
