@@ -295,7 +295,12 @@ if(defined($query)) {
                      VERIFIED_STATUS_FIELD,
                      RELEASE_LABEL_FIELD,
                      PROJ_ID,
-                     FIX_FOR_FIELD) {
+                     FIX_FOR_FIELD,
+                     DELIVERY,
+                     DELIVERY.".".DELIVERY_DELIVER_TO,
+                     DELIVERY.".".DELIVERY_SOLUTION_DONE,
+                     DELIVERY.".".FIX_FOR_FIELD,
+                     DELIVERY.".".DELIVERY_DELIVERED_IN) {
     if(!is_field_in_query($query_def, $field)) {
       $query_def->BuildField($field);
     }
