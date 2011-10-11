@@ -240,7 +240,8 @@ def createWikiCode(parameters, owners, filename):
                 r.write("<item id=\"%s\" sg=\"%s\" source=\"%s\"" %
                         (params[i][0], ownertext, str(params[i][2]).lstrip()))
                 r.write(" name=\"%s\" value=\"%s\"/>\n" %
-                        (str(params[i][3]).lstrip(), str(params[i][4])))
+                        (str(params[i][3]).lstrip(),
+                         makeSpace(str(params[i][4]))))
 
         with open(rawfile, 'a') as r:
             r.write("</NV>")
