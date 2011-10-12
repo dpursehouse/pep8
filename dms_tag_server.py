@@ -1,13 +1,6 @@
 #!/usr/bin/env python
 
 '''
-@author: Ekramul Huq
-
-@version: 0.2
-'''
-
-DESCRIPTION = \
-'''
 The purpose of this server is following:
     1. Collect DMSs of a tag from CQ and send back the list
     to requester
@@ -16,90 +9,113 @@ The purpose of this server is following:
     3. Send back the history of cherry pick to requester
 This script is using run_query.pl script to collect data from CQ.
 '''
+
+import datetime
+import netrc
+import optparse
+import os
 import pythoncom
-import win32serviceutil
-import win32service
-import win32event
 import servicemanager
 import socket
 import string
-import sys
 import subprocess
-import datetime
-import netrc
+import sys
 import thread
-import os
+import win32event
+import win32service
+import win32serviceutil
 from _winreg import *
 
+import dmsutil
+import semcutil
+
 HOST = ''
-PORT = 55655              # Arbitrary non-privileged port
+PORT = 55655  # Arbitrary non-privileged port
+USAGE = "Usage: %s -a install -p home-path | -a <start|stop|remove> | -h" % \
+        (sys.argv[0])
+OPTIONS = ['install', 'start', 'stop', 'remove']
+REGPATH = "SYSTEM\\CurrentControlSet\\Services\\DMSTagServer"
 
-#Server communication tags
-SRV_DMS_STATUS = 'DMS_STATUS'
-SRV_CHERRY_UPDATE = 'CHERRY_UPDATE'
-SRV_CHERRY_GET = 'CHERRY_GET'
-SRV_ERROR = 'SRV_ERROR'
-SRV_END = '|END'
-SCRIPT_DIR = ''
 
-USAGE = "Usage: dms_tag_server.py [install | start | stop | remove | -h]"
+def invalid_usage(message):
+    '''Print the script's usage followed by `message`, and then exit.
+    '''
+    semcutil.fatal(1, "%s\nError: %s" % (USAGE, message))
 
 
 def initialize_path():
-    '''Parse the arguments (if any) and initialize the working path'''
-    if len(sys.argv) < 1:
-        print >> sys.stderr, "Insufficient arguments"
-        print >> sys.stderr, USAGE
-        sys.exit(1)
-    if sys.argv[1] == '-h':
-        print >> sys.stdout, USAGE
-        print >> sys.stdout, DESCRIPTION
-        sys.exit(0)
+    '''Parse the arguments (if any) and initialize the working path
+    '''
+    parser = optparse.OptionParser(usage=USAGE)
+    parser.add_option("-p", "--home-path", dest="home", default=None,
+        help="Path to the user's home folder (Mandatory for 'install' action)")
+    parser.add_option("-a", "--action", dest="action", default="",
+        help="Action should be one of 'install', 'start', 'stop' or 'remove'.")
+    (opts, args) = parser.parse_args()
 
-    SCRIPT_DIR = string.replace(
+    if not opts.action:
+        invalid_usage("Insufficient options.")
+
+    if opts.action.lower() not in OPTIONS:
+        invalid_usage("Unknown action '%s'." % opts.action)
+
+    working_dir = string.replace(
                                 os.path.realpath(
                                 os.path.dirname(sys.argv[0])), '\\', '\\\\')
 
-    open(SCRIPT_DIR + "\\new_log.txt", "wb").write("")
-    open(SCRIPT_DIR + "\\cqperl_log.txt", "wb").write("")
+    open(working_dir + "\\new_log.txt", "ab").write("")
+    open(working_dir + "\\cqperl_log.txt", "ab").write("")
+    argv = []
 
-    (account, password) = parse_netrc(SCRIPT_DIR)
+    if opts.action == "install":
+        if opts.home is None:
+            invalid_usage("Install action requires the path to .netrc " \
+                          "file.\nSpecify the path with -p option.")
 
-    if account == -1:
-        print >> sys.stderr, "Error reading .netrc file"
-        sys.exit(1)
+        try:
+            regkey = CreateKey(HKEY_LOCAL_MACHINE, REGPATH)
+            SetValue(regkey, "HomeDir", REG_SZ, opts.home)
+            CloseKey(regkey)
+        except:
+            semcutil.fatal(1, "Unable to access the registry.\n" \
+                              "Try installing the service again.")
 
-    cInstallOptions = "--username=corpusers\\" \
-                        + str(account) + " --password=" \
-                        + str(password) + " --startup=auto"
+        # User credentials are required only for installing the service
+        (account, password) = parse_netrc(working_dir, opts.home)
+
+        if account == -1:
+            semcutil.fatal(1, "Error reading .netrc file.")
+
+        argv = [sys.argv[0], "--username", "corpusers\\" + str(account),
+                        "--password", str(password), "--startup", "auto",
+                        opts.action]
+    else:
+        argv = [sys.argv[0], opts.action]
+
     win32serviceutil.HandleCommandLine(DmsTagServer,
                                        serviceClassString=None,
-                                       argv=sys.argv,
-                                       customInstallOptions=cInstallOptions)
+                                       argv=argv)
 
 
-def parse_netrc(SCRIPT_DIR):
+def parse_netrc(working_dir, home_dir):
     #read username and password from netrc file
     #.netrc file should have the following line
     #machine dms_tag_server account JPTO login <loginid> password <password>
-
-    home = os.environ['HOMEDRIVE'] + os.environ['HOMEPATH']
-
     try:
-        host = netrc.netrc(home + '\\.netrc').hosts['dms_tag_server']
-        return (host[0], host[2])
+        host = netrc.netrc(home_dir + '\\.netrc').hosts['dms_tag_server']
+        return (str(host[0]), str(host[2]))
     except KeyError:
-        open(SCRIPT_DIR + "\\new_log.txt", "ab").write(
+        open(working_dir + "\\new_log.txt", "ab").write(
             'dms_tag_server info is not in .netrc file\n')
     except netrc.NetrcParseError:
-        open(SCRIPT_DIR + "\\new_log.txt", "ab").write(
+        open(working_dir + "\\new_log.txt", "ab").write(
             'Error parsing .netrc file\n')
     except IOError:
         host = ['-1']
-        open(SCRIPT_DIR + "\\new_log.txt", "ab").write(
-            'Error opening .netrc file\n ' + host[0])
+        open(working_dir + "\\new_log.txt", "ab").write(
+            'Error opening .netrc file\n ' + host[0] + "'" + home_dir + "'")
     except:
-        open(SCRIPT_DIR + "\\new_log.txt", "ab").write(
+        open(working_dir + "\\new_log.txt", "ab").write(
             'Unexpected error %s\n' % sys.exc_info()[0])
     return (-1, -1)
 
@@ -111,8 +127,8 @@ class DmsTagServer (win32serviceutil.ServiceFramework):
 
     def __init__(self, args):
         try:
+            self.arg = args
             win32serviceutil.ServiceFramework.__init__(self, args)
-            print "Installed DMSTagServer as a windows service"
             self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
             socket.setdefaulttimeout(30)
             self.keep_running = 1
@@ -126,21 +142,23 @@ class DmsTagServer (win32serviceutil.ServiceFramework):
         self.keep_running = 0
 
     def SvcDoRun(self):
+
         servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
                               servicemanager.PYS_SERVICE_STARTED,
                               (self._svc_name_, ''))
-        regpath = "SYSTEM\\CurrentControlSet\\Services\\DMSTagServer"
         try:
-            regkey = OpenKey(HKEY_LOCAL_MACHINE, regpath)
+            regkey = OpenKey(HKEY_LOCAL_MACHINE, REGPATH)
             cwd = string.replace(QueryValue(regkey, "PythonClass"),
+                                '\\', '\\\\')
+            home_dir = string.replace(QueryValue(regkey, "HomeDir"),
                                 '\\', '\\\\')
             CloseKey(regkey)
         except:
             servicemanager.LogMsg(servicemanager.EVENTLOG_ERROR_TYPE,
                               servicemanager.PYS_SERVICE_STOPPING,
-                              (self._svc_name_, SCRIPT_DIR \
-                                + 'Unable to access the registry.\n' \
-                                + 'Try installing the service again'))
+                              (self._svc_name_,
+                               'Unable to access the registry.\n' \
+                               + 'Try installing the service again'))
             self.SvcStop()
             sys.exit(1)
 
@@ -168,9 +186,9 @@ class DmsTagServer (win32serviceutil.ServiceFramework):
             sys.exit(1)
 
         os.chdir(cwd)
-        self.run_server(cwd)
+        self.run_server(cwd, home_dir)
 
-    def run_server(self, SCRIPT_DIR):
+    def run_server(self, working_dir, home_dir):
         '''
         Start socket server and listen on a port for client request.
         if any client connected, start a new thread and process client request
@@ -186,35 +204,35 @@ class DmsTagServer (win32serviceutil.ServiceFramework):
             self.SvcStop()
             sys.exit(1)
 
-        open(SCRIPT_DIR + "\\new_log.txt", "wb").write("Server startted\n")
-
-        (account, password) = parse_netrc(SCRIPT_DIR)
+        (account, password) = parse_netrc(working_dir, home_dir)
         if account == -1:
             servicemanager.LogMsg(servicemanager.EVENTLOG_ERROR_TYPE,
                               servicemanager.PYS_SERVICE_STOPPING,
                               (self._svc_name_,
-                                'Error reading .netrc file.\n' \
-                                + 'See the log for more details ' + account))
+                                'Error reading .netrc file at %s.\n' \
+                                + 'See the log for more details \n' % home_dir))
             self.SvcStop()
             sys.exit(1)
+
+        open(working_dir + "\\new_log.txt", "ab").write("Server started\n")
 
         while self.keep_running:
             s.listen(1)
             try:
                 conn, addr = s.accept()
-                thread.start_new_thread(process_req, (SCRIPT_DIR, conn, addr,
-                                            account, password))
+                thread.start_new_thread(process_req, (working_dir, conn, addr,
+                                                        account, password))
             except socket.timeout:
                 continue
 
 
-def process_req(SCRIPT_DIR, channel, address, user, password):
+def process_req(working_dir, channel, address, user, password):
     '''Listen request of client and send data back to client'''
     request = ''
     data = channel.recv(1024)
     while 1:
         request = request + data
-        if SRV_END in str(data):
+        if dmsutil.SRV_END in str(data):
             break
         data = channel.recv(1024)
 
@@ -223,8 +241,8 @@ def process_req(SCRIPT_DIR, channel, address, user, password):
     if len(data_list) < 3:
         error_str = "Insufficient data from %s. Data received was: %s\n" % \
                      (address, request)
-        open(SCRIPT_DIR + "\\cqperl_log.txt", "ab").write(error_str)
-        channel.send(SRV_ERROR + SRV_END)
+        open(working_dir + "\\cqperl_log.txt", "ab").write(error_str)
+        channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
         channel.close()
         return
 
@@ -236,11 +254,11 @@ def process_req(SCRIPT_DIR, channel, address, user, password):
     if len(data_list) > 3:
         deliver_to = data_list[3]
 
-    open(SCRIPT_DIR + "\\new_log.txt", "ab").write(
+    open(working_dir + "\\new_log.txt", "ab").write(
             'Connected by %s at %s for %s \n' % (address,
             datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S"), req_type))
-    if req_type == SRV_DMS_STATUS:
-        cmd = ['cqperl', SCRIPT_DIR + '\\run_query.pl',
+    if req_type == dmsutil.SRV_DMS_STATUS:
+        cmd = ['cqperl', working_dir + '\\run_query.pl',
                 '-user', user, '-pwd', password, '-issues', issues,
                 '-log', 'cherry.log', '-list', '-site', 'JPTO']
         try:
@@ -248,13 +266,13 @@ def process_req(SCRIPT_DIR, channel, address, user, password):
                                    stderr=subprocess.PIPE)
             out, err = process.communicate()
             if process.poll() != 0:
-                open(SCRIPT_DIR + "\\cqperl_log.txt", "ab").write(str(err))
-                channel.send(SRV_ERROR + SRV_END)
+                open(working_dir + "\\cqperl_log.txt", "ab").write(str(err))
+                channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
                 channel.close()
                 return
         except Exception, exp:
-            open(SCRIPT_DIR + "\\cqperl_log.txt", "ab").write(str(exp))
-            channel.send(SRV_ERROR + SRV_END)
+            open(working_dir + "\\cqperl_log.txt", "ab").write(str(exp))
+            channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
             channel.close()
             return
 
@@ -291,36 +309,36 @@ def process_req(SCRIPT_DIR, channel, address, user, password):
                         dms_list.append(line.split(':')[0].strip())
 
         except Exception, exp:
-            open(SCRIPT_DIR + "\\cqperl_log.txt", "ab").write(str(exp))
-            channel.send(SRV_ERROR + SRV_END)
+            open(working_dir + "\\cqperl_log.txt", "ab").write(str(exp))
+            channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
             channel.close()
             return
 
         dms_list.sort()
         channel.send(','.join(dms_list))
-        channel.send(SRV_END)
+        channel.send(dmsutil.SRV_END)
         channel.close()
-    elif req_type == SRV_CHERRY_GET:
+    elif req_type == dmsutil.SRV_CHERRY_GET:
         tag = tag + ".csv"
-        if not os.path.exists(SCRIPT_DIR + '\\' + tag):
-            channel.send('Unavailable' + SRV_END)
+        if not os.path.exists(working_dir + '\\' + tag):
+            channel.send('Unavailable' + dmsutil.SRV_END)
             channel.close()
         else:
-            cherries = open(SCRIPT_DIR + '\\' + tag, 'r').read()
-            channel.send(cherries + SRV_END)
+            cherries = open(working_dir + '\\' + tag, 'r').read()
+            channel.send(cherries + dmsutil.SRV_END)
             channel.close()
 
-    elif req_type == SRV_CHERRY_UPDATE:
+    elif req_type == dmsutil.SRV_CHERRY_UPDATE:
         tag = tag + ".csv"
-        if not os.path.exists(SCRIPT_DIR + '\\' + tag):
-            cherries = open(SCRIPT_DIR + '\\' + tag, 'wb')
+        if not os.path.exists(working_dir + '\\' + tag):
+            cherries = open(working_dir + '\\' + tag, 'wb')
         else:
-            cherries = open(SCRIPT_DIR + '\\' + tag, 'ab')
+            cherries = open(working_dir + '\\' + tag, 'ab')
         cherries.write(issues + '\n')
-        channel.send('Updated' + SRV_END)
+        channel.send('Updated' + dmsutil.SRV_END)
         channel.close()
     else:
-        channel.send('Unknown request' + SRV_END)
+        channel.send('Unknown request' + dmsutil.SRV_END)
         channel.close()
 
 
