@@ -1,5 +1,7 @@
 import re
 
+import processes
+
 
 class CommitMessageError(Exception):
     '''CommitMessageErrors are raised when there is an error
@@ -24,21 +26,29 @@ class CommitMessageAuthor:
 
 class CommitMessage:
     '''Wrapper for the commit message data that is output from
-    the "git cat-file -p HEAD" command.
+    the "git cat-file -p <object>" command.
     '''
 
     def get_dms(self):
         '''Get a list of DMS that are recorded in the commit message
         with correctly formatted FIX= tags.
         Return list of DMS numbers, or empty list if no DMS were found.
+        Raise CommitMessageError if any error occurs/
         '''
-        result = []
-        lines = self.message.split('\n')
-        for line in lines:
-            match = re.match("^FIX=(DMS\d{6,8})$", line)
-            if match:
-                result.append(match.groups(1))
-        return result
+        try:
+            errcode, rawdmslist, err = processes.run_cmd("./dmsquery", "--show",
+                                                         input=self.message)
+
+            if rawdmslist == "No DMS Issues found":
+                dmslist = []
+            else:
+                # The output is one DMS issue per line, but there may be
+                # leading and trailing whitespace. Clean this up.
+                dmslist = [s.strip() for s in rawdmslist.splitlines()]
+        except:
+            raise CommitMessageError("Error extracting DMS issue information")
+
+        return dmslist
 
     def __init__(self, data):
         '''Initializes the class with the commit mesage in `data`.
