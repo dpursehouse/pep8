@@ -4,19 +4,19 @@ import processes
 
 
 class CommitMessageError(Exception):
-    '''CommitMessageErrors are raised when there is an error
+    '''CommitMessageError is raised when there is an error
     in the formatting of the commit message header or body.
     '''
 
 
 class CommitMessageAuthor:
     '''Wrapper for the author/committer lines from the commit
-    message header
+    message header.
     '''
 
     def __init__(self, data):
         '''Initialises the class with the name, email and
-        timestamp from the header in `data`
+        timestamp from the header in `data`.
         '''
 
         self.name = data[data.find(' ') + 1:data.find('<')]
@@ -29,31 +29,30 @@ class CommitMessage:
     the "git cat-file -p <object>" command.
     '''
 
-    def get_dms(self):
-        '''Get a list of DMS that are recorded in the commit message
-        with correctly formatted FIX= tags.
-        Return list of DMS numbers, or empty list if no DMS were found.
-        Raise CommitMessageError if any error occurs/
+    def get_fixed_issues(self):
+        '''Get a list of fixed issues that are recorded in the commit message.
+        Return list of issues, or empty list if no issues were found.
+        Raise CommitMessageError if any error occurs.
         '''
         try:
-            errcode, rawdmslist, err = processes.run_cmd("./dmsquery", "--show",
-                                                         input=self.message)
+            errcode, rawlist, err = processes.run_cmd("./dmsquery", "--show",
+                                                      input=self.message)
 
-            if rawdmslist == "No DMS Issues found":
-                dmslist = []
+            if rawlist == "No DMS Issues found":
+                issuelist = []
             else:
-                # The output is one DMS issue per line, but there may be
+                # The output is one issue per line, but there may be
                 # leading and trailing whitespace. Clean this up.
-                dmslist = [s.strip() for s in rawdmslist.splitlines()]
+                issuelist = [s.strip() for s in rawlist.splitlines()]
         except:
-            raise CommitMessageError("Error extracting DMS issue information")
+            raise CommitMessageError("Error extracting issue information")
 
-        return dmslist
+        return issuelist
 
     def __init__(self, data):
         '''Initializes the class with the commit mesage in `data`.
         Raises CommitMessageError if the message header or body
-        is badly formatted
+        is badly formatted.
         '''
 
         self.committer = None
