@@ -5,7 +5,8 @@ import processes
 
 class CommitMessageError(Exception):
     '''CommitMessageError is raised when there is an error
-    in the formatting of the commit message header or body.
+    in the formatting of the commit message header or body,
+    or when an error occurs in one of the class methods.
     '''
 
 
@@ -15,13 +16,20 @@ class CommitMessageAuthor:
     '''
 
     def __init__(self, data):
-        '''Initialises the class with the name, email and
+        '''Initialise the class with the type, name, email and
         timestamp from the header in `data`.
+        Raise CommitMessageError if the content of `data` does not
+        match the expected pattern.
         '''
-
-        self.name = data[data.find(' ') + 1:data.find('<')]
-        self.email = data[data.find('<') + 1:data.find('>')]
-        self.timestamp = data[data.find('>') + 2:]
+        pattern = "^(author|committer) (.*) <(.*@.*)> (\d* \+\d{4})$"
+        m = re.match(pattern, data)
+        if m:
+            self.type = m.group(1)
+            self.name = m.group(2)
+            self.email = m.group(3)
+            self.timestamp = m.group(4)
+        else:
+            raise CommitMessageError("Invalid author or committer header")
 
 
 class CommitMessage:
@@ -50,8 +58,8 @@ class CommitMessage:
         return issuelist
 
     def __init__(self, data):
-        '''Initializes the class with the commit mesage in `data`.
-        Raises CommitMessageError if the message header or body
+        '''Initialize the class with the commit mesage in `data`.
+        Raise CommitMessageError if the message header or body
         is badly formatted.
         '''
 
@@ -64,23 +72,31 @@ class CommitMessage:
             raise CommitMessageError("Bad commit message header")
         header = data[0:end_of_header]
 
-        # Check the contents of the header
+        # Parse the contents of the header.
+        headers = dict({"tree": None,
+                        "parent": None,
+                        "author": None,
+                        "committer": None})
+        pattern = "^(tree|parent|author|committer) "
         for line in header.split('\n'):
-            if not re.match("^(tree|parent|author|committer) ", line):
+            m = re.match(pattern, line)
+            if not m:
                 raise CommitMessageError("Unexpected entry in header")
-            if line.startswith("committer"):
-                self.committer = CommitMessageAuthor(line)
-            elif line.startswith("author"):
-                self.author = CommitMessageAuthor(line)
+            if headers[m.group(1)]:
+                raise CommitMessageError("Multiple values for header %s" %
+                    m.group(1))
+            headers[m.group(1)] = line
 
-        # Check that the header contained a submitter and author
-        if not self.committer:
-            raise CommitMessageError("No committer in header")
-        if not self.author:
-            raise CommitMessageError("No author in header")
+        # Make sure all expected headers have been found.
+        for h in headers:
+            if not headers[h]:
+                raise CommitMessageError("'%s' not found in header" % h)
+
+        self.committer = CommitMessageAuthor(headers["committer"])
+        self.author = CommitMessageAuthor(headers["author"])
 
         # Get the mesage body.  The message body is separated from
-        # the header by two newlines
+        # the header by two newlines.
         message_body_position = data.find('\n\n')
         if message_body_position < 0:
             raise CommitMessageError("No message body")
@@ -100,6 +116,6 @@ class CommitMessage:
             self.subject = message_body[0:end_of_subject]
             self.message = message_body[end_of_subject + 2:length_of_body]
 
-        # Strip trailing whitespace and newlines off the subject and message
+        # Strip trailing whitespace and newlines off the subject and message.
         self.subject = self.subject.rstrip()
         self.message = self.message.rstrip()
