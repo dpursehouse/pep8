@@ -372,6 +372,7 @@ if(defined($list)) {
   $session->SignOff();
 }
 
+my @new_DR_created_for_issues = ();
 if(defined($update) && defined($label)){
   if ($create_DR) {
     add_DR_if_required($session, $issues_data);
@@ -554,6 +555,11 @@ sub update {
     my %issue_h = %{$issues_data->{$issue}};
     my $issue_id = $issue_h{ID_FIELD()};
     my $deliver_to_in_query = $issue_h{DELIVERY.".".DELIVERY_DELIVER_TO()};
+    if (grep(/^$issue_id$/,@new_DR_created_for_issues)) {
+      ### Skip issue if new DR is created for it for given branch ###
+      ### Required update is done while creating DR only ###
+      next;
+    }
     print "checking issue $issue_id for branch \"$deliver_to_in_query\"\n";
     if ($issue_h{PROJ_ID()} eq $technical_name) {
       ### Check if DMS has Delivery Records as per new DMS structure ###
@@ -654,6 +660,12 @@ sub update {
   }
 }
 
+#######################################
+# To create new Delivery Record.      #
+# Create DR if no DR exist or         #
+# DR for "$deliver_to" not exist      #
+#######################################
+
 sub add_DR_if_required {
   my $session_DR  = shift @_;
   my $issues_data = shift @_;
@@ -717,7 +729,7 @@ sub add_DR_if_required {
             logg(ERROR, "Can't get record for DR $DR_id of issue $issue_id");
             logg(CQERROR, "$@\n");
             return -1;
-          } elsif($record eq ""){
+          } elsif($DR_record eq ""){
             logg(WARN, "DR $DR_id doesn't exist for Issue $issue_id");
             return 0;
           }
@@ -742,6 +754,7 @@ sub add_DR_if_required {
         if($@ ne "") {
           logg(ERROR, "Can't make record editable for issue $issue_id");
           logg(CQERROR, "$@\n");
+          return -1;
         }
         my $entityObj;
         $session_DR->SetNameValue("create_new_delivery","yes");
@@ -752,41 +765,139 @@ sub add_DR_if_required {
         if($@ ne "") {
           logg(ERROR, "Can't Build Delivery Record for issue $issue_id");
           logg(CQERROR, "$@\n");
-          return 0;
+          return -1;
         }
         my $DRdbid = $entityObj->GetDbId();
-        $entityObj->SetFieldValue(DELIVERY_DELIVER_TO,$deliver_to);
-        my $status = $entityObj->Validate();
-        if($status eq ""){
-          $status = $entityObj->Commit();
-          if($status eq ""){
-            print "\tDR \"$deliver_to\" created for $issue_id\n";
-            logg(OK, "DR \"$deliver_to\" created for $issue_id");
-          }
+        my $ret_deliver_to = $entityObj->SetFieldValue(DELIVERY_DELIVER_TO, $deliver_to);
+        if($ret_deliver_to ne "") {
+          logg(ERROR, "$issue_id: Can't set field \"Deliver to\" to $deliver_to");
+          logg(CQERROR, "$ret_deliver_to");
+          return -1;
+        }
+        eval {
+          $entityObj->Validate();
+        };
+        if($@ ne "") {
+          print "\t\tNew DR can't be validated\n";
+          logg(ERROR,"$issue_id: New DR can't be validated");
+          logg(CQERROR, "$@\n");
+          return -1;
+        }
+        eval {
+          $entityObj->Commit();
+        };
+        if($@ ne "") {
+          print "\t\tNew DR for \"$deliver_to\" can't be created\n";
+          logg(ERROR, "$issue_id: New DR for \"$deliver_to\" can't be created");
+          return -1;
+        } else {
+          print "\n\t\tNew DR is created for \"$deliver_to\"\n";
+          logg(OK, "$issue_id: New DR is created for \"$deliver_to\"");
         }
         $record->AddFieldValue(DELIVERY,"$DRdbid");
-        $status = $record->Validate();
-        if($status eq ""){
-          $status = $record->Commit();
-          if($status eq ""){
-            print "\t$issue_id updated with DR \"$deliver_to\"\n";
-            logg(OK, "$issue_id updated with DR \"$deliver_to\"");
-          }
-          else{
-            $record->Revert();
-            logg(ERROR, "$issue_id not updated with DR \"$deliver_to\"");
-            print " \[$issue_id\] not updated with DR \"$deliver_to\"\n";
-          }
+        $record->AddFieldValue("Note_Entry","DR for $deliver_to is created " .
+                               "by CM script and updatd with $label");
+        eval {
+          $record->Validate();
+        };
+        if($@ ne "") {
+          $record->Revert();
+          print "\t$issue_id not valid\n";
+          logg(ERROR,"$issue_id not valid");
+          logg(CQERROR, "$@\n");
+          return -1;
         }
-        else{
-          print "$issue_id not valid\n";
-          logg(ERROR,"$issue_id not valid: $status");
+        eval {
+          $record->Commit();
+        };
+        if($@ ne "") {
+          $record->Revert();
+          print " \t\t\[$issue_id\] not updated with DR \"$deliver_to\"\n";
+          logg(ERROR, "$issue_id not updated with DR \"$deliver_to\"");
+          return -1;
+        } else {
+          print "\t\tNew DR is added to Delivery Table\n";
+          logg(OK, "$issue_id: New DR is added to Delivery Table");
         }
+        ### Modifying newly created DR for "Solution Done" and "Delivered_in" ###
+        update_new_DR($session_DR, $issue_id, $DRdbid);
+        push (@new_DR_created_for_issues, $issue_id);
       }
     }
     CQSession::Unbuild($session_DR);
     print "\nDone with site $site\n";
     logg(OK, "Done with site $site");
+  }
+}
+
+#######################################
+# Called by "add_DR_if_required()"    #
+# Update required fields of newly     #
+# created DR                          #
+#######################################
+
+sub update_new_DR {
+  my $session_DR  = shift @_;
+  my $issue_id = shift @_;
+  my $DRdbid = shift @_;
+  my $DR_record = "";
+  eval {
+    $DR_record = $session_DR->GetEntity(DELIVERY_ENTITY, $DRdbid);
+  };
+  if($@ ne "") {
+    logg(ERROR, "Can't get record for DR $deliver_to of issue $issue_id");
+    logg(CQERROR, "$@\n");
+    return -1;
+  } elsif($DR_record eq ""){
+    logg(WARN, "DR $deliver_to doesn't exist for Issue $issue_id");
+    return 0;
+  }
+  eval {
+    $DR_record->EditEntity("modify");
+  };
+  if($@ ne "") {
+    logg(ERROR, "Can't make record editable for issue $issue_id");
+    logg(CQERROR, "$@\n");
+    return -1;
+  }
+  my $ret_solution_done = $DR_record->SetFieldValue(DELIVERY_SOLUTION_DONE, "Yes");
+  if($ret_solution_done ne "") {
+    $DR_record->Revert();
+    logg(ERROR, "Can't set field Solution Done to Yes!");
+    logg(CQERROR, "$ret_solution_done");
+    return -1;
+  }
+  my $ret_delivered_in = $DR_record->SetFieldValue(DELIVERY_DELIVERED_IN, $label);
+  if($ret_delivered_in ne "") {
+    $DR_record->Revert();
+    logg(ERROR, "Can't set field delivered_in to value $label!");
+    logg(CQERROR, "$ret_delivered_in");
+    return -1;
+  }
+  eval {
+    $DR_record->Validate();
+  };
+  if($@ ne "") {
+    $DR_record->Revert();
+    print "\t\tDR not valid\n";
+    logg(ERROR,"$issue_id: DR not valid");
+    logg(CQERROR, "$@\n");
+    return -1;
+  }
+  eval {
+    $DR_record->Commit();
+  };
+  if($@ ne "") {
+    $DR_record->Revert();
+    print "\t\tNew DR for \"$deliver_to\" can't be updated\n";
+    logg(ERROR, "$issue_id: New DR for \"$deliver_to\" can't be updated");
+    return -1;
+  } else {
+    print "\t\t\"Solution Done\" set to \"Yes\" for new DR\n";
+    print "\t\t\"Delivered in\" set to $label for new DR\n";
+    logg(OK, "$issue_id: \"Solution Done\" set to \"Yes\" for new DR");
+    logg(OK, "$issue_id: \"Delivered in\" set to $label for new DR");
+    return 1;
   }
 }
 
