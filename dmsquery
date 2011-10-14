@@ -20,6 +20,23 @@ use constant {
   _USE_COLOR => 1,
 };
 
+my %Option = (
+  tpl   => _TPL,
+  qry   => _QUERY,
+  add   => _UNDEF,
+  'fix-for' => [],
+  slurp => _OFF,
+  main  => _OFF,
+  swb   => _OFF,
+  help  => _OFF,
+  show  => _OFF,
+  quiet => _OFF,
+  'show-t' => _OFF,
+  'show-p' => _OFF,
+  'show-stat'   => _OFF,
+  'show-stat-p' => _OFF,
+);
+
 #----------------------------------------------------------------
 #  Send request to server
 #----------------------------------------------------------------
@@ -203,21 +220,23 @@ sub print_error {
   my %E = (@_);
   my($name) = $0 =~/.*\/(.*)$/;
   
-  if ($E{header}) {
-    print STDERR color('red', 'bold') if (_USE_COLOR);
-    print STDERR $E{header};
-    print STDERR color('reset') if (_USE_COLOR);
-    print STDERR $E{problem} if ($E{problem});
-  }
-  if ($E{message}) {
+  if (!$Option{quiet}) {
+    if ($E{header}) {
+      print STDERR color('red', 'bold') if (_USE_COLOR);
+      print STDERR $E{header};
+      print STDERR color('reset') if (_USE_COLOR);
+      print STDERR $E{problem} if ($E{problem});
+    }
+    if ($E{message}) {
+      print STDERR "\n";
+      print STDERR $E{message};
+    }
+    if ($E{help}) {
+      print STDERR "\n";
+      print STDERR 'For help use:  ' . $name . ' --help';
+    }
     print STDERR "\n";
-    print STDERR $E{message};
   }
-  if ($E{help}) {
-    print STDERR "\n";
-    print STDERR 'For help use:  ' . $name . ' --help';
-  }
-  print STDERR "\n";
 }
 
 sub print_marked {
@@ -243,22 +262,6 @@ if (grep(/\-+help/, @ARGV)) {
   print $help;
   exit;
 }
-
-my %Option = (
-  tpl   => _TPL, 
-  qry   => _QUERY,
-  add   => _UNDEF, 
-  'fix-for' => [], 
-  slurp => _OFF,
-  main  => _OFF,
-  swb   => _OFF,
-  help  => _OFF,
-  show  => _OFF,
-  'show-t' => _OFF,
-  'show-p' => _OFF,
-  'show-stat'   => _OFF,
-  'show-stat-p' => _OFF,
-);
 
 # validate arguments
 while (my $par = shift) {
