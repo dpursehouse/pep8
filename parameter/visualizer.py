@@ -37,13 +37,6 @@ def getText(nodelist):
     return ''.join(rc)
 
 
-def repeat(times, what):
-    returnval = ""
-    for num in range(0, times):
-        returnval += "%s" % what
-    return returnval
-
-
 def makeSpace(what):
     returnval = ""
     for ch in what:
@@ -53,25 +46,7 @@ def makeSpace(what):
             returnval += "%s" % ch
     return returnval.lstrip().rstrip()
 
-#
-# ----------------------------------------------------------------------
-# Read the old raw list
-#
 
-oldparams = []
-
-
-def readOld(oldlist):
-    global oldparams
-    parameters = oldlist.getElementsByTagName("item")
-    for param in parameters:
-        oldparams.append([int(param.getAttribute("id")),
-                          str(param.getAttribute("sg")),
-                          str(param.getAttribute("source")),
-                          str(param.getAttribute("name")),
-                          makeSpace(str(param.getAttribute("value")))])
-
-    return
 #
 # ----------------------------------------------------------------------
 # Read the owner list
@@ -147,29 +122,6 @@ def matchOwners(parameters, owners):
                 reponsiblelist += "%s\n" % str(owner)
     return reponsiblelist
 
-#
-# ----------------------------------------------------------------------
-# Check if this diff from latest run
-#
-
-oldparams = []
-
-
-def diff(pid, sg, source, name, value):
-    global oldparams
-    returnstring = ""
-    for para in oldparams:
-        if(para[0] == pid and para[2] == source):
-            if para[1] != sg:
-                returnstring = " sg "
-            if para[3] != name:
-                returnstring += " name "
-            if para[4] != value:
-                returnstring += " value "
-            if returnstring != "":
-                return returnstring
-    return ""
-
 
 #
 # ----------------------------------------------------------------------
@@ -179,10 +131,6 @@ def diff(pid, sg, source, name, value):
 
 def createWikiCode(parameters, owners, filename):
 
-    oldidfile = "wiki/buildid.txt.old"
-    with open(oldidfile, 'r') as o:
-        oldid = o.readline()
-
     rawfile = "%s.xml" % filename
     with open(rawfile, 'w') as r:
         r.write("<NV>")
@@ -190,10 +138,8 @@ def createWikiCode(parameters, owners, filename):
     newfile = "%s.txt" % filename
     with open(newfile, 'a') as f:
 
-        f.write("<br>''(default)'' = %s\n" % defaultresponsible)
-        f.write("<br><strike>Striked through</strike> = overwritten values\n")
-        f.write("<br><font style='background: lightpink'>Pink background")
-        f.write("</font> = changed parameter from previous run (%s)\n" % oldid)
+        f.write("* ''(default)'' = %s\n" % defaultresponsible)
+        f.write("* <strike>Striked through</strike> = overwritten values\n")
         f.write("{| class='wikitable sortable' border='1'\n")
         f.write("|- \n")
         f.write("! ID !! Owner !! Source !! class='unsortable'|")
@@ -220,13 +166,6 @@ def createWikiCode(parameters, owners, filename):
                 if (params[i][0] == owner[0]):
                     ownertext = str(owner[1])
                     break
-
-            diffval = diff(params[i][0], ownertext, str(params[i][2]).lstrip(),
-                           str(params[i][3]).lstrip(),
-                           makeSpace(str(params[i][4])).lstrip().rstrip())
-            if diffval != "":
-                # TODO: mark only the changed in pink, not the entire row
-                pretext = "style='background: pink' | " + pretext
 
             f.write("| %s%s%s |" % (pretext, ownertext, afttext))
             f.write("| %s%s%s |" % (pretext, str(params[i][2]).lstrip(),
@@ -258,14 +197,8 @@ def parseOne(masterfile, ownerfile):
     owners = []
     parameters = []
     responsiblelist = ""
-
     masterbasename = os.path.basename(masterfile)
     name = masterbasename.split('.')
-
-    # Read the list of previous parameters if it exists
-    if os.path.isfile("wiki/%s.xml.old" % name[0]):
-        dom_oldlist = parse("wiki/%s.xml.old" % name[0])
-        readOld(dom_oldlist)
 
     # Read the owner list
     dom_owner = parse(ownerfile)
