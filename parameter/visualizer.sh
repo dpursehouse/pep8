@@ -38,12 +38,19 @@ createwikitext () {
             xmlfilename="${bc##*/}"
             echo Working on $xmlfilename
             newwikiname=`echo $xmlfilename | sed s/.xml//`
-            echo "([[$wikipage/$newwikiname/layer|View the layers]])" > \
+            echo "__TOC__" > \
+                wiki/$newwikiname.txt
+            echo "== Parameter Snapshot ==" >> \
+                wiki/$newwikiname.txt
+            echo "* ([[$wikipage/$newwikiname/layer|View the layers]])" >> \
                 wiki/$newwikiname.txt
 
             curl -f $oldxml/$newwikiname.xml -o wiki/$newwikiname.xml.old
 
             ./visualizer.py $d/nv/$xmlfilename $owner
+            ./create_diff.py wiki/$newwikiname.xml wiki/$newwikiname.xml.old \
+                $buildid >> wiki/$newwikiname.txt
+
             cat wiki/$newwikiname.txt | ../semcwikitools/write_page.py \
                 "$wikipage/$newwikiname"
 
@@ -70,6 +77,7 @@ oldxml=$4
 fsgenpath=$repopath/fsgen
 datadir=$fsgenpath/data
 proddir=$datadir/products
+buildid=`echo $wikipage | sed 's/^.*\///m'`
 
 # Create the wiki subfolder if it doesn't exist
 if [ ! -d "wiki" ]; then
@@ -89,15 +97,8 @@ fi
 createwikitext
 
 # Add dependency-tree to the page
-echo "== XML Dependency Tree ==" >> wiki/index.wiki.txt
-echo "The include path between the MSMxxx-MASTERFILES and the product/band \
-combination nv xml files (files included in the MSMxxx-MASTERFILES are \
-excluded). Dead ends (like the semc_common.xml file) are excluded, to see \
-them you need to go to the layer view above. The number within parentheses \
-are the amount of NvItems within that particular xml file.<br /><br />" \
-    >> wiki/index.wiki.txt
+echo "{{XML_Dependency_Tree}}" >> wiki/index.wiki.txt
 ./make_tree.sh wiki >> wiki/index.wiki.txt
-
 
 # Create the main-wiki-page
 cat wiki/index.wiki.txt | ../semcwikitools/write_page.py $wikipage
