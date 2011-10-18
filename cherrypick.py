@@ -94,7 +94,7 @@ from dmsutil import DMSTagServer, DMSTagServerError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.7'
+__version__ = '0.3.8'
 
 REPO = 'repo'
 GIT = 'git'
@@ -1395,7 +1395,11 @@ def main():
                    'install it here. '))
         cherry_pick_exit(STATUS_REPO)
 
-    do_log("Cherrypick.py " + __version__, info="Cherry pick script",
+    info_msg = "Cherry pick script"
+    if OPT.dry_run:
+        info_msg += " (dry run)"
+
+    do_log("Cherrypick.py " + __version__, info=info_msg,
            echo=True)
     if OPT.cwd:
         OPT.cwd = os.path.abspath(OPT.cwd)
