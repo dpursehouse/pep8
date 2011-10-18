@@ -48,7 +48,7 @@ createwikitext () {
             curl -f $oldxml/$newwikiname.xml -o wiki/$newwikiname.xml.old
 
             ./visualizer.py $d/nv/$xmlfilename $owner
-            ./create_diff.py wiki/$newwikiname.xml wiki/$newwikiname.xml.old \
+            ./create_diff.py wiki/$newwikiname.xml.old wiki/$newwikiname.xml \
                 $buildid >> wiki/$newwikiname.txt
 
             cat wiki/$newwikiname.txt | ../semcwikitools/write_page.py \
