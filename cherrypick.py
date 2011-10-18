@@ -89,8 +89,6 @@ import signal
 import threading
 import tempfile
 
-cm_tools = os.path.dirname(os.path.abspath(os.path.join("..", sys.argv[0])))
-sys.path.append(cm_tools)
 from dmsutil import DMSTagServer, DMSTagServerError
 
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
