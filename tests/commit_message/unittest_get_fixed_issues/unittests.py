@@ -5,7 +5,7 @@ import os
 import sys
 import unittest
 
-from commit_message import CommitMessage, CommitMessageError
+from commit_message import CommitMessage
 
 
 class TestGetFixedIssues(unittest.TestCase):
@@ -20,6 +20,30 @@ class TestGetFixedIssues(unittest.TestCase):
         data = open(os.path.join(os.environ["TESTDIR"], filename))
         c = CommitMessage(data.read())
         return c.get_fixed_issues()
+
+    def test_changed_directory_in_tools_path(self):
+        """Tests that the get_fixed_issues method works correctly when
+        the caller has changed the current working directory, and the
+        cm_tools directory is still in the path of the cwd.
+        """
+        cwd = os.getcwd()
+        test_dir = os.environ["TESTDIR"]
+        self.assertTrue(os.path.isdir(test_dir))
+        os.chdir(test_dir)
+        data = self.get_fixed_issues("commit_message_single_valid_dms.txt")
+        self.assertEqual(data, ["DMS00123456"])
+        os.chdir(cwd)
+
+    def test_changed_directory_not_in_tools_path(self):
+        """Tests that the get_fixed_issues method works correctly when
+        the caller has changed the current working directory, and the
+        cm_tools directory is not in the path of the cwd.
+        """
+        cwd = os.getcwd()
+        os.chdir("/")
+        data = self.get_fixed_issues("commit_message_single_valid_dms.txt")
+        self.assertEqual(data, ["DMS00123456"])
+        os.chdir(cwd)
 
     def test_no_dms(self):
         """Tests that attempting to get DMS from a commit message that
@@ -40,8 +64,8 @@ class TestGetFixedIssues(unittest.TestCase):
         includes malformed DMS returns a list only containing the valid
         DMS.
         """
-        data = \
-            self.get_fixed_issues("commit_message_including_malformed_dms.txt")
+        data = self.get_fixed_issues(
+            "commit_message_including_malformed_dms.txt")
         self.assertEqual(data, ["DMS00654321"])
 
     def test_single_valid_dms(self):
