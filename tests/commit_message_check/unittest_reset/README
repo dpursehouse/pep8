@@ -1,0 +1,2 @@
+Runs the unit tests for the reset() method of the
+CommitMessageChecker class in commit_message_check.py.
