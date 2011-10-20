@@ -64,8 +64,9 @@ class Snapshot:
             (res, ret, err) = processes.run_cmd(cmd)
             if res == 0:
                 if package[0] in self.packages:
-                    self.replaced[package[0]] = (self.packages[package[0]],
-                                                 package[1])
+                    if self.packages[package[0]] != package[1]:
+                        self.replaced[package[0]] = (self.packages[package[0]],
+                                                     package[1])
                 else:
                     self.new[package[0]] = package[1]
                 self.packages[package[0]] = package[1]
@@ -133,11 +134,15 @@ class Snapshot:
         """Prints a report of changes made to the package list
         """
         print("Added packages:")
-        print self.new
+        for pName in self.new.keys():
+            print "  %s:\t%s" % (pName, self.new[pName])
         print("Updated packages:")
-        print self.replaced
+        for pName in self.replaced.keys():
+            print "  %s:\t%s\t%s" % (pName, self.replaced[pName][0],
+                                     self.replaced[pName][1])
         print("Removed packages:")
-        print self.removed
+        for pName in self.removed.keys():
+            print "  %s:\t%s" % (pName, self.removed[pName])
 
     def emit_package_file(self, path=None):
         """Emits a package file to <path> stream or stdout
