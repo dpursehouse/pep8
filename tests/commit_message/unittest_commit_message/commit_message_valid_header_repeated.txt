@@ -1,0 +1,10 @@
+tree 1111111111111111111111111111111111111111
+parent 2222222222222222222222222222222222222222
+parent 3333333333333333333333333333333333333333
+author Author Name <author.name@sonyericsson.com> 1318317148 +0900
+committer Committer Name <committer.name@sonyericsson.com> 1318317148 +0900
+
+Commit message subject
+
+Commit message body line 1
+Commit message body line 2

@@ -79,13 +79,21 @@ class CommitMessage:
                         "committer": None})
         pattern = "^(tree|parent|author|committer) "
         for line in header.split('\n'):
+            # Check if the header contains an expected entry
             m = re.match(pattern, line)
             if not m:
                 raise CommitMessageError("Unexpected entry in header")
-            if headers[m.group(1)]:
+
+            # Only the "parent" header can appear more than once
+            entry = m.group(1)
+            if entry != "parent" and headers[entry]:
                 raise CommitMessageError("Multiple values for header %s" %
-                    m.group(1))
-            headers[m.group(1)] = line
+                    entry)
+
+            # Doesn't matter if we overwrite the "parent" value.  The
+            # values are not used other than to verify that they were all
+            # found.
+            headers[entry] = line
 
         # Make sure all expected headers have been found.
         for h in headers:

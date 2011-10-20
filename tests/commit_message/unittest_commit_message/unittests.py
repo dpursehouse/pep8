@@ -68,6 +68,12 @@ class TestCommitMessage(unittest.TestCase):
         self.assertRaises(CommitMessageError, self.get_commit_message,
             "commit_message_invalid_header_repeated.txt")
 
+    def test_commit_message_valid_parent_header_repeated(self):
+        """Tests that a commit message with repeated parent part in the
+        header is handled correctly.
+        """
+        c = self.get_commit_message("commit_message_valid_header_repeated.txt")
+
 
 if __name__ == '__main__':
     unittest.main()
