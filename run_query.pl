@@ -34,6 +34,7 @@ use constant STATE_FIELD => "State";
 use constant INTEGRATED_STATUS_FIELD => "integrated_status";
 use constant VERIFIED_STATUS_FIELD => "verified_status";
 use constant FIX_FOR_FIELD => "fix_for";
+use constant NOTE_ENTRY => "Note_Entry";
 use constant PROJ_ID => "proj_id";
 use constant RESTRICTED_STATE => "Integrated";
 use constant FINAL_STATE => "Verified";
@@ -69,6 +70,8 @@ my $unlabeled_query;
 my $project;
 my $deliver_to;
 my $create_DR;
+my %incorrect_tagged_issues = ();
+my @untagged_issues = ();
 
 my $options_ok;
 my $log_handle;
@@ -120,6 +123,7 @@ if(scalar(@ARGV) == 0) {
     # Choose if records should be updated or label value listed.
     # 1 for list, 2 for update.
     $choice = 0;
+    my $done = "";
     while(!($choice == 1 || $choice == 2)){
       print "List or Update?\n";
       print "1) For list\n";
@@ -138,6 +142,23 @@ if(scalar(@ARGV) == 0) {
         print "Enter label: ";
         $label = <STDIN>;
         chomp $label;
+        # As per Redman process change, a target branch name is needed.
+        print "Enter target branch name (to match with 'deliver_to'): ";
+        $deliver_to = <STDIN>;
+        chomp $deliver_to;
+        print "Enter tag list (comma separated). Empty for no tags.\n: ";
+        my $tag_list = <STDIN>;
+        chomp $tag_list;
+        if ($tag_list ne "") {
+          @tags = split(/,/, $tag_list);
+        }
+        # Get an option to create missing delivery records.
+        while(!($done =~ /^y(es)?/ || $done =~ /^no?/)) {
+          print "Create missing delivery records? (y[es]/n[o]): ";
+          $done = <STDIN>;
+          chomp $done;
+          if($done =~ /^y(es)?/) {$create_DR = 1;}
+        }
       } else {
         print "Enter 1 for list or 2 for update:\n";
       }
@@ -189,6 +210,13 @@ if(scalar(@ARGV) == 0) {
     }
     if(defined($update)) {
       print "Update = On\n";
+      print "Target branch = ", $deliver_to, "\n";
+      if (@tags) {
+        print "Tags = ", join(",", @tags), "\n";
+      }
+      if (defined($create_DR)) {
+        print "Create DR = On\n";
+      }
     } elsif (defined($list)) {
       print "List = On\n";
     }
@@ -200,7 +228,6 @@ if(scalar(@ARGV) == 0) {
     print "Sites: ", join(', ', @sites), "\n";
 
     # Query user if input is ok. Offer to rerun if not.
-    my $done = "";
     while(!($done =~ /^y(es)?/ || $done =~ /^no?/)) {
       print "Options Ok? (y[es]/n[o]): ";
       $done = <STDIN>;
@@ -265,8 +292,8 @@ logg(OK, "Starting run!");
 my $site = $sites[0];
 my $current_site;
 
-# If $site is a site that can not be handled by this script, site_exists
-# will logg a warning about this.
+  # If $site is a site that can not be handled by this script, site_exists
+  # will logg a warning about this.
 site_exists($site);
 
 my $session = get_session($site);
@@ -275,7 +302,7 @@ if($session == -1) {
   logg(ERROR, "Could not get a session for site $site");
 }
 
-#Create SW label only on site $sites[0], label should be synchronised to other
+#Create SW label only on site $site, label should be synchronised to other
 #sites within 30 minutes
 if(defined($project) && defined($label)) {
   create_sw_label($session,$project,$label);
@@ -478,7 +505,7 @@ sub build_issue_hash {
           $hash{$issue_hash_key}->{$field} = $field_value;
       }
     };
-    if($@ ne "") {
+    if($@) {
       logg(WARN, "Could not get data from result set.");
       logg(CQERROR, "$@\n");
     }
@@ -572,32 +599,46 @@ sub update {
         next;
       }
       if(($issue_h{DELIVERY()}) || ((!$issue_h{DELIVERY()}) && ($issue_h{STATE_FIELD()} eq RESTRICTED_STATE) && ($issue_h{INTEGRATED_STATUS_FIELD()} eq PREFERRED_STATUS))) {
-        ### Depending on DMS(Old or New structure),select the FIX_FOR value ###
-        ### In case of New structure, select value from sub-records ###
-        ### In case of Old structure, select value from main-record ###
-        if((@tags && $issue_h{DELIVERY()} && ($issue_h{DELIVERY.".".FIX_FOR_FIELD()} ne "")) || (@tags && (!$issue_h{DELIVERY()}) && ($issue_h{FIX_FOR_FIELD()} ne ""))) {
-          my $match_tag = 0;
-          foreach my $tag (@tags) {
-            $tag =~ s/^\s+//;
-            $tag =~ s/\s+$//;
-            if((($issue_h{DELIVERY()}) && ($issue_h{DELIVERY.".".FIX_FOR_FIELD()} eq $tag)) || ((!$issue_h{DELIVERY()}) && ($issue_h{FIX_FOR_FIELD()} eq $tag))) {
-              $match_tag = 1;
-              last;
-            }
-          }
-          if($match_tag) {
-            push(@{$site_issues{$issue_h{MASTER_LABEL()}}}, $issue);
-            push(@{$site_issues_update_state{$issue_h{MASTER_LABEL()}}}, $issue);
+        ### If one or more tags are passed as input argument then the system
+        ### branch for which the update is run is in a stabilization mode
+        ### (fix_for value is mandatory)
+        if(@tags) {
+          ### Depending on DMS(Old or New structure),select the FIX_FOR value
+          ### In case of New structure, select value from sub-records
+          ### In case of Old structure, select value from main-record
+          my $issue_fix_for = "";
+          if($issue_h{DELIVERY()}) {
+            $issue_fix_for = $issue_h{DELIVERY.".".FIX_FOR_FIELD()};
           } else {
-            push(@unverified, $issue);
-            my $log_fix_for;
-            if ($issue_h{DELIVERY()}) {
-              $log_fix_for = $issue_h{DELIVERY.".".FIX_FOR_FIELD()};
+            $issue_fix_for = $issue_h{FIX_FOR_FIELD()};
+          }
+          ### No matter if the issue is tagged with correct value or not,
+          ### we will update it with proper label
+          push(@{$site_issues{$issue_h{MASTER_LABEL()}}}, $issue);
+          push(@{$site_issues_update_state{$issue_h{MASTER_LABEL()}}}, $issue);
+          if($issue_fix_for ne "") {
+            my $match_tag = 0;
+            foreach my $tag (@tags) {
+              $tag =~ s/^\s+//;
+              $tag =~ s/\s+$//;
+              if($issue_fix_for eq $tag) {
+                $match_tag = 1;
+                last;
+              }
             }
-            else {
-              $log_fix_for = $issue_h{FIX_FOR_FIELD()};
+            if(!$match_tag) {
+              ### An issue with invalid tag has been integrated.  Need to
+              ### highlight by adding appropriate comments in the 'Notes' field
+              $incorrect_tagged_issues{$issue_id} = $issue_fix_for;
+              print "\t\tIncorrect tag: \"$issue_fix_for\" detected for $issue_id for branch \"$deliver_to\"\n";
+              logg(WARN, "Incorrect tag: \"$issue_fix_for\" detected for $issue_id for branch \"$deliver_to\"");
             }
-            logg(WARN, "Skipping issue $issue_id for branch \"$deliver_to_in_query\" with fix_for \"$log_fix_for\" not in tag list");
+          } else {
+            ### An untagged issue has been integrated.  Need to highlight
+            ### by adding appropriate comments in the 'Notes' field
+            push(@untagged_issues, $issue_id);
+            print "\t\tUntagged issue, $issue_id detected for branch \"$deliver_to\"\n";
+            logg(WARN, "Untagged issue, $issue_id detected for branch \"$deliver_to\"");
           }
         } else {
           push(@{$site_issues{$issue_h{MASTER_LABEL()}}}, $issue);
@@ -640,11 +681,11 @@ sub update {
       print "Done with site $current_site\n";
       logg(OK, "Done with site $current_site");
       $session = get_session($site);
-        if($session == -1) {
-          print "Error with site $site";
-          logg(ERROR, "Could not get a session for site $site");
-          next DO_SITES;
-        }
+      if($session == -1) {
+        print "Error with site $site";
+        logg(ERROR, "Could not get a session for site $site");
+        next DO_SITES;
+      }
     }
     if(scalar(@{$site_issues_update_state{$site}}) > 0) {
       change_state_issues($session, $site_issues_update_state{$site}, STATE_ACTION, PREFERRED_STATUS);
@@ -657,6 +698,21 @@ sub update {
   logg(OK, "Found $unverified_number unverified issues");
   if($unverified_number > 0) {
     generate_partial_query(\@unverified, "");
+  }
+  if (@tags) {
+    my $query_file_name = $label ."_" . create_time_stamp() . ".qry";
+    my $invalid_count = scalar(@untagged_issues);
+    logg(OK, "Found $invalid_count untagged issues");
+    if($invalid_count > 0) {
+      generate_partial_query(\@untagged_issues, "untagged_issues_" . $query_file_name);
+    }
+
+    $invalid_count = keys(%incorrect_tagged_issues);
+    logg(OK, "Found $invalid_count issues with incorrect tag value");
+    if($invalid_count > 0) {
+      my @incorrect_issues = (keys %incorrect_tagged_issues);
+      generate_partial_query(\@incorrect_issues, "incorrect_tagged_issues_" . $query_file_name);
+    }
   }
 }
 
@@ -806,7 +862,7 @@ sub add_DR_if_required {
 
         logg(OK,"Adding notes for new DR \"$deliver_to\"");
         $record->AddFieldValue(DELIVERY,"$DRdbid");
-        $record->AddFieldValue("Note_Entry","DR for $deliver_to is created " .
+        $record->AddFieldValue(NOTE_ENTRY,"DR for $deliver_to is created " .
                                "by CM script and updated with $label");
         eval {
           $ret_val = $record->Validate();
@@ -1112,7 +1168,7 @@ sub list_label_for_ids {
       eval {
         print $record->GetFieldValue(RELEASE_LABEL_FIELD)->GetValue(), "\n";
       };
-      if($@ ne "") {
+      if($@) {
         logg(WARN, "Could not get label for $issue");
         logg(CQERROR, "$@\n");
       }
@@ -1189,7 +1245,7 @@ sub label_is_valid {
       eval {
         $technical_name = $label_from_record->GetFieldValue('technical_name')->GetValue();
       };
-      if($@ ne "") {
+      if($@) {
         logg(ERROR, "Failed to get technical name of label $label");
         logg(CQERROR, "$@\n");
         return 0;
@@ -1264,7 +1320,7 @@ sub create_sw_label {
   eval {
     $entityObj = $session->BuildEntity(SW_LABEL_ENTITY);
   };
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can not Build entity SW_LABEL_ENTITY");
     logg(CQERROR, "$@\n");
     return 0;
@@ -1272,7 +1328,7 @@ sub create_sw_label {
   eval {
     $entityObj->SetFieldValue("name", $label);
   };
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can not set $label in name field ");
     logg(CQERROR, "$@\n");
     return 0;
@@ -1281,7 +1337,7 @@ sub create_sw_label {
   eval {
     $entityObj->SetFieldValue("technical_name", $project);
   };
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can not set $project in technical_name field ");
     logg(CQERROR, "$@\n");
     return 0;
@@ -1289,7 +1345,7 @@ sub create_sw_label {
   eval {
     $entityObj->SetFieldValue("hw", "0");
   };
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can not set 0 in hw field ");
     logg(CQERROR, "$@\n");
     return 0;
@@ -1339,6 +1395,7 @@ sub modify_label {
   my %issue_h = %{$issues_data->{$issue}};
   my $issue_id = $issue_h{ID_FIELD()};
   my $record;
+  my $master_record;
   eval {
     ### If Issue have Delivery table, take in the unique id of record. ###
     ### Else take Issue id ###
@@ -1350,7 +1407,7 @@ sub modify_label {
     }
   };
 
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can not get record for issue $issue");
     logg(CQERROR, "$@\n");
     return -1;
@@ -1369,13 +1426,55 @@ sub modify_label {
     $ret = modify($session, $record, RELEASE_LABEL_FIELD, $label);
   }
   if($ret == 0 || $ret == -1) {
-    logg(ERROR, "Can not modify record for issue $issue_id");
+    print "Can't modify record for issue $issue_id\n";
+    logg(ERROR, "Can't modify record for issue $issue_id");
     return -1;
   } else {
+    print "Modified record for issue $issue_id\n";
     logg(OK, "Modified record for issue $issue_id");
-    return 1;
   }
+
+  if (@tags) {
+    ### Add comments in the Notes field if the issue is untagged or tagged with
+    ### incorrect value
+    my $msg = "";
+    if(%incorrect_tagged_issues && grep(/-$issue_id$/,(keys %incorrect_tagged_issues))) {
+      $msg = "INVALID TAG: At the time of update this issue had an incorrect " .
+             "tag, \"" . $incorrect_tagged_issues{$issue_id} . "\" for the branch " .
+             "\"$deliver_to\".  Valid tag(s) are: " .
+             join(", ", @tags);
+    } elsif (@untagged_issues && grep(/^$issue_id$/,@untagged_issues)) {
+      $msg = "UNTAGGED Issue: At the time of update this issue did not have " .
+             "tag for the branch \"$deliver_to\".  Expected tag(s) are: " .
+             join(", ", @tags);
+    }
+
+    if ($msg ne "") {
+      ### If Issue have Delivery table, update the notes field of master record
+      if ($issue_h{DELIVERY()}) {
+        $master_record = $session->GetEntity(ISSUE_ENTITY, $issue_id);
+        if (!$master_record) {
+          print "Can't get the parent record for DR ". $issue_h{DELIVERY()} . "\n";
+          logg(ERROR, "Can't get the parent record for DR ". $issue_h{DELIVERY()} . "\n");
+          return -2;
+        }
+        $ret = modify($session, $master_record, NOTE_ENTRY, $msg);
+      }
+      else {
+        $ret = modify($session, $record, NOTE_ENTRY, $msg);
+      }
+      if($ret == 0 || $ret == -1) {
+        print "\tError updating $issue_id with notes:\n\t\t\"$msg\"\n";
+        logg(ERROR, "Can't update notes for issue $issue_id");
+        $ret = -2;
+      } else {
+        logg(OK, "Updated notes for issue $issue_id");
+      }
+    }
+  }
+  return $ret;
 }
+
 #######################################
 #  change_state                       #
 #  Changes the state of an issue      #
@@ -1397,7 +1496,7 @@ sub change_state {
   eval {
     $record = $session->GetEntity(ISSUE_ENTITY, $issue);
   };
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can not get record for issue $issue");
     logg(CQERROR, "$@\n");
     return -1;
@@ -1447,9 +1546,10 @@ sub modify {
   eval {
     $session->EditEntity($record, "modify");
   };
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can not make record editable to set $field = $value");
     logg(CQERROR, "$@\n");
+    return -1;
   }
 
   my $ret = $record->SetFieldValue($field, $value);
@@ -1459,21 +1559,30 @@ sub modify {
     return -1;
   }
 
+  my $ret_val = "";
   eval {
-    $record->Validate();
+    $ret_val = $record->Validate();
   };
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can not validate setting field $field to value $value!");
-    logg(CQERROR, "$@\n");
+    logg(CQERROR, "Exception: $@\n");
+    return -1;
+  } elsif($ret_val ne "") {
+    logg(ERROR, "Can not validate setting field $field to value $value!");
+    logg(CQERROR, "Error reason: $ret_val\n");
     return -1;
   }
 
   eval {
-    $record->Commit();
+    $ret_val = $record->Commit();
   };
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can not commit setting field $field to value $value");
-    logg(CQERROR, "$@\n");
+    logg(CQERROR, "Exception: $@\n");
+    return -1;
+  } elsif($ret_val ne "") {
+    logg(ERROR, "Can not commit setting field $field to value $value");
+    logg(CQERROR, "Error reason: $ret_val\n");
     return -1;
   } else {
     logg(OK, "Commited change of field $field to value $value to database");
@@ -1506,8 +1615,8 @@ sub change {
   # DMS record to "Pass, these fields needs to be populated.
   # If a string is not submitted to the metheod then add default values
   if($state_action eq "Pass") {
-    if(!$fields{"Note_Entry"}) {
-      $fields{"Note_Entry"}="Set to \"Verified\" \"Test OK\" by ASW CM.";
+    if(!$fields{NOTE_ENTRY}) {
+      $fields{NOTE_ENTRY}="Set to \"Verified\" \"Test OK\" by ASW CM.";
     }
     if(!$fields{"verified_in_release"}) {
       $fields{"verified_in_release"}="N/A";
@@ -1528,7 +1637,7 @@ sub change {
   eval {
     $record->EditEntity($state_action);
   };
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can not make record editable to $state_action");
     logg(CQERROR, "$@\n");
   }
@@ -1607,6 +1716,10 @@ sub modify_issues {
       my $msg = "Modified issue $issue_id for branch \"$deliver_to_in_query\" with label \"$label\"";
       print $msg, "\n";
       logg(OK, $msg);
+    } elsif ($ret == -2) {
+      logg(ERROR, "Updated issue $issue_id for branch \"$deliver_to_in_query\" with label $label" .
+                  " but failed to add Notes");
+      $retval++;
     } else {
       logg(ERROR, "Could not modify issue $issue_id for branch \"$deliver_to_in_query\" with label $label");
       $retval++;
@@ -1641,7 +1754,7 @@ sub change_state_issues {
     ### No need to update state of main issue if DMS is of new structure ###
     ### and have DELIEVRY Table ###
     if ($issue_h{DELIVERY()}) {
-      $ret = 0;
+      return 1;
     }
     else {
       $ret = change_state($session, $issue, $state_action, $status);
@@ -1689,19 +1802,7 @@ sub get_query_for_ids {
   my $filter_node_1 = $query->BuildFilterOperator(CQ_OR);
 
   foreach my $issue(@{$issues_ref}) {
-    my $filter_node_2 = $filter_node_1->BuildFilterOperator(CQ_AND);
-    $filter_node_2->BuildFilter(ID_FIELD, CQ_EQ, $issue);
-    ### Added filter "Deliver_to" which selects exact record from DELIVERY ###
-    ### Table with the combination of DMS ID & "deliver_to" field of record ###
-    ### Its Mandatory to provide "-deliver_to" but would'nt be used in ###
-    ### old DMS structure type of Issues ###
-    if ($list && $deliver_to) {
-      $filter_node_2->BuildFilter(DELIVERY.".".DELIVERY_DELIVER_TO, CQ_EQ, $deliver_to);
-    }
-    if (@tags && (scalar(@tags) == 1))
-    {
-        $filter_node_2->BuildFilter(DELIVERY.".".FIX_FOR_FIELD, CQ_EQ, $tags[0]);
-    }
+    $filter_node_1->BuildFilter(ID_FIELD, CQ_EQ, $issue);
   }
   return $query;
 }
