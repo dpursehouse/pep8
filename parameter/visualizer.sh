@@ -20,10 +20,10 @@
 
 createwikitext () {
     owner=$here/$ownerfile
-    products=`find $proddir -mindepth 1 -maxdepth 1 -type d`
-    echo "== Product/band kombinations ==" > wiki/index.wiki.txt
+    find $proddir -mindepth 1 -maxdepth 1 -type d | sort > wiki/productdirs.txt
+    echo "== Product/band combinations ==" > wiki/index.wiki.txt
 
-    for d in $products ; do
+    while read d ; do
 
         product=`basename "$d" | tr '[:upper:]' '[:lower:]' `;
 
@@ -32,12 +32,17 @@ createwikitext () {
         # More info:
         # https://wiki.sonyericsson.net/androiki/PLD_System_Core/...
         # Parameter_Handling/Blue#Naming_convention_for_band_variants
-        bcfiles=`find $d/nv -regex ".*/${product}_\([a-z0-9]+_\)?\(C[0-9_]+\)?\(L[0-9_]+\)?\(W[0-9_]+\)?\(default_band\)?\.xml"`
+        re=".*/${product}_\([a-z0-9]+_\)?\(C[0-9_]+\)?\(L[0-9_]+\)?\(W[0-9_]+\)?\(default_band\)?\.xml"
+        find $d/nv -regex $re | sort > wiki/bcfiles.txt
 
-        for bc in $bcfiles ; do
+        partpath=`echo $d | sed 's/^.*data\/products/\/products/m'`
+        echo ";$partpath" >> wiki/index.wiki.txt
+
+        while read bc ; do
             xmlfilename="${bc##*/}"
             echo Working on $xmlfilename
             newwikiname=`echo $xmlfilename | sed s/.xml//`
+
             echo "__TOC__" > \
                 wiki/$newwikiname.txt
             echo "== Parameter Snapshot ==" >> \
@@ -51,6 +56,8 @@ createwikitext () {
             ./create_diff.py wiki/$newwikiname.xml.old wiki/$newwikiname.xml \
                 $buildid >> wiki/$newwikiname.txt
 
+            diffs=`tail -n 1 wiki/$newwikiname.txt`
+
             cat wiki/$newwikiname.txt | ../semcwikitools/write_page.py \
                 "$wikipage/$newwikiname"
 
@@ -58,13 +65,15 @@ createwikitext () {
             cat wiki/$newwikilayer.layer.txt | ../semcwikitools/write_page.py \
                 "$wikipage/$newwikiname/layer"
 
-            echo "[[$wikipage/$newwikiname|$newwikiname]]" >> \
+            echo ":[[$wikipage/$newwikiname|$newwikiname]]" \
+                "''([[$wikipage/$newwikiname/layer|layers]])''" \
+                "''([[$wikipage/$newwikiname#Difference_between_" \
+                "${oldbuildid}_and_${buildid}|$diffs]])''<br>" >> \
                 wiki/index.wiki.txt
-            echo "''([[$wikipage/$newwikiname/layer|layers]])''<br>" >> \
-                wiki/index.wiki.txt
-        done
-    done
 
+        done < wiki/bcfiles.txt
+
+    done < wiki/productdirs.txt
 }
 
 # -----------------------------------------------------------------------------
@@ -92,6 +101,7 @@ curl -f $oldxml/buildid.txt -o wiki/buildid.txt.old
 if [ ! -f "wiki/buildid.txt.old" ]; then
     echo "(unknown)" > wiki/buildid.txt.old
 fi
+oldbuildid=`cat wiki/buildid.txt.old`
 
 # Create the sub-wiki-pages
 createwikitext

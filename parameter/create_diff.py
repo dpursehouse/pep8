@@ -56,6 +56,7 @@ def makeDiff(oldxmlfile, newxmlfile, buildid):
     owners = []
     parameters = []
     responsiblelist = ""
+    diffs = 0
     global oldparams
 
     # Old buildid
@@ -107,11 +108,13 @@ def makeDiff(oldxmlfile, newxmlfile, buildid):
                 if newitem[4] != olditem[4]:
                     clrvalue = "style='background: pink' | "
                 if clrsg + clrname + clrvalue != "":
+                    diffs = diffs + 1
                     break
 
         # If the parameter wasn't found among the newparams, the parameter
         # was removed
         if oldfound == -1:
+            diffs = diffs + 1
             clrremitem = "style='background: red' | "
 
         if oldfound > -1:
@@ -134,6 +137,7 @@ def makeDiff(oldxmlfile, newxmlfile, buildid):
     print "! class='unsortable'| Name !! class='unsortable'| Value"
     clrnewitem = "style='background: lightgreen' | "
     for item in newparams:
+        diffs = diffs + 1
         print "|-"
         print "| %s%s " % (clrnewitem, item[0])
         print "| %s%s " % (clrnewitem, item[1])
@@ -143,7 +147,7 @@ def makeDiff(oldxmlfile, newxmlfile, buildid):
 
     print "|} "
 
-    return
+    return diffs
 
 # -----------------------------------------
 
@@ -164,4 +168,6 @@ if not(os.path.isfile(oldxmlfile)):
 if not(os.path.isfile(newxmlfile)):
     parser.error("Cannot find %s" % newxmlfile)
 
-makeDiff(oldxmlfile, newxmlfile, buildid)
+differences = makeDiff(oldxmlfile, newxmlfile, buildid)
+
+print "%s changes" % differences
