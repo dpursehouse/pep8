@@ -57,6 +57,7 @@ def parse_config(config):
 
 project_dict = parse_config("config")
 
+
 def fatal(exitcode, message):
     '''
         Takes exit code and error message as an arguments
@@ -67,8 +68,10 @@ def fatal(exitcode, message):
     print >> sys.stderr, '%s: %s' % (os.path.basename(sys.argv[0]), message)
     sys.exit(exitcode)
 
+
 def miniparse(url):
     return minidom.parse(urllib.urlopen(url))
+
 
 def getTextOfFirstTagByName(element, name):
     rc = ""
@@ -79,6 +82,7 @@ def getTextOfFirstTagByName(element, name):
                 rc = rc + node.data
     return rc.strip()
 
+
 def dmsqueryShowNoTitle(gitlog):
     cmd = "dmsquery --show"
     dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
@@ -86,12 +90,14 @@ def dmsqueryShowNoTitle(gitlog):
     dmslist_notitle = dmsquery.communicate(input=gitlog)[0]
     return dmslist_notitle.splitlines()
 
+
 def dmsqueryShow(gitlog):
     cmd = "dmsquery --show-t"
     dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    dmslist= dmsquery.communicate(input=gitlog)[0]
+    dmslist = dmsquery.communicate(input=gitlog)[0]
     return dmslist.splitlines()
+
 
 def dmsqueryQry(gitlog, query):
         cmd = "dmsquery -qry %s" % query
@@ -102,13 +108,15 @@ def dmsqueryQry(gitlog, query):
         dmsquery.communicate(input=gitlog)
         dmsquery.stdin.close()
 
-def command (command):
+
+def command(command):
     cmd = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
     result = cmd.communicate()[0].splitlines()
     retval = cmd.returncode
     return (retval, result)
 
-def get_main_job_url (project_name):
+
+def get_main_job_url(project_name):
     if project_name not in project_dict.keys():
         fatal(1, "project %s is not defined in dictionary project_dict"
                 % project_name)
@@ -121,16 +129,17 @@ def get_main_job_url (project_name):
             else:
                 site = "." + site
             main_job_url = "http://android-ci%s.sonyericsson.net/view/CM/" \
-                           "job/offbuild_%s/api/xml"  %(site, branch)
+                        "job/offbuild_%s/api/xml" % (site, branch)
             break
         else:
             continue
     return main_job_url
 
+
 def generate_delta_packages(oldBuildId, newBuildId, old_manifest_obj,
                           new_manifest_obj):
     output = open('delta_packages_%s-%s.txt' \
-                       %(oldBuildId, newBuildId),'w')
+                % (oldBuildId, newBuildId), 'w')
     print >>output, "Delta packages between %s and %s:" \
         % (oldBuildId, newBuildId)
     variant_spec_old_rev = old_manifest_obj.get_project_info(\
@@ -153,13 +162,13 @@ def generate_delta_packages(oldBuildId, newBuildId, old_manifest_obj,
         print >>output, "There's no packages changes between %s and %s" \
                % (oldBuildId, newBuildId)
     output.close()
-#===============================================================================
+
 
 class ManifestUrl:
     '''
         Get the Manifest url according to given build_id
     '''
-    def __init__ (self, build_id, main_job_url):
+    def __init__(self, build_id, main_job_url):
         self.build_id = build_id
         self.main_job_url = main_job_url
         self.manifest_url = ""
@@ -174,10 +183,10 @@ class ManifestUrl:
             self.manifest_url = self.build_id
             job_url = "skip"
         else:
-             job_url = "do"
+            job_url = "do"
         if not (self.main_job_url.endswith('api/xml')):
-             self.main_job_url = self._urljoin(main_job_url, 'api', 'xml')
-        if job_url == "do" :
+            self.main_job_url = self._urljoin(main_job_url, 'api', 'xml')
+        if job_url == "do":
             main_job_xml = miniparse(self.main_job_url)
             for build in main_job_xml.getElementsByTagName("build"):
                 build_job_url = getTextOfFirstTagByName(build, "url")
@@ -199,11 +208,12 @@ class ManifestUrl:
             self.manifest_url = self._urljoin(job_url,
                                  "artifact", "result-dir/manifest_static.xml")
         if self.manifest_url == "":
-            fatal(1, "Could not find the manifest for %s" %self.build_id)
+            fatal(1, "Could not find the manifest for %s" % self.build_id)
 
-    def get_manifest_url (self):
+    def get_manifest_url(self):
         return self.manifest_url
-#==============================================================================
+
+
 class Manifest:
     '''
         Parse manifest and get the project related info.
@@ -239,12 +249,13 @@ class Manifest:
 
     def get_project_info(self, project, attribute):
         return self.project_info[project][attribute]
-#=============================================================================
+
+
 class CompareManifest:
     '''
         Compare two manifests, get the different info of the two manifests.
     '''
-    def __init__ (self, new_manifest_obj, old_manifest_obj=None):
+    def __init__(self, new_manifest_obj, old_manifest_obj=None):
         self.old_manifest_obj = old_manifest_obj
         self.new_manifest_obj = new_manifest_obj
         self.common_projects = []
@@ -273,20 +284,21 @@ class CompareManifest:
 
     def get_new_manifest_obj(self):
         return self.new_manifest_obj
-#==============================================================================
+
+
 class CompareRevisions:
     '''
         Compare two given revisions. Get the commit info between the two
         revisions.
     '''
-    def __init__ (self, compare_manifest_obj, rebase=None):
+    def __init__(self, compare_manifest_obj, rebase=None):
         self.compare_manifest_obj = compare_manifest_obj
         self.rebase = rebase
         self.commits_dict = {}
         self.direct_commits_dict = {}
         self._compare()
 
-    def _compare (self):
+    def _compare(self):
         common_projects = self.compare_manifest_obj.get_common_projects()
         old_manifest_obj = self.compare_manifest_obj.get_old_manifest_obj()
         new_manifest_obj = self.compare_manifest_obj.get_new_manifest_obj()
@@ -302,8 +314,8 @@ class CompareRevisions:
                                                                  "path")
                 self.commits_dict[project_path] = {}
                 self.commits_dict[project_path]['full'] = []
-                self.commits_dict[project_path]['direct']= []
-                self.commits_dict[project_path]['rebase']= []
+                self.commits_dict[project_path]['direct'] = []
+                self.commits_dict[project_path]['rebase'] = []
                 _gitcmd = "git rev-list --no-merges"
                 _commit_list = self.run_git_log(project_path, new_revision,
                                                old_revision, _gitcmd)
@@ -311,12 +323,11 @@ class CompareRevisions:
                     self.commits_dict[project_path]['full'].append(item)
                 if self.rebase is not None and \
                     project in self.rebase.get_project_list():
-                    _commit_list = self.run_git_log(path=project_path,
-                                                   newrev=new_revision,
-                                                   oldrev=old_revision,
-                                                   gitcmd=_gitcmd,
-                                                   not_filter= \
-                        self.rebase.get_project_info(project,'revision'))
+                    _commit_list = self.run_git_log(project_path,
+                                                   new_revision,
+                                                   old_revision,
+                                                   _gitcmd,
+                            self.rebase.get_project_info(project, 'revision'))
                 for item in _commit_list:
                     self.commits_dict[project_path]['direct'].append(item)
                 self.commits_dict[project_path]['rebase'].\
@@ -334,14 +345,14 @@ class CompareRevisions:
             if selector in commits_info and len(commits_info[selector]) != 0:
                 for item in commits_info[selector]:
                     gitlog = "\n".join(self.run_git_log(project, item,
-                                                        "%s^" %item,\
+                                                        "%s^" % item,\
                                        gitcmd="git log --no-merges"))
                     concatlog += gitlog
                     dmslist.extend(dmsqueryShow(concatlog))
                     dmslist_notitle.extend(dmsqueryShowNoTitle(concatlog))
             else:
                 continue
-        dmsqueryQry(concatlog,"%s_%s" %(selector,query))
+        dmsqueryQry(concatlog, "%s_%s" % (selector, query))
         return (dmslist, dmslist_notitle)
 
     def run_git_log(self, path=None, newrev=None, oldrev=None, gitcmd=None,\
@@ -355,7 +366,7 @@ class CompareRevisions:
         cmd = "%s %s..%s" % (gitcmd, oldrev, newrev)
         if not_filter != None:
             for item in not_filter.split(','):
-                if self._isRef("origin/%s" %item):
+                if self._isRef("origin/%s" % item):
                     filterStr = " ^origin/%s" % item
                     cmd = cmd + filterStr
                 else:
@@ -371,7 +382,8 @@ class CompareRevisions:
         if ret == 0:
             return True
         return False
-#==============================================================================
+
+
 class CompareVariantSpec:
     def __init__(self, old_rev, new_rev, path="vendor/semc/build/semcsystem"):
         self.old_rev = old_rev
@@ -384,7 +396,8 @@ class CompareVariantSpec:
         rootdir = os.getcwd()
         os.chdir(self.path)
         if self.old_rev != self.new_rev:
-            cmd = "git diff %s %s --relative=variant_spec" % (self.old_rev, self.new_rev)
+            cmd = "git diff %s %s --relative=variant_spec" % (self.old_rev, \
+                    self.new_rev)
             (ret, self.res) = command(cmd)
             os.chdir(rootdir)
             self._parse_result()
@@ -411,8 +424,9 @@ class CompareVariantSpec:
 
     def get_compare_result(self):
         return self.variant_spec_dict
- #============================================================================
-def _main ():
+
+
+def _main():
     '''
         Main funtion
     '''
@@ -428,7 +442,7 @@ def _main ():
                         help="set the workspace which directory contains .repo")
     parser.add_option("-q", "--query", dest="query", default="DMSquery.qry",
                         help="set the name of the output query file")
-    parser.add_option("-r","--rebase", dest="rebase",
+    parser.add_option("-r", "--rebase", dest="rebase",
                         help="set the rebased project")
     parser.add_option("-c", "--git-cmd", dest="gitcmd",
                         default="git shortlog --no-merges",
@@ -470,7 +484,7 @@ def _main ():
             print item
     if len(removed_projects) != 0:
         print "======Removed Projects in %s against %s=====" \
-            %(newBuildId, oldBuildId)
+            % (newBuildId, oldBuildId)
         for item in removed_projects:
             print item
     # If debs_flag is true, generate package change list in variant spec
@@ -490,7 +504,7 @@ def _main ():
                     rebase_site = ""
                 else:
                     rebase_site = "." + rebase_site
-                rebase_manifest= "http://android-ci%s.sonyericsson.net/view/"\
+                rebase_manifest = "http://android-ci%s.sonyericsson.net/view/"\
                   "CM/job/offbuild_%s/lastSuccessfulBuild/artifact/result-dir/"\
                   "manifest_static.xml" % (rebase_site, rebase_branch)
 
@@ -514,7 +528,7 @@ def _main ():
             print "*** %s ***" % project
         for item in commits_info['direct']:
             print '\n'.join(compare_revision_obj.run_git_log(project, item,\
-                            "%s^" %item, options.gitcmd))
+                            "%s^" % item, options.gitcmd))
 
     print "======Rebased Commits Information========"
     for project, commits_info in commits_dict.items():
@@ -523,7 +537,7 @@ def _main ():
             print "*** %s ***" % project
         for item in commits_info['rebase']:
             print '\n'.join(compare_revision_obj.run_git_log(project, item,\
-                             "%s^" %item, options.gitcmd))
+                             "%s^" % item, options.gitcmd))
     (direct_dmslist, direct_dmslist_notitle) = \
         compare_revision_obj.get_dms_info('direct', options.query)
     (rebase_dmslist, rebase_dmslist_notitle) = \
