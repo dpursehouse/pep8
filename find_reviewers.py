@@ -12,6 +12,9 @@ from semcutil import fatal
 # Default number of previous reviews from which to find approvers
 DEFAULT_LIMIT = 50
 
+# Default number of reviewers to find/add
+DEFAULT_COUNT = 3
+
 
 class AddReviewersError(Exception):
     '''AddReviewersError is raised for any kind of error that
@@ -129,23 +132,26 @@ def main():
         "[-u <username>] [-l <limit>] [-e <exclude>]"
     parser = optparse.OptionParser(usage=usage)
     parser.add_option("-c", "--change", dest="change",
-        default=None, help="Find reviewers based on change ID")
+        default=None, help="find reviewers for specified change ID")
     parser.add_option("-p", "--project", dest="project",
-        default=None, help="Find reviewers based on project name")
+        default=None, help="find reviewers for specified project name")
     parser.add_option("-b", "--branch", dest="branch",
-        default=None, help="Limit to changes on given branch")
+        default=None, help="limit to changes on specified branch")
     parser.add_option("-u", "--username", dest="username",
-        default=None, help="Username to use when connecting to Gerrit")
+        default=None, help="username to use when connecting to Gerrit")
     parser.add_option("-l", "--limit", dest="limit",
-        default=DEFAULT_LIMIT, help="Number of previous reviews to check")
+        default=DEFAULT_LIMIT, help="number of previous reviews to check" \
+                                    " (default %default)")
     parser.add_option("-e", "--exclude", dest="exclude",
-        default="", help="Comma separated list of users to exclude")
+        default="", help="comma-separated list of users to exclude")
     parser.add_option("-a", "--add", dest="add", action="store_true",
-        default=False, help="Also add the reviewers (default False)")
+        default=False, help="also add the reviewers (default %default), " \
+                            "cannot be used in combination with --project")
     parser.add_option("-n", "--count", dest="count", type="int",
-        default=3, help="Number of reviewers to add")
+        default=DEFAULT_COUNT, help="number of reviewers to find/add" \
+                                    " (default %default)")
     parser.add_option("-v", "--verbose", dest="verbose", action="store_true",
-        default=False, help="Verbose mode")
+        default=False, help="verbose mode")
     (opts, args) = parser.parse_args()
 
     # Validate options
