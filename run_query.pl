@@ -53,7 +53,7 @@ use constant ERROR => "[ERROR]";
 use constant WARN => "[WARNING]";
 use constant CQERROR => "[CQERROR]";
 use constant OK => "[OK]";
- 
+
 my $query;
 my $log_file;
 my $label;
@@ -86,15 +86,15 @@ if(scalar(@ARGV) == 0) {
     print "Enter user: ";
     $user = <STDIN>;
     chomp $user;
-  
+
     print "Please enter your password: ";
     $pwd = <STDIN>;
     chomp $pwd;
-  
+
     print "Enter log file: ";
     $log_file = <STDIN>;
     chomp $log_file;
-  
+
     # Choose if an exported query or a list of issues should be used for querying CQ.
     # 1 for query, 2 for issue list (comma separated).
     print "Do you want to use a saved query or an issue list (issue1, issue2...)?\n";
@@ -142,7 +142,7 @@ if(scalar(@ARGV) == 0) {
         print "Enter 1 for list or 2 for update:\n";
       }
     }
-    
+
     # A list of sites to run on. Necessary if update is selected and there are
     # issues mastered on other sited.
     print "Enter site(s) (comma speparated list):\n";
@@ -198,7 +198,7 @@ if(scalar(@ARGV) == 0) {
       print "No unverified query generated!\n";
     }
     print "Sites: ", join(', ', @sites), "\n";
-    
+
     # Query user if input is ok. Offer to rerun if not.
     my $done = "";
     while(!($done =~ /^y(es)?/ || $done =~ /^no?/)) {
@@ -367,7 +367,7 @@ if(defined($list)) {
     if($unl_number > 0) {
       generate_partial_query($unlabeled, $unlabeled_query, $session);
     }
-  
+
   }
   $session->SignOff();
 }
@@ -401,13 +401,13 @@ sub get_session {
   logg(OK, "Starting log on to site $site");
   print create_time_stamp(), " Logging on site $site. Please wait!\n";
   my $CQSession = Win32::OLE->new("ClearQuest.Session");
-  
+
   if (Win32::OLE->LastError != 0) {
     logg(ERROR, "Problem with access to ClearQuest API (OLE Object)");
     return -1;
   }
   $CQSession->UserLogon($user, $pwd, DB, 2, $schema);
-  
+
   if (Win32::OLE->LastError != 0) {
     $CQSession->SignOff();
     logg(ERROR, "Could not start session with schema $schema and site $site");
@@ -430,21 +430,21 @@ sub build_issue_hash {
   my $session = shift @_;
   my $result_set = shift @_;
   my $query_def = shift @_;
-  
+
   my %hash;
-  
+
   my @fields;
   if(scalar(@_) >= 1) {
     @fields = @_;
   }
-  
+
   my $id_column = is_field_in_query($query_def, ID_FIELD);
   if($id_column == 0) {
     logg(ERROR, "Could not get column for " . DMS_ID_LABEL);
   }
   ### Check if issue is of new structure and have DELIVERY Table, ###
   my $delivery_column = is_field_in_query($query_def, DELIVERY);
-  
+
   my %columns;
   my $field;
   foreach $field (@fields) {
@@ -454,7 +454,7 @@ sub build_issue_hash {
     }
       $columns{$field} = $column;
   }
-  
+
   while ($result_set->MoveNext() == $CQPerlExt::CQ_SUCCESS){
     eval {
       my $issue_id = $result_set->GetColumnValue($id_column);
@@ -670,6 +670,7 @@ sub add_DR_if_required {
   my $session_DR  = shift @_;
   my $issues_data = shift @_;
   my @checked_issues = ();
+  my $ret_val = "";
 
   my %site_issues = (
                       SELD => [],
@@ -703,58 +704,50 @@ sub add_DR_if_required {
 
     foreach my $issue_id (@{$site_issues{$site}}) {
       print "\n\tChecking issue $issue_id";
-      my $proceed_with_issue = 0;
+      my $proceed_with_issue = 1;
       my $record = "";
       eval {
         $record = $session_DR->GetEntity(ISSUE_ENTITY, $issue_id);
       };
-      if($@ ne "") {
+      if($@) {
         logg(ERROR, "Can't get record for issue $issue_id");
         logg(CQERROR, "$@\n");
-        return -1;
-      } elsif($record eq ""){
+        next;
+      } elsif ($record eq ""){
         logg(WARN, "Issue $issue_id doesn't exist");
-        return 0;
+        next;
       }
       my $Delivery_fieldvalue = $record->GetFieldStringValue(DELIVERY);
       if ($Delivery_fieldvalue) {
         my $DR_record = "";
-        my $DR_already_exist = 0;
         my @array_DR_id = split(/\n/,$Delivery_fieldvalue);
         foreach my $DR_id (@array_DR_id) {
           eval {
             $DR_record = $session_DR->GetEntity(DELIVERY_ENTITY, $DR_id);
           };
-          if($@ ne "") {
-            logg(ERROR, "Can't get record for DR $DR_id of issue $issue_id");
-            logg(CQERROR, "$@\n");
-            return -1;
-          } elsif($DR_record eq ""){
+          if($@) {
+            logg(WARN, "Can't get record for DR $DR_id of issue $issue_id");
+            logg(CQERROR, "Exception: $@\n");
+            next;
+          } elsif ($DR_record eq "") {
             logg(WARN, "DR $DR_id doesn't exist for Issue $issue_id");
-            return 0;
+            next;
           }
           my $DR_deliver_to = $DR_record->GetFieldStringValue(DELIVERY_DELIVER_TO);
           if ($DR_deliver_to eq $deliver_to) {
-            $DR_already_exist = 1;
+            $proceed_with_issue = 0;
             last;
           }
         }
-        if (!$DR_already_exist) {
-          $proceed_with_issue = 1;
-        }
       }
-      else {
-        $proceed_with_issue = 1;
-      }
-
       if ($proceed_with_issue) {
         eval {
           $record->EditEntity("modify");
         };
-        if($@ ne "") {
+        if($@) {
           logg(ERROR, "Can't make record editable for issue $issue_id");
           logg(CQERROR, "$@\n");
-          return -1;
+          next;
         }
         my $entityObj;
         $session_DR->SetNameValue("create_new_delivery","yes");
@@ -762,65 +755,97 @@ sub add_DR_if_required {
         eval {
           $entityObj = $session_DR->BuildEntity("DeliveryRecord");
         };
-        if($@ ne "") {
+        if($@) {
           logg(ERROR, "Can't Build Delivery Record for issue $issue_id");
-          logg(CQERROR, "$@\n");
-          return -1;
+          logg(CQERROR, "Exception: $@\n");
+          $record->Revert();
+          next;
         }
         my $DRdbid = $entityObj->GetDbId();
         my $ret_deliver_to = $entityObj->SetFieldValue(DELIVERY_DELIVER_TO, $deliver_to);
         if($ret_deliver_to ne "") {
           logg(ERROR, "$issue_id: Can't set field \"Deliver to\" to $deliver_to");
-          logg(CQERROR, "$ret_deliver_to");
-          return -1;
+          logg(ERROR, "Skipping creation of DR for $issue_id with $deliver_to");
+          logg(CQERROR, "Error reason: $ret_deliver_to");
+          $record->Revert();
+          next;
         }
+        logg(OK,"Setting field value \"$deliver_to\"");
         eval {
-          $entityObj->Validate();
+          $ret_val = $entityObj->Validate();
         };
-        if($@ ne "") {
-          print "\t\tNew DR can't be validated\n";
-          logg(ERROR,"$issue_id: New DR can't be validated");
-          logg(CQERROR, "$@\n");
-          return -1;
+        if($@) {
+          log_exception($@, $issue_id, $deliver_to, "validated");
+          $record->Revert();
+          next;
+        } elsif ($ret_val ne "") {
+          log_error($ret_val, $issue_id, $deliver_to, "validated");
+          $record->Revert();
+          next;
         }
+
+        $ret_val = "";
+
         eval {
-          $entityObj->Commit();
+          $ret_val = $entityObj->Commit();
         };
-        if($@ ne "") {
-          print "\t\tNew DR for \"$deliver_to\" can't be created\n";
-          logg(ERROR, "$issue_id: New DR for \"$deliver_to\" can't be created");
-          return -1;
+        if($@) {
+          log_exception($@, $issue_id, $deliver_to, "commited");
+          $record->Revert();
+          next;
+        } elsif ($ret_val ne "") {
+          log_error($ret_val, $issue_id, $deliver_to, "commited");
+          $record->Revert();
+          next;
         } else {
           print "\n\t\tNew DR is created for \"$deliver_to\"\n";
           logg(OK, "$issue_id: New DR is created for \"$deliver_to\"");
         }
+
+        $ret_val = "";
+
+        logg(OK,"Adding notes for new DR \"$deliver_to\"");
         $record->AddFieldValue(DELIVERY,"$DRdbid");
         $record->AddFieldValue("Note_Entry","DR for $deliver_to is created " .
-                               "by CM script and updatd with $label");
+                               "by CM script and updated with $label");
         eval {
-          $record->Validate();
+          $ret_val = $record->Validate();
         };
-        if($@ ne "") {
+        if($@) {
+          log_exception($@, $issue_id, $deliver_to, "validated");
           $record->Revert();
-          print "\t$issue_id not valid\n";
-          logg(ERROR,"$issue_id not valid");
-          logg(CQERROR, "$@\n");
-          return -1;
+          next;
+        } elsif ($ret_val ne "") {
+          log_error($ret_val, $issue_id, $deliver_to, "validated");
+          $record->Revert();
+          next;
         }
+        $ret_val = "";
+
         eval {
-          $record->Commit();
+          $ret_val = $record->Commit();
         };
-        if($@ ne "") {
+        if($@) {
+          log_exception($@, $issue_id, $deliver_to, "commited");
           $record->Revert();
-          print " \t\t\[$issue_id\] not updated with DR \"$deliver_to\"\n";
-          logg(ERROR, "$issue_id not updated with DR \"$deliver_to\"");
-          return -1;
+          next;
+        } elsif ($ret_val ne "") {
+          log_error($ret_val, $issue_id, $deliver_to, "commited");
+          $record->Revert();
+          next;
         } else {
           print "\t\tNew DR is added to Delivery Table\n";
           logg(OK, "$issue_id: New DR is added to Delivery Table");
         }
         ### Modifying newly created DR for "Solution Done" and "Delivered_in" ###
-        update_new_DR($session_DR, $issue_id, $DRdbid);
+        if (update_new_DR($session_DR, $issue_id, $DRdbid) != 1) {
+          print "\tError: Failed to update the \"solutiondone\" or " .
+                "\"delivered_in\" field in the DR for $issue_id for the " .
+                "branch $deliver_to\n\tManual update required!!!";
+          logg(ERROR, "Failed to update the \"solutiondone\" or " .
+                "\"delivered_in\" field in the DR for $issue_id for the " .
+                "branch $deliver_to");
+        }
         push (@new_DR_created_for_issues, $issue_id);
       }
     }
@@ -844,9 +869,9 @@ sub update_new_DR {
   eval {
     $DR_record = $session_DR->GetEntity(DELIVERY_ENTITY, $DRdbid);
   };
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can't get record for DR $deliver_to of issue $issue_id");
-    logg(CQERROR, "$@\n");
+    logg(CQERROR, "Exception: $@\n");
     return -1;
   } elsif($DR_record eq ""){
     logg(WARN, "DR $deliver_to doesn't exist for Issue $issue_id");
@@ -855,42 +880,51 @@ sub update_new_DR {
   eval {
     $DR_record->EditEntity("modify");
   };
-  if($@ ne "") {
+  if($@) {
     logg(ERROR, "Can't make record editable for issue $issue_id");
-    logg(CQERROR, "$@\n");
+    logg(CQERROR, "Exception: $@\n");
     return -1;
   }
+  logg(OK,"Setting 'Solution Done' for new DR \"$deliver_to\"");
   my $ret_solution_done = $DR_record->SetFieldValue(DELIVERY_SOLUTION_DONE, "Yes");
   if($ret_solution_done ne "") {
     $DR_record->Revert();
     logg(ERROR, "Can't set field Solution Done to Yes!");
-    logg(CQERROR, "$ret_solution_done");
+    logg(CQERROR, "Error reason: $ret_solution_done");
     return -1;
   }
+  logg(OK,"Setting 'Delivered In' for new DR \"$deliver_to\"");
   my $ret_delivered_in = $DR_record->SetFieldValue(DELIVERY_DELIVERED_IN, $label);
   if($ret_delivered_in ne "") {
     $DR_record->Revert();
     logg(ERROR, "Can't set field delivered_in to value $label!");
-    logg(CQERROR, "$ret_delivered_in");
+    logg(CQERROR, "Error reason: $ret_delivered_in");
     return -1;
   }
+  my $ret_val = "";
   eval {
-    $DR_record->Validate();
+    $ret_val = $DR_record->Validate();
   };
-  if($@ ne "") {
+  if($@) {
     $DR_record->Revert();
-    print "\t\tDR not valid\n";
-    logg(ERROR,"$issue_id: DR not valid");
-    logg(CQERROR, "$@\n");
+    log_exception($@, $issue_id, $deliver_to, "validated");
+    return -1;
+  } elsif ($ret_val ne "") {
+    $DR_record->Revert();
+    log_error($ret_val, $issue_id, $deliver_to, "validated");
     return -1;
   }
+  $ret_val = "";
   eval {
-    $DR_record->Commit();
+    $ret_val = $DR_record->Commit();
   };
-  if($@ ne "") {
+  if($@) {
     $DR_record->Revert();
-    print "\t\tNew DR for \"$deliver_to\" can't be updated\n";
-    logg(ERROR, "$issue_id: New DR for \"$deliver_to\" can't be updated");
+    log_exception($@, $issue_id, $deliver_to, "commited");
+    return -1;
+  } elsif ($ret_val ne "") {
+    $DR_record->Revert();
+    log_error($ret_val, $issue_id, $deliver_to, "commited");
     return -1;
   } else {
     print "\t\t\"Solution Done\" set to \"Yes\" for new DR\n";
@@ -902,6 +936,42 @@ sub update_new_DR {
 }
 
 #######################################
+# log_exception                       #
+# Logs the exception during DMS       #
+# update.                             #
+#######################################
+
+sub log_exception {
+  my $exception = shift @_;
+  my $issue_id = shift @_;
+  my $deliver_to = shift @_;
+  my $msg = shift @_;
+
+  print "\t\tError: New DR can't be $msg\n";
+  logg(ERROR,"$issue_id: New DR can't be $msg");
+  logg(CQERROR, "Exception: $exception\n");
+  logg(ERROR, "Skipping creation of DR for $issue_id with $deliver_to");
+}
+
+#######################################
+# log_error                           #
+# Logs the error during DMS           #
+# update.                             #
+#######################################
+
+sub log_error {
+  my $error = shift @_;
+  my $issue_id = shift @_;
+  my $deliver_to = shift @_;
+  my $msg = shift @_;
+
+  print "\t\tError: New DR can't be $msg\n";
+  logg(ERROR,"$issue_id: New DR can't be $msg");
+  logg(CQERROR, "Error reason: $error\n");
+  logg(ERROR, "Skipping creation of DR for $issue_id with $deliver_to");
+}
+
+#######################################
 # get_unverified                      #
 # Finds all unverified issues and     #
 # returns an array ref to a list of   #
@@ -910,9 +980,9 @@ sub update_new_DR {
 
 sub get_unverified {
   my $issues_data = shift @_;
-  
+
   my @unverified;
-  
+
   foreach my $issue (keys(%{$issues_data})) {
     my $state = $issues_data->{$issue}->{'State'};
     if( $state ne "Verified") {
@@ -932,9 +1002,9 @@ sub get_unverified {
 
 sub get_unlabeled {
   my $issues_data = shift @_;
-  
+
   my @unlabeled;
-  
+
   foreach my $issue (keys(%{$issues_data})) {
     my $label = $issues_data->{$issue}->{'sw_official_release'};
     if( $label eq "") {
@@ -994,11 +1064,11 @@ sub generate_partial_query {
 #  Returns true if the field is in,   #
 #  false if not.                      #
 #######################################
- 
+
 sub is_field_in_query {
   my $query = shift @_;
   my $field_name = shift @_;
-  
+
   #Iterate over the field defs in the query and
   #check if the searched field is defined in the
   #query.
@@ -1010,7 +1080,7 @@ sub is_field_in_query {
       return $i+1;
     }
   }
-  
+
   #For now, assume that the field is not in the query.
   #Todo: logic for figuring out when a certain field is actually
   #in the query.
@@ -1029,9 +1099,9 @@ sub is_field_in_query {
 sub list_label_for_ids {
   my $session = shift @_;
   my $issues_ref = shift @_;
-  
+
   my @issues = @{$issues_ref};
-  
+
   foreach my $issue (@issues) {
     my $record;
     eval {
@@ -1146,24 +1216,24 @@ sub label_is_valid {
 #  as input. Returns 1 if site is     #
 #  master, 0 if not and -1 if error   #
 #  ocurrs.                            #
-#######################################  
+#######################################
 
 sub is_master {
   my $record = shift @_;
   my $this_site = shift @_;
-  
+
   my  $master_status;
-  
+
   eval {
     $master_status = ($record->GetFieldValue(MASTERSHIP_FIELD)->GetValue() eq $this_site);
   };
-  
+
   if($@ eq "") {
     return $master_status;
   } else {
     logg(ERROR, "Failed to get mastership for site $this_site");
     logg(CQERROR, "$@");
-    return -1;  
+    return -1;
   }
 }
 
@@ -1265,7 +1335,7 @@ sub modify_label {
   my $session = shift @_;
   my $issue = shift @_;
   my $label = shift @_;
-  
+
   my %issue_h = %{$issues_data->{$issue}};
   my $issue_id = $issue_h{ID_FIELD()};
   my $record;
@@ -1362,9 +1432,9 @@ sub modify {
   my $record  = shift @_;
   my $field   = shift @_;
   my $value   = shift @_;
-  
+
   my $mastership = is_master($record, $current_site);
-  
+
   if($mastership == -1) {
     logg(ERROR, "Error while retreiving mastership status for site $current_site");
     return -1;
@@ -1373,7 +1443,7 @@ sub modify {
     logg(ERROR, "Does not have mastership for change of field $field to value $value");
     return 0;
   }
-  
+
   eval {
     $session->EditEntity($record, "modify");
   };
@@ -1381,7 +1451,7 @@ sub modify {
     logg(ERROR, "Can not make record editable to set $field = $value");
     logg(CQERROR, "$@\n");
   }
-  
+
   my $ret = $record->SetFieldValue($field, $value);
   if($ret ne "") {
     logg(ERROR, "Can not set field $field to value $value!");
@@ -1525,7 +1595,7 @@ sub modify_issues {
     logg(ERROR, "Label $label is not valid for this session on $current_site");
     return -1;
   }
-  
+
   @issues = @{$issues_ref};
   my $ret;
   foreach my $issue (@issues) {
@@ -1598,7 +1668,7 @@ sub change_state_issues {
 sub get_query_for_ids {
   my $session = shift @_;
   my $issues_ref = shift @_;
-  
+
   # Build Query
   my $query = $session->BuildQuery(ISSUE_ENTITY);
   $query->BuildField(ID_FIELD);
@@ -1650,9 +1720,9 @@ sub get_query_for_ids {
 sub logg {
   my $type = shift @_;
   my $message = shift @_;
-  
+
   if(!$do_log) {return -1;}
-  
+
   #If the log_handle is available
   #reuse it. If not open the file, in
   #append mode if it exists, otherwise
@@ -1666,7 +1736,7 @@ sub logg {
     if(!defined($log_handle)){
       print "Unable to open logfile $log_file. Logging is off.";
       $do_log = 0;
-    } 
+    }
   }
   print $log_handle "$type ", create_time_stamp(), " $message\n";
   return $do_log;
@@ -1686,7 +1756,7 @@ sub site_exists {
   my $site = shift @_;
   chomp $site;
   my @valid_sites = (SELD, JPTO, USSV, CNBJ);
-  
+
   foreach my $valid_site (@valid_sites) {
     if($site eq $valid_site) {
       return 1;
@@ -1719,7 +1789,7 @@ sub create_time_stamp {
   }
 
   $timedata[4]++;
-  
+
   my $timeStamp = "$year.$timedata[4].$timedata[3]_$timedata[2].$timedata[1].$timedata[0]";
   return $timeStamp;
 }
