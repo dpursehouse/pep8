@@ -2,6 +2,14 @@ import os
 import sys
 
 
+def enum(*sequential, **named):
+    """ Helper method to automatically enumerate values.
+    Usage: Numbers = enum('ZERO', 'ONE', 'TWO')
+    """
+    enums = dict(zip(sequential, range(len(sequential))), **named)
+    return type('Enum', (), enums)
+
+
 def fatal(exitcode, message):
     """Prints an error message and does sys.exit with exitcode.
 
