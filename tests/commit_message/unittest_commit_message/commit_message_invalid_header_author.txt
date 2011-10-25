@@ -1,7 +1,7 @@
 tree 1111111111111111111111111111111111111111
 parent 2222222222222222222222222222222222222222
-author Author Name <author.name@sonyericsson.com> 1318317148 +0900
-committer <committer.name@sonyericsson.com> 1318317148 +0900
+author <author.name@sonyericsson.com> 1318317148 +0900
+committer Committer Name <committer.name@sonyericsson.com> 1318317148 +0900
 
 Commit message subject
 
