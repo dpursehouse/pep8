@@ -6,48 +6,63 @@ import unittest
 import retry
 
 
-# Number of times to retry the "failing" test function.
-_RETRIES = 3
+# Number of times to try the "failing" test function.
+_TRIES = 3
 
 # Value to be returned by the "successful" test function.
 _SUCCESS = 123
+
+
+class DummyException(Exception):
+    """Dummy exception class.
+    """
 
 
 class TestRetryDecorator(unittest.TestCase):
     """Test that the retry decorator behaves correctly.
     """
 
-    _retry_count = 0
+    _try_count = 0
 
-    @retry.retry(Exception, tries=_RETRIES)
-    def fail_method(self):
-        self._retry_count += 1
-        raise Exception("Fail")
+    @retry.retry(DummyException, tries=_TRIES)
+    def fail(self, e):
+        self._try_count += 1
+        raise e
 
-    @retry.retry(Exception, tries=_RETRIES, backoff=2, delay=1)
-    def success_method(self):
+    @retry.retry(Exception, tries=_TRIES, backoff=2, delay=1)
+    def success(self):
         return _SUCCESS
 
     def test_fail(self):
         """Tests that the retry decorator works correctly when the
-        called method is not successful.
+        called method is not successful and raises the expected
+        exception.
         """
-        self._retry_count = 0
-        self.assertRaises(Exception, self.fail_method)
-        self.assertEquals(self._retry_count, _RETRIES)
+        self._try_count = 0
+        self.assertRaises(DummyException, self.fail, DummyException("Fail"))
+        self.assertEquals(self._try_count, _TRIES)
+
+    def test_fail_different_exception(self):
+        """Tests that the retry decorator works correctly when the
+        called method is not successful and does not raise the
+        expected exception.
+        """
+        self._try_count = 0
+        self.assertRaises(Exception, self.fail, Exception("Fail"))
+        self.assertEquals(self._try_count, 1)
 
     def test_success(self):
         """Tests that the retry decorator works correctly when the
         called method is successful.
         """
-        self.assertEquals(self.success_method(), _SUCCESS)
+        self.assertEquals(self.success(), _SUCCESS)
 
     def test_invalid_delay(self):
         """Tests that the retry decorator raises ValueError when an
         invalid `delay` parameter is given.
         """
         try:
-            @retry.retry(Exception, tries=_RETRIES, delay=-1)
+            @retry.retry(Exception, tries=_TRIES, delay=-1)
             def decorated():
                 self.assertTrue(False)
         except ValueError:
@@ -74,7 +89,7 @@ class TestRetryDecorator(unittest.TestCase):
         # an exception.  In the tests below, the exceptions are
         # manually caught.
         try:
-            @retry.retry(Exception, tries=_RETRIES, backoff=-1)
+            @retry.retry(Exception, tries=_TRIES, backoff=-1)
             def decorated():
                 # If it reaches this point, something went wrong.
                 # Force a test failure.
@@ -84,14 +99,14 @@ class TestRetryDecorator(unittest.TestCase):
             pass
 
         try:
-            @retry.retry(Exception, tries=_RETRIES, backoff=0)
+            @retry.retry(Exception, tries=_TRIES, backoff=0)
             def decorated():
                 self.assertTrue(False)
         except ValueError:
             pass
 
         try:
-            @retry.retry(Exception, tries=_RETRIES, backoff=1)
+            @retry.retry(Exception, tries=_TRIES, backoff=1)
             def decorated():
                 self.assertTrue(False)
         except ValueError:
