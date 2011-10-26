@@ -28,16 +28,15 @@ import semcutil
 
 
 # The default value of the command line option to select which
-# branches of the gits listed in each manifest that should be
-# examined.
+# branches of the gits listed in each manifest should be examined.
 DEFAULT_GIT_BRANCH_INCLUDES = [r"^"]
 
-# The default value of the command line option to select which
-# gits that should be examined.
+# The default value of the command line option to select which gits
+# should be examined.
 DEFAULT_GIT_INCLUDES = [r"^"]
 
 # The default value of the command line option to select which refs
-# from the manifest that should be examined.
+# from the manifest should be examined.
 DEFAULT_MANIFEST_REF_INCLUDES = [r"^refs/remotes/origin/"]
 
 # The URL of the Gerrit server
@@ -59,6 +58,8 @@ def _main():
                            "the SSH client will decide the username based " \
                            "on $LOGNAME and its own configuration file " \
                            "(if present).")
+    options.add_option("-v", "--verbose", dest="verbose", default=False,
+                       action="store_true", help="Verbose mode.")
     options.add_option("", "--dry-run", dest="dry_run", action="store_true",
                        help="Do everything except actually add the note " \
                            "to the affected change.")
@@ -149,13 +150,21 @@ def _main():
                        "but instead returned %d changes: %s" %
                        (len(change_info), querystring))
 
+    # If the git does not match our patterns there's no reason
+    # to continue.
     git_matcher = IncludeExcludeMatcher(options.git_in, options.git_ex)
     if not git_matcher.match(affected_git):
+        if options.verbose:
+            print "No match for git %s" % affected_git
         return 0
 
+    # If the git branch does not match our patterns there's no reason
+    # to continue.
     branch_matcher = IncludeExcludeMatcher(options.git_branch_in,
                                            options.git_branch_ex)
     if not branch_matcher.match(affected_branch):
+        if options.verbose:
+            print "No match for git branch %s" % affected_branch
         return 0
 
     # Find all available manifest branches. Let `branches`
@@ -173,12 +182,16 @@ def _main():
     # If no manifest branches matched our patterns there's no reason
     # to continue.
     if not branches:
+        if options.verbose:
+            print "No match for manifest branch"
         return 0
 
     # Extract the manifest XML data from all manifest branches found
     # earlier. Store the subset of branches that would be affected if
     # the change is submitted in `affected_manifests`.
     affected_manifests = []
+    if options.verbose:
+        print "Extracting affected system branches from manifest data..."
     for branch in branches:
         try:
             manifests = manifestbranches.get_manifests(branch,
@@ -187,6 +200,8 @@ def _main():
                 if affected_git in mfest and \
                         affected_branch == mfest[affected_git]["revision"]:
                     affected_manifests.append(prettybranch)
+                    if options.verbose:
+                        print prettybranch
         except processes.ChildExecutionError, err:
             semcutil.fatal(2, err)
         except manifest.ManifestParseError, err:
@@ -211,7 +226,8 @@ or it might be safe to assume that your change will behave in the same
 good manner everywhere, or one or more of the branches might be
 managed by dedicated teams (i.e. it isn't your problem if it
 breaks because of your change). Please use good judgement."""
-        print message
+        if options.verbose:
+            print message
         if not options.dry_run:
             try:
                 gerrit_conn.review_patchset(change_nr=int(change_nr),
@@ -219,6 +235,8 @@ breaks because of your change). Please use good judgement."""
                                             message=message)
             except processes.ChildExecutionError, err:
                 semcutil.fatal(2, "Error scoring change: %s" % err)
+    elif options.verbose:
+        print "No impact on multiple system branches"
 
 if __name__ == "__main__":
     try:
