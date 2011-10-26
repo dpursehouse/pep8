@@ -21,13 +21,12 @@ class CommitMessageAuthor:
         Raise CommitMessageError if the content of `data` does not
         match the expected pattern.
         '''
-        pattern = "^(author|committer) (.*) <(.*@.*)> (\d* \+\d{4})$"
+        pattern = "^(author|committer) (.*) <(.*@.*)> .*$"
         m = re.match(pattern, data)
         if m:
             self.type = m.group(1)
             self.name = m.group(2)
             self.email = m.group(3)
-            self.timestamp = m.group(4)
         else:
             raise CommitMessageError("Invalid author or committer header")
 
@@ -73,35 +72,21 @@ class CommitMessage:
         header = data[0:end_of_header]
 
         # Parse the contents of the header.
-        headers = dict({"tree": None,
-                        "parent": None,
-                        "author": None,
-                        "committer": None})
-        pattern = "^(tree|parent|author|committer) "
         for line in header.split('\n'):
-            # Check if the header contains an expected entry
-            m = re.match(pattern, line)
-            if not m:
-                raise CommitMessageError("Unexpected entry in header")
+            if line.startswith("author"):
+                if self.author:
+                    raise CommitMessageError("Multiple author headers")
+                self.author = CommitMessageAuthor(line)
+            elif line.startswith("committer"):
+                if self.committer:
+                    raise CommitMessageError("Multiple committer headers")
+                self.committer = CommitMessageAuthor(line)
 
-            # Only the "parent" header can appear more than once
-            entry = m.group(1)
-            if entry != "parent" and headers[entry]:
-                raise CommitMessageError("Multiple values for header %s" %
-                    entry)
-
-            # Doesn't matter if we overwrite the "parent" value.  The
-            # values are not used other than to verify that they were all
-            # found.
-            headers[entry] = line
-
-        # Make sure all expected headers have been found.
-        for h in headers:
-            if not headers[h]:
-                raise CommitMessageError("'%s' not found in header" % h)
-
-        self.committer = CommitMessageAuthor(headers["committer"])
-        self.author = CommitMessageAuthor(headers["author"])
+        # Make sure author and committer have been found.
+        if not self.author:
+            raise CommitMessageError("author not found in header.")
+        if not self.committer:
+            raise CommitMessageError("committer not found in header.")
 
         # Get the mesage body.  The message body is separated from
         # the header by two newlines.
