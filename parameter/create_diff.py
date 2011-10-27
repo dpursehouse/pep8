@@ -52,25 +52,18 @@ def readXml(alist, paramlist):
 #
 
 
-def makeDiff(oldxmlfile, newxmlfile, buildid):
+def makeDiff(oldxmlfile, newxmlfile, oldid, buildid):
     owners = []
     parameters = []
     responsiblelist = ""
     diffs = 0
     global oldparams
 
-    # Old buildid
-    oldidfile = "wiki/buildid.txt.old"
-    with open(oldidfile, 'r') as o:
-        oldid = o.readline().lstrip().rstrip()
-
     # Read the lists
     dom_file = parse(oldxmlfile)
     readXml(dom_file, oldparams)
     dom_file = parse(newxmlfile)
     readXml(dom_file, newparams)
-
-    print "== Difference between %s and %s ==" % (oldid, buildid)
 
     print "* <font style='background: pink'>Changed</font> " + \
         "(showing the old value)"
@@ -162,12 +155,18 @@ oldxmlfile = args[0]
 newxmlfile = args[1]
 buildid = args[2]
 
-if not(os.path.isfile(oldxmlfile)):
-    parser.error("Cannot find %s" % oldxmlfile)
+# Old buildid
+oldidfile = "wiki/buildid.txt.old"
+with open(oldidfile, 'r') as o:
+    oldid = o.readline().lstrip().rstrip()
 
 if not(os.path.isfile(newxmlfile)):
     parser.error("Cannot find %s" % newxmlfile)
 
-differences = makeDiff(oldxmlfile, newxmlfile, buildid)
+print "== Difference between %s and %s ==" % (oldid, buildid)
 
-print "%s changes" % differences
+if not(os.path.isfile(oldxmlfile)):
+    print "new product/band"
+else:
+    differences = makeDiff(oldxmlfile, newxmlfile, oldid, buildid)
+    print "%s changes" % differences
