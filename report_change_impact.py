@@ -19,8 +19,9 @@ import optparse
 import re
 import sys
 
-from include_exclude_matcher import IncludeExcludeMatcher
+
 import gerrit
+from include_exclude_matcher import IncludeExcludeMatcher
 import manifest
 import manifestbranches
 import processes
@@ -39,13 +40,16 @@ DEFAULT_GIT_INCLUDES = [r"^"]
 # from the manifest should be examined.
 DEFAULT_MANIFEST_REF_INCLUDES = [r"^refs/remotes/origin/"]
 
-# The URL of the Gerrit server
-GERRIT_SERVER_URL = "review.sonyericsson.net"
+# The default URL of the Gerrit server
+DEFAULT_GERRIT_SERVER = "review.sonyericsson.net"
 
 
 def _main():
     usage = "usage: %prog CHANGE_NR -m MANIFEST_PATH [options]"
     options = optparse.OptionParser(usage=usage)
+    options.add_option("", "--gerrit-url", dest="gerrit_url",
+                       default=DEFAULT_GERRIT_SERVER,
+                       help="The URL to the Gerrit server.")
     options.add_option("-m", "--manifest-path", dest="manifest_path",
                        default=None,
                        help="The path to the local directory where the " \
@@ -120,7 +124,7 @@ def _main():
     if len(args) != 1:
         semcutil.fatal(1, "Incorrect number of arguments. Use -h for help.")
     if not options.manifest_path:
-        semcutil.fatal(1, "Path to manifest git missing (use -m option).")
+        semcutil.fatal(1, "Path to manifest git missing. Use -m option.")
 
     change_nr = args[0]
 
@@ -129,7 +133,7 @@ def _main():
     # branch of the git it will be merged to when submitted.
     querystring = change_nr
     try:
-        gerrit_conn = gerrit.GerritSshConnection(GERRIT_SERVER_URL,
+        gerrit_conn = gerrit.GerritSshConnection(options.gerrit_url,
                                                  username=options.gerrit_user)
         change_info = gerrit_conn.query(querystring)
     except (processes.ChildExecutionError, gerrit.GerritSshConfigError), err:
