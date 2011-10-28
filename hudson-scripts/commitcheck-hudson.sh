@@ -22,9 +22,17 @@ mkdir $WORKSPACE
 cd $WORKSPACE
 
 if [ -n "$GERRIT_CHANGE_NUMBER" ]; then
-    # Set up folders and download the tools git
+    # Set up folders
     mkdir out
     mkdir temp
+
+    # Ignore uploaded changes on PLD gits
+    curl http://android-ci-platform.sonyericsson.net/job/pld-gits/lastSuccessfulBuild/artifact/pld-gits.txt > out/pld-gits.txt
+    if [ $(grep -c $GERRIT_PROJECT out/pld-gits.txt) -eq 1 ]; then
+        exit 0
+    fi
+
+    # Download the tools git
     git clone git://review.sonyericsson.net/semctools/cm_tools -b master
 
     # Download the project
