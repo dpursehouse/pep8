@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<branches>
+  <branch pattern="branch-1">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="TAG 1"/>
+    <allowed-dms-tag name="TAG 2"/>
+  </branch>
+  <branch pattern="branch-2">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="TAG 3"/>
+    <allowed-dms-tag name="TAG 4"/>
+  </branch>
+</branches>
