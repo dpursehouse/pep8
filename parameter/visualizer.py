@@ -139,14 +139,12 @@ def createWikiCode(parameters, owners, filename):
     with open(newfile, 'a') as f:
 
         f.write("* ''(default)'' = %s\n" % defaultresponsible)
-        f.write("* Overwritten values = ")
-        f.write("<strike>Striked through</strike> and State 'x'\n")
+        f.write("* <strike>Striked through</strike> = overwritten values\n")
+        f.write("* State 'X' = involved in overwritten values\n")
         f.write("{| class='wikitable sortable' border='1'\n")
         f.write("|- \n")
         f.write("! ID !! Owner !! Source !! class='unsortable'|")
         f.write("Name !! class='unsortable'|Value !! State\n")
-
-        previousparam = 0
 
         params = sorted(parameters)
         for i in xrange(len(params)):
@@ -158,7 +156,10 @@ def createWikiCode(parameters, owners, filename):
                 if params[i][0] == params[i + 1][0]:
                     pretext += "<strike>"
                     afttext = "</strike>"
-                    statetext = "x"
+                    statetext = "X(%s)" % str(params[i][0])
+            if i > 0:
+                if params[i][0] == params[i - 1][0]:
+                    statetext = "X(%s)" % str(params[i][0])
 
             f.write("|- \n")
             f.write("| %s%s%s |" % (pretext, str(params[i][0]), afttext))
