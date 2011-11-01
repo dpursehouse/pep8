@@ -1,6 +1,14 @@
+import os
 import re
 
 import processes
+
+
+# Filename of the query script
+_QUERY_SCRIPT = "dmsquery"
+
+# This file's location
+_mydir = os.path.abspath(os.path.dirname(__file__))
 
 
 class CommitMessageError(Exception):
@@ -36,14 +44,28 @@ class CommitMessage:
     the "git cat-file -p <object>" command.
     '''
 
+    def _find_query_script(self):
+        '''Attempt to find the script that will be used to parse the commit
+        message for fixed issues.
+        Return the absolute path to the script.
+        Raise CommitMessageError if the script could not be found.
+        '''
+        file = os.path.join(_mydir, _QUERY_SCRIPT)
+        if os.path.exists(file):
+            return file
+
+        raise CommitMessageError("Could not find %s" % _QUERY_SCRIPT)
+
     def get_fixed_issues(self):
         '''Get a list of fixed issues that are recorded in the commit message.
         Return list of issues, or empty list if no issues were found.
         Raise CommitMessageError if any error occurs.
         '''
         try:
-            errcode, rawlist, err = processes.run_cmd("./dmsquery", "--show",
-                                                      input=self.message)
+            errcode, rawlist, err = \
+                processes.run_cmd(self._find_query_script(),
+                                  "--show",
+                                  input=self.message)
 
             if rawlist == "No DMS Issues found":
                 issuelist = []
@@ -51,13 +73,15 @@ class CommitMessage:
                 # The output is one issue per line, but there may be
                 # leading and trailing whitespace. Clean this up.
                 issuelist = [s.strip() for s in rawlist.splitlines()]
-        except:
+        except CommitMessageError, e:
+            raise e
+        except Exception:
             raise CommitMessageError("Error extracting issue information")
 
         return issuelist
 
     def __init__(self, data):
-        '''Initialize the class with the commit mesage in `data`.
+        '''Initialize the class with the commit message in `data`.
         Raise CommitMessageError if the message header or body
         is badly formatted.
         '''
