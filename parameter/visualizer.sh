@@ -23,6 +23,9 @@ createwikitext () {
     find $proddir -mindepth 1 -maxdepth 1 -type d | sort > wiki/productdirs.txt
     echo "== Product/band combinations ==" > wiki/index.wiki.txt
 
+    totaldiffs=0
+    foundnew=False
+
     while read d ; do
 
         product=`basename "$d" | tr '[:upper:]' '[:lower:]' `;
@@ -57,6 +60,12 @@ createwikitext () {
                 $buildid >> wiki/$newwikiname.txt
 
             diffs=`tail -n 1 wiki/$newwikiname.txt`
+            nrdiffs=`echo $diffs | sed 's/ changes//m'`
+            if [ "a$nrdiffs" == "a$diffs" ]; then
+                nrdiffs=0
+                foundnew=True
+            fi
+            totaldiffs="$totaldiffs + $nrdiffs"
 
             cat wiki/$newwikiname.txt | ../semcwikitools/write_page.py \
                 "$wikipage/$newwikiname"
@@ -74,6 +83,8 @@ createwikitext () {
         done < wiki/bcfiles.txt
 
     done < wiki/productdirs.txt
+
+    sumofdiffs=`expr $totaldiffs`
 }
 
 # -----------------------------------------------------------------------------
@@ -110,7 +121,12 @@ createwikitext
 echo "{{XML_Dependency_Tree}}" >> wiki/index.wiki.txt
 ./make_tree.sh wiki >> wiki/index.wiki.txt
 
-# Create the main-wiki-page
+# Create the main-wiki-page and report if something is new or changed
+echo "Total diffs: $sumofdiffs"
+echo "Found something new: $foundnew"
+echo $sumofdiffs > sumofdiffs.log
+echo $foundnew > foundnew.log
+
 cat wiki/index.wiki.txt | ../semcwikitools/write_page.py $wikipage
 
 echo All done!
