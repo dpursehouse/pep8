@@ -94,7 +94,7 @@ from dmsutil import DMSTagServer, DMSTagServerError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.8'
+__version__ = '0.3.9'
 
 REPO = 'repo'
 GIT = 'git'
@@ -207,6 +207,8 @@ class Gerrit():
                                      gerrit_patchsets["currentPatchSet"]
                                      ["approvals"])
             emails = list(set([a["by"]["email"] for a in approvals_email]))
+            if "hudson@android-ci.sonyericsson.com" in emails:
+                emails.remove("hudson@android-ci.sonyericsson.com")
             url = gerrit_patchsets['url'].strip()
         return emails, url
 
