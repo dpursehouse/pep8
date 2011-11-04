@@ -401,6 +401,7 @@ if(defined($list)) {
 
 my @new_DR_created_for_issues = ();
 if(defined($update) && defined($label)){
+  placeholder_issues($session,$issues_data);
   if ($create_DR) {
     add_DR_if_required($session, $issues_data);
   }
@@ -988,6 +989,82 @@ sub update_new_DR {
     logg(OK, "$issue_id: \"Solution Done\" set to \"Yes\" for new DR");
     logg(OK, "$issue_id: \"Delivered in\" set to $label for new DR");
     return 1;
+  }
+}
+
+########################################
+# This will update list of issue with  #
+# linked issues found in placeholder   #
+# record.                              #
+########################################
+
+sub placeholder_issues {
+  my $session = shift @_;
+  my $issues_data = shift @_;
+  my $placeholder_issues_data;
+  my @placeholder_issues;
+  foreach my $issue (keys(%{$issues_data})) {
+    my %issue_h = %{$issues_data->{$issue}};
+    my $issue_id = $issue_h{ID_FIELD()};
+    my $record = "";
+    eval {
+      $record = $session->GetEntity(ISSUE_ENTITY, $issue_id);
+    };
+    if($@) {
+      logg(ERROR, "Can't get record for issue $issue_id");
+      logg(CQERROR, "$@\n");
+      next;
+    } elsif ($record eq ""){
+      logg(WARN, "Issue $issue_id doesn't exist");
+      next;
+    }
+    my $issue_type = $record->GetFieldStringValue("issue_type");
+    if ($issue_type ne "Placeholder") {
+      next;
+    }
+    my $linked_records = $record->GetFieldStringValue("peers_linked_to");
+    push(@placeholder_issues, split(/\n/,$linked_records));
+  }
+  if (@placeholder_issues) {
+    print "\n\nFound placeholder issue\\s. Updating issue list...\n";
+    my $query_def = get_query_for_ids($session, \@placeholder_issues);
+    my $query_path = "$site" . "_generated_placeholder_" . create_time_stamp() . ".qry";
+    $query_def->Save($query_path);
+    $query_def = undef;
+    $query_def = $session->OpenQueryDef($query_path);
+
+    my $result_set = $session->BuildResultSet($query_def);
+    $result_set->EnableRecordCount();
+    $result_set->Execute();
+
+    if (Win32::OLE->LastError != 0) {
+      print "Problem with placeholder DMS Query\n";
+      logg(ERROR, "Problem with placeholder DMS Query");
+      return -1;
+    }
+
+    if(!defined($result_set)) {
+      logg(ERROR, "Could not get placeholder query result for site $site");
+      return -1;
+    }
+    $placeholder_issues_data = build_issue_hash($session,
+                                       $result_set,
+                                       $query_def,
+                                       MASTERSHIP_FIELD,
+                                       RELEASE_LABEL_FIELD,
+                                       STATE_FIELD,
+                                       INTEGRATED_STATUS_FIELD,
+                                       VERIFIED_STATUS_FIELD,
+                                       PROJ_ID,
+                                       FIX_FOR_FIELD,
+                                       ID_FIELD,
+                                       DELIVERY,
+                                       DELIVERY.".".DELIVERY_DELIVER_TO,
+                                       DELIVERY.".".DELIVERY_SOLUTION_DONE,
+                                       DELIVERY.".".FIX_FOR_FIELD,
+                                       DELIVERY.".".DELIVERY_DELIVERED_IN);
+
+    %{$issues_data} = (%{$issues_data}, %{$placeholder_issues_data});
   }
 }
 
