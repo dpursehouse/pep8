@@ -176,7 +176,7 @@ def createWikiCode(parameters, owners, filename):
                                     afttext))
             f.write("| %s%s%s |" % (pretext, str(params[i][3]).lstrip(),
                                     afttext))
-            f.write("| %s%s%s \n" % (pretext, makeSpace(str(params[i][4])),
+            f.write("| %s%s%s \n" % (pretext, makeSpace(params[i][4]),
                                      afttext))
             f.write("| %s \n" % (statetext))
 
@@ -185,7 +185,7 @@ def createWikiCode(parameters, owners, filename):
                         (params[i][0], ownertext, str(params[i][2]).lstrip()))
                 r.write(" name=\"%s\" value=\"%s\"/>\n" %
                         (str(params[i][3]).lstrip(),
-                         makeSpace(str(params[i][4]))))
+                         makeSpace(params[i][4])))
 
         with open(rawfile, 'a') as r:
             r.write("</NV>")
