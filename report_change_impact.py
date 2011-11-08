@@ -16,6 +16,7 @@ being inspected.
 """
 
 import optparse
+import os
 import re
 import sys
 
@@ -45,7 +46,7 @@ DEFAULT_GERRIT_SERVER = "review.sonyericsson.net"
 
 
 def _main():
-    usage = "usage: %prog CHANGE_NR -m MANIFEST_PATH [options]"
+    usage = "usage: %prog [options]"
     options = optparse.OptionParser(usage=usage)
     options.add_option("", "--gerrit-url", dest="gerrit_url",
                        default=DEFAULT_GERRIT_SERVER,
@@ -119,56 +120,53 @@ def _main():
                            "manifests. This option can also be used " \
                            "multiple times to add more expressions " \
                            "(default: <empty>).")
-
+    options.add_option("", "--change", dest="change_nr",
+                       help="The change number to check.")
+    options.add_option("", "--patchset", dest="patchset_nr",
+                       help="The patchset number.")
+    options.add_option("", "--project", dest="affected_git",
+                       help="The name of the project on which the " \
+                           "change is uploaded.")
+    options.add_option("", "--branch", dest="affected_branch",
+                       help="The name of the branch on which the " \
+                           "change is uploaded.")
     (options, args) = options.parse_args()
-    if len(args) != 1:
-        semcutil.fatal(1, "Incorrect number of arguments. Use -h for help.")
+
     if not options.manifest_path:
-        semcutil.fatal(1, "Path to manifest git missing. Use -m option.")
+        semcutil.fatal(1, "Path to manifest git missing. Use --m option.")
+    if not options.change_nr:
+        semcutil.fatal(1, "Change nr. missing. Use --change option.")
+    if not options.patchset_nr:
+        semcutil.fatal(1, "Patchset nr. missing. Use --patchset option.")
+    if not options.affected_git:
+        semcutil.fatal(1, "Project name missing. Use --project option.")
+    if not options.affected_branch:
+        semcutil.fatal(1, "Branch name missing. Use --branch option.")
 
-    change_nr = args[0]
-
-    # Obtain information from Gerrit about the change that we're being
-    # interrogated about; which git it has been uploaded to and which
-    # branch of the git it will be merged to when submitted.
-    querystring = change_nr
     try:
-        gerrit_conn = gerrit.GerritSshConnection(options.gerrit_url,
-                                                 username=options.gerrit_user)
-        change_info = gerrit_conn.query(querystring)
-    except (processes.ChildExecutionError, gerrit.GerritSshConfigError), err:
-        semcutil.fatal(2, "Error connecting to Gerrit to obtain "
-                       "information about change %s: %s" % (change_nr, err))
-    except gerrit.GerritQueryError, err:
-        semcutil.fatal(2, "Gerrit rejected the query: %s" % err)
-    if len(change_info) == 1:
-        try:
-            affected_git = change_info[0]["project"]
-            affected_branch = change_info[0]["branch"]
-            current_patchset = len(change_info[0]["patchSets"])
-        except KeyError, err:
-            semcutil.fatal(2, "Unexpected response from Gerrit; the %s " \
-                           "key was missing." % err)
-    else:
-        semcutil.fatal(2, "Query was expected to return a single change "
-                       "but instead returned %d changes: %s" %
-                       (len(change_info), querystring))
+        change_nr = int(options.change_nr)
+    except ValueError:
+        semcutil.fatal(1, "Change number must be a number.")
+    try:
+        patchset_nr = int(options.patchset_nr)
+    except ValueError:
+        semcutil.fatal(1, "Patchset number must be a number.")
 
     # If the git does not match our patterns there's no reason
     # to continue.
     git_matcher = IncludeExcludeMatcher(options.git_in, options.git_ex)
-    if not git_matcher.match(affected_git):
+    if not git_matcher.match(options.affected_git):
         if options.verbose:
-            print "No match for git %s" % affected_git
+            print "No match for git %s" % options.affected_git
         return 0
 
     # If the git branch does not match our patterns there's no reason
     # to continue.
     branch_matcher = IncludeExcludeMatcher(options.git_branch_in,
                                            options.git_branch_ex)
-    if not branch_matcher.match(affected_branch):
+    if not branch_matcher.match(options.affected_branch):
         if options.verbose:
-            print "No match for git branch %s" % affected_branch
+            print "No match for git branch %s" % options.affected_branch
         return 0
 
     # Find all available manifest branches. Let `branches`
@@ -201,8 +199,9 @@ def _main():
             manifests = manifestbranches.get_manifests(branch,
                                                        options.manifest_path)
             for ref, prettybranch, mfest in manifests:
-                if affected_git in mfest and \
-                        affected_branch == mfest[affected_git]["revision"]:
+                if options.affected_git in mfest and \
+                        options.affected_branch == \
+                            mfest[options.affected_git]["revision"]:
                     affected_manifests.append(prettybranch)
                     if options.verbose:
                         print prettybranch
@@ -234,9 +233,14 @@ breaks because of your change). Please use good judgement."""
             print message
         if not options.dry_run:
             try:
-                gerrit_conn.review_patchset(change_nr=int(change_nr),
-                                            patchset=int(current_patchset),
+                gerrit_conn = \
+                    gerrit.GerritSshConnection(options.gerrit_url,
+                                               username=options.gerrit_user)
+                gerrit_conn.review_patchset(change_nr=change_nr,
+                                            patchset=patchset_nr,
                                             message=message)
+            except gerrit.GerritSshConfigError, err:
+                semcutil.fatal(1, "Error: getting Gerrit ssh config: %s" % err)
             except processes.ChildExecutionError, err:
                 semcutil.fatal(2, "Error scoring change: %s" % err)
     elif options.verbose:
