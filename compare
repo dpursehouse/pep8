@@ -481,8 +481,15 @@ sub getProjectsWithRevisions {
     $tbl{"$project"} = "$revision";
   }
 
-  # Catch external packages info
-  $$extPack = `cat ../../vendor/semc/build/external-packages/package-files/pld.xml` if $extPack;
+  if ($extPack)
+  {
+    # Catch external packages info
+    my $packFile = "../../vendor/semc/build/external-packages/package-files/pld.xml";
+    $packFile = "../../vendor/semc/build/pld-packages/package-files/pld.xml" unless -f $packFile;
+    die "Missing AMSS package list $packFile" unless -f $packFile;
+    $$extPack = `cat $packFile`;
+    die "Failed to read AMSS package list $packFile" if $?;
+  }
 
   return ( \%tbl );
 }
@@ -721,13 +728,25 @@ if (!$AMSSPackage && $extPack1 ne $extPack2)
    my $prefix = ($argLabel1 ? $argLabel1 . '__' . $argLabel2 : $argVerRef1  . '__' . $argVerRef2);
    $com .= " -xls $prefix" if $generateExcelFile;
    my %revList;
+   my %packList;
    while ($extPack1 =~ s/package-group name="([^"]+)" revision="([^"]+)"//)
    {
       my ($name, $rev1) = ($1, $2);
       next unless $extPack2 =~ s/package-group name="$name" revision="([^"]+)"//;
       my $rev2 = $1;
-      $revList{"$rev1;$rev2"} .= "$name " unless $rev1 eq $rev2;
-   }
+      # Detect package name
+      $name = lc($name);
+      my $sub = ($name =~ s/_(\S+)$//) ? "-$1" : "";
+      if ($extPack1 =~ /package name="(fw-amss-$name($sub)?(-modem)?)"/)
+      {
+         my $pack = $1;
+         $revList{"$rev1;$rev2"} .= "$pack " if $rev1 ne $rev2 && !$packList{$pack}++;
+      }
+      else
+      {
+         warn "* Failed to detect package for $name\n";
+      }
+  }
    foreach (sort keys %revList)
    {
       my ($rev1, $rev2) = split(/;/, $_);
