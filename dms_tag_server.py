@@ -37,7 +37,7 @@ USAGE = "Usage: %s -a install -p home-path | -a <start|stop|remove> | -h" % \
         (sys.argv[0])
 OPTIONS = ['install', 'start', 'stop', 'remove']
 REGPATH = "SYSTEM\\CurrentControlSet\\Services\\DMSTagServer"
-STATUS_SERVER = "android-cm-web"
+STATUS_SERVER = "android-cm-web.sonyericsson.net"
 STATUS_UPDATE = "/cherrypick/update.php?target=%s&data=%s"
 STATUS_GET = "/cherrypick/status.php?target="
 
