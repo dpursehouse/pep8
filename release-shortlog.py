@@ -26,6 +26,7 @@ except:
 def miniparse(url):
     return xml.dom.minidom.parse(urllib.urlopen(url))
 
+
 def getTextOfFirstTagByName(element, name):
     rc = ""
     childElements = element.getElementsByTagName(name)
@@ -35,20 +36,23 @@ def getTextOfFirstTagByName(element, name):
                 rc = rc + node.data
     return rc.strip()
 
+
 def main(argv):
 
     parser = OptionParser()
 
     parser.add_option("-j", "--job", dest="job",
-                        default="http://android-ci.sonyericsson.net/job/offbuild_edream1.0-int/api/xml",
-                        help="An official build job URL on Hudson")
+                      default="http://android-ci.sonyericsson.net/job/" \
+                              "offbuild_edream1.0-int/api/xml",
+                      help="An official build job URL on Hudson")
     parser.add_option("-n", "--not", dest="not_refs",
-                        help="One or more refs (comma separated list) to exclude")
+                      help="One or more refs (comma separated list) to exclude")
     parser.add_option("--no-count", action="store_false",
-                        dest="count", default=True)
+                      dest="count", default=True)
     parser.add_option("--qry", dest="queryFile", default="DMSquery.qry")
-    parser.add_option("--git-cmd", dest="gitCommand", default="git shortlog --no-merges",
-                        help="Add arbitrary git command [default: %default]")
+    parser.add_option("--git-cmd", dest="gitCommand",
+                      default="git shortlog --no-merges",
+                      help="Add arbitrary git command [default: %default]")
 
     (options, args) = parser.parse_args()
 
@@ -115,7 +119,8 @@ def main(argv):
         print >> sys.stderr, "Could not find old manifest"
         sys.exit(1)
 
-    dg = DiffGenerator(count=options.count, query=options.queryFile, gitcmd=options.gitCommand)
+    dg = DiffGenerator(count=options.count, query=options.queryFile,
+                       gitcmd=options.gitCommand)
 
     dg.generateDiff(oldManifestUrl, newManifestUrl, notFilter)
     if "external_package_gits" in sys.modules:
@@ -130,7 +135,8 @@ class GitError(Exception):
 
 class DiffGenerator(object):
 
-    def __init__(self, count=True, query="DMSQuery.qry", gitcmd="git shortlog --no-merges"):
+    def __init__(self, count=True, query="DMSQuery.qry",
+                 gitcmd="git shortlog --no-merges"):
         self.count = count
         self.query = query
         self.gitcmd = gitcmd
@@ -150,7 +156,8 @@ class DiffGenerator(object):
         for newProject in newManifest.getElementsByTagName("project"):
             matchFound = False
             for oldProject in oldManifest.getElementsByTagName("project"):
-                if newProject.getAttribute("name") != oldProject.getAttribute("name"):
+                if newProject.getAttribute("name") != \
+                        oldProject.getAttribute("name"):
                     continue
                 matchFound = True
                 try:
@@ -238,7 +245,6 @@ class DiffGenerator(object):
         for issue in dmslist:
             print issue
 
-
     def getPathAndRev(self, manifest, projectName):
         """Search for a project tag with name=projectName in the manifest
         minidom
@@ -260,7 +266,6 @@ class DiffGenerator(object):
                 % (projectName)
             sys.exit(1)
         return (path, rev)
-
 
     def getPackageListGits(self, manifestUrl, manifest, semcsystemPath,
                            semcsystemRev, packageFilesFileName, checkoutDir):
@@ -302,7 +307,6 @@ class DiffGenerator(object):
                 os.chdir(orgcwd)
 
         return clonedGits
-
 
     def getPackageDict(self, semcsystemPath, semcsystemRev,
                        packageFilesFileName, packageFileGits, tdir):
@@ -354,7 +358,6 @@ class DiffGenerator(object):
             raise
         return packageDict
 
-
     def createShortLog(self, logList):
         """Converts a log in list format to shortlog format
         Returns a shortlog string"""
@@ -375,8 +378,7 @@ class DiffGenerator(object):
                                                     loglines)
         return shortlog
 
-
-    def createGitLog (self, logList):
+    def createGitLog(self, logList):
         """Converts a log in list format to normal git log format
         Returns a log string"""
         logDict = {}
@@ -387,7 +389,6 @@ class DiffGenerator(object):
                logEntry['author_email'], logEntry['author_date'],
                logEntry['body'])
         return logStr
-
 
     def getDmsInfo(self, logList):
         """Calls the dmsquery script to get DMS info for commits in the logList
@@ -408,7 +409,6 @@ class DiffGenerator(object):
                 noOfCommits += 1
             dmsList.extend(dmsInfo)
         return (noOfCommits, sorted(dmsList))
-
 
     def diffDecoupledApps(self, oldManifestUrl, newManifestUrl,
                           notFilter=None):
@@ -504,7 +504,6 @@ class DiffGenerator(object):
         shutil.rmtree(olddir, ignore_errors=True)
         shutil.rmtree(newdir, ignore_errors=True)
 
-
     def countCommits(self, path=None, newrev=None, oldrev=None,
                      notFilter=None):
         if not self.count:
@@ -561,7 +560,6 @@ class DiffGenerator(object):
         os.chdir(rootdir)
         return res
 
-
     def printCommitCount(self):
         """Prints the number of commits counted by self.commitCount and
         self.commitCountFiltered"""
@@ -569,21 +567,23 @@ class DiffGenerator(object):
             print "\nCommits introduced: %d" % self.commitCount
             print "Commits used for DMS query: %d" % self.commitCountFiltered
 
-
     def dmsqueryQry(self):
         cmd = "dmsquery -qry %s" % self.query
 
         dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
         dmsquery.communicate(input=self.concatLog)
         dmsquery.stdin.close()
 
     def dmsqueryShow(self, gitlog):
         cmd = "dmsquery --show-t"
         dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
         dmslist = dmsquery.communicate(input=gitlog)[0]
         return dmslist.splitlines()
+
 
 def isRef(candidate, gitpath=None):
     cmd = "git show-ref %s" % candidate
@@ -592,11 +592,13 @@ def isRef(candidate, gitpath=None):
         return True
     return False
 
+
 def command(command):
     gitCmd = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
     result = gitCmd.communicate()[0].splitlines()
     retval = gitCmd.returncode
     return (retval, result)
+
 
 def urljoin(first, *rest):
     return "/".join([first.rstrip('/'),
