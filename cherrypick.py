@@ -94,7 +94,7 @@ from dmsutil import DMSTagServer, DMSTagServerError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.9'
+__version__ = '0.3.10'
 
 REPO = 'repo'
 GIT = 'git'
@@ -1140,6 +1140,8 @@ def cherry_pick(unique_commit_list, target_branch):
                                   emails, pick_result)
                 elif 'is a merge but no -m' in err:
                     pick_result = 'It is a merge commit'
+                    conflict_mail(target_branch, url, cmt.commit,
+                                  emails, pick_result)
                 elif 'nothing to commit' in git_log:
                     pick_result = 'Already merged, nothing to commit'
                 else:
