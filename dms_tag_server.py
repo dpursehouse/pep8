@@ -32,11 +32,12 @@ import dmsutil
 import semcutil
 
 HOST = ''
+MAX_QUEUE_SIZE = 5
+OPTIONS = ['install', 'start', 'stop', 'remove']
 PORT = 55655  # Arbitrary non-privileged port
+REGPATH = "SYSTEM\\CurrentControlSet\\Services\\DMSTagServer"
 USAGE = "Usage: %s -a install -p home-path | -a <start|stop|remove> | -h" % \
         (sys.argv[0])
-OPTIONS = ['install', 'start', 'stop', 'remove']
-REGPATH = "SYSTEM\\CurrentControlSet\\Services\\DMSTagServer"
 
 
 def invalid_usage(message):
@@ -219,7 +220,7 @@ class DmsTagServer (win32serviceutil.ServiceFramework):
         open(working_dir + "\\new_log.txt", "ab").write("Server started\n")
 
         while self.keep_running:
-            s.listen(1)
+            s.listen(MAX_QUEUE_SIZE)
             try:
                 conn, addr = s.accept()
                 thread.start_new_thread(process_req, (working_dir, conn, addr,
