@@ -8,7 +8,7 @@ DEFAULT_STATUS_SERVER = "android-cm-web.sonyericsson.net"
 STATUS_UPDATE = "/cherrypick/update.php?target=%s&data=%s"
 
 # Endpoint for status queries
-STATUS_GET = "/cherrypick/query.php?target="
+STATUS_GET = "/cherrypick/query.php?target=%s"
 
 
 class CherrypickStatusError(Exception):
@@ -27,7 +27,7 @@ class CherrypickStatusServer:
         '''
         self._server = server
 
-    def get_old_cherrypicks(self, target):
+    def get_old_cherrypicks(self, target=""):
         ''' Get the list of existing cherry picks for `target` branch.
         Return a list of cherry picks.
         Raise CherrypickStatusError if anything goes wrong.
@@ -35,7 +35,7 @@ class CherrypickStatusServer:
         cherries = []
         try:
             conn = httplib.HTTPConnection(self._server)
-            conn.request("GET", STATUS_GET + urllib.quote(target))
+            conn.request("GET", STATUS_GET % urllib.quote(target))
             response = conn.getresponse()
             if response.status != httplib.OK:
                 raise CherrypickStatusError("Unexpected server response: %d" % \
