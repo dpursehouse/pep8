@@ -2,8 +2,6 @@ import socket
 
 #Server communication tags
 SRV_DMS_STATUS = 'DMS_STATUS'
-SRV_CHERRY_UPDATE = 'CHERRY_UPDATE'
-SRV_CHERRY_GET = 'CHERRY_GET'
 SRV_ERROR = 'SRV_ERROR'
 SRV_END = '|END'
 
@@ -16,8 +14,7 @@ class DMSTagServerError(Exception):
 
 class DMSTagServer():
     '''
-    This is interface to send request to dms_tag_server.py to collect old and
-    save new cherry pick records and dms for tags.
+    This is interface to send request to dms_tag_server.py to get dms for tags.
     '''
     def __init__(self, server, port=55655):
         '''
@@ -66,12 +63,3 @@ class DMSTagServer():
             raise DMSTagServerError('Server timeout')
         except socket.error, err:
             raise DMSTagServerError('Socket error: %s' % err[1])
-
-    def retrieve(self, branch):
-        '''Collect data from server of branch'''
-        return self.query_srv('%s|%s' % (SRV_CHERRY_GET, branch))
-
-    def update(self, branch, records):
-        '''Save data into server for branch'''
-        return self.query_srv('%s|%s|%s' % (SRV_CHERRY_UPDATE, branch,
-                                           '\n'.join(records)))

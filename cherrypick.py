@@ -89,12 +89,14 @@ import signal
 import threading
 import tempfile
 
+from cherry_status import CherrypickStatusServer, CherrypickStatusError
+from cherry_status import DEFAULT_STATUS_SERVER
 from dmsutil import DMSTagServer, DMSTagServerError
 
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.11'
+__version__ = '0.3.12'
 
 REPO = 'repo'
 GIT = 'git'
@@ -425,6 +427,10 @@ def option_parser():
                      dest='dms_tag_server',
                      help='IP address or name of DMS tag server',
                      action="store", default=None)
+    opt_parser.add_option('--status-server',
+                     dest='status_server',
+                     help='IP address or name of status server',
+                     action="store", default=DEFAULT_STATUS_SERVER)
     opt_parser.add_option('--approve',
                      dest='approve',
                      help='Approve uploaded change set in Gerrit with +2',
@@ -1037,19 +1043,15 @@ def cherry_pick(unique_commit_list, target_branch):
 
     #check cherry pick history
     old_cherries = None
-    tag_server = None
-    if OPT.dms_tag_server:
+    status_server = None
+    if OPT.status_server:
         try:
-            tag_server = DMSTagServer(OPT.dms_tag_server)
-            records = tag_server.retrieve(target_branch)
-            if not records:
-                print_err("No old cherries found or server is not " +
-                          "reachable to check old cherries")
-            elif 'Unavailable' not in records:
-                do_log(records, info="Old cherries", echo=True)
-                old_cherries = records.strip().split('\n')
-        except DMSTagServerError, e:
-            print_err("DMS Tag Server Error: %s " % e)
+            status_server = CherrypickStatusServer(OPT.status_server)
+            old_cherries = status_server.get_old_cherrypicks(target_branch)
+            if not len(old_cherries):
+                print_err("No old cherries found")
+        except CherrypickStatusError, e:
+            print_err("Status Server Error: %s " % e)
 
     do_log("", info="Cherry pick starting", echo=True)
     gerrit = Gerrit(gerrit_user=gituser)
@@ -1071,12 +1073,12 @@ def cherry_pick(unique_commit_list, target_branch):
                     time.ctime(url_date[1])),
                     echo=True)
             if not go_next:  # if not in tag server, but in Gerrit, add it
-                if tag_server and not OPT.dry_run:
+                if status_server and not OPT.dry_run:
                     try:
-                        tag_server.update(target_branch,
-                            [str(cmt) + ',' + url_date[0]])
-                    except DMSTagServerError, e:
-                        print_err("Server is not reachable to update: %s" % e)
+                        status_server.update_status(target_branch,
+                            str(cmt) + ',' + url_date[0])
+                    except CherrypickStatusError, e:
+                        print_err("Status Server Error: %s" % e)
             continue
         if go_next:
             continue
@@ -1169,11 +1171,11 @@ def cherry_pick(unique_commit_list, target_branch):
             ret_err = STATUS_CHERRYPICK_FAILED
 
         cherrypick_result.append(str(cmt) + ',' + pick_result)
-        if tag_server and not OPT.dry_run:
+        if status_server and not OPT.dry_run:
             try:
-                tag_server.update(target_branch,
-                    [str(cmt) + ',' + pick_result])
-            except DMSTagServerError, e:
+                status_server.update_status(target_branch,
+                    str(cmt) + ',' + pick_result)
+            except CherrypickStatusError, e:
                 print_err("Server is not reachable to update: %s" % e)
 
     os.chdir(OPT.cwd)

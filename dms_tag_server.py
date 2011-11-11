@@ -37,9 +37,6 @@ USAGE = "Usage: %s -a install -p home-path | -a <start|stop|remove> | -h" % \
         (sys.argv[0])
 OPTIONS = ['install', 'start', 'stop', 'remove']
 REGPATH = "SYSTEM\\CurrentControlSet\\Services\\DMSTagServer"
-STATUS_SERVER = "android-cm-web.sonyericsson.net"
-STATUS_UPDATE = "/cherrypick/update.php?target=%s&data=%s"
-STATUS_GET = "/cherrypick/status.php?target="
 
 
 def invalid_usage(message):
@@ -322,25 +319,6 @@ def process_req(working_dir, channel, address, user, password):
         dms_list.sort()
         channel.send(','.join(dms_list))
         channel.send(dmsutil.SRV_END)
-        channel.close()
-    elif req_type == dmsutil.SRV_CHERRY_GET:
-        conn = httplib.HTTPConnection(STATUS_SERVER)
-        conn.request("GET", STATUS_GET + urllib.quote(tag))
-        response = conn.getresponse()
-        if reponse.status != "200":
-            channel.send('Unavailable' + dmsutil.SRV_END)
-            channel.close()
-        else:
-            cherries = response.read()
-            channel.send(cherries + dmsutil.SRV_END)
-            channel.close()
-
-    elif req_type == dmsutil.SRV_CHERRY_UPDATE:
-        for line in issues.split('\n'):
-            conn = httplib.HTTPConnection(STATUS_SERVER)
-            conn.request("GET", STATUS_UPDATE % \
-                         (urllib.quote(tag), urllib.quote(line)))
-        channel.send('Updated' + dmsutil.SRV_END)
         channel.close()
     else:
         channel.send('Unknown request' + dmsutil.SRV_END)
