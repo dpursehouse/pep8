@@ -96,7 +96,7 @@ from dmsutil import DMSTagServer, DMSTagServerError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.12'
+__version__ = '0.3.13'
 
 REPO = 'repo'
 GIT = 'git'
@@ -937,21 +937,24 @@ def dms_get_fix_for(commit_list):
     progress = 0
     total = len(commit_list)
 
-    if OPT.dms_tag_server:
-        server = DMSTagServer(OPT.dms_tag_server)
-        tags_dmss = server.dms_for_tags(','.join([x.dms for x in commit_list]),
-                                        OPT.dms_tags, OPT.target_branch)
-        if tags_dmss != None:
-            for cmt in commit_list:
-                dms = cmt.dms
-                for tag in OPT.dms_tags.split(','):
-                    if dms in tags_dmss[tag]:
-                        commit_tag_list.append(cmt)
-                        break
-            return commit_tag_list
+    try:
+        if OPT.dms_tag_server:
+            server = DMSTagServer(OPT.dms_tag_server)
+            tags_dmss = server.dms_for_tags(
+                            ','.join([x.dms for x in commit_list]),
+                            OPT.dms_tags, OPT.target_branch)
+            if tags_dmss != None:
+                for cmt in commit_list:
+                    dms = cmt.dms
+                    for tag in OPT.dms_tags.split(','):
+                        if dms in tags_dmss[tag]:
+                            commit_tag_list.append(cmt)
+                            break
+                return commit_tag_list
+    except DMSTagServerError, e:
+        do_log('DMS tag server error: %s' % e, echo=True)
 
-    do_log('DMS tag server is not available, trying web interface..',
-           echo=True)
+    do_log('Using DMS web interface', echo=True)
     for cmt in commit_list:
         dms = cmt.dms
         dump = Httpdump(DMS_URL + "?q=0___" + str(dms) + "___issue")
