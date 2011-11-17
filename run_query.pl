@@ -1800,8 +1800,13 @@ sub modify_issues {
     my %issue_h = %{$issues_data->{$issue}};
     my $issue_id = $issue_h{ID_FIELD()};
     my $deliver_to_in_query = $issue_h{DELIVERY.".".DELIVERY_DELIVER_TO()};
-    $ret = modify_label($session, $issue, $label);
-    if($ret == 1) {
+    if ($issue_h{DELIVERY.".".DELIVERY_DELIVERED_IN()} ne $label) {
+      $ret = modify_label($session, $issue, $label);
+    } else {
+      logg(OK, "Required label already set for $issue_id with DR \"$deliver_to_in_query\"");
+      next;
+    }
+    if ($ret == 1) {
       my $msg = "Modified issue $issue_id for branch \"$deliver_to_in_query\" with label \"$label\"";
       print $msg, "\n";
       logg(OK, $msg);
