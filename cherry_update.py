@@ -1,3 +1,4 @@
+import logging
 import optparse
 import re
 import sys
@@ -5,6 +6,7 @@ import sys
 from cherry_status import CherrypickStatusServer, CherrypickStatusError
 from cherry_status import DEFAULT_STATUS_SERVER
 from gerrit import GerritSshConnection, GerritSshConfigError, GerritQueryError
+from processes import ChildExecutionError
 from semcutil import fatal
 
 
@@ -107,7 +109,8 @@ def _update_status_from_gerrit(gerrit, cherry):
     in the query results.
     Raise CherrypickStatusError if query does not return exactly one
     result.
-    Raise GerritQueryError if the query fails.
+    Raise GerritQueryError if the gerrit query returns an error.
+    Raise ChildExecutionError if the gerrit query command fails.
     '''
     reviews = []
     verifies = []
@@ -137,16 +140,17 @@ def _update_status_from_gerrit(gerrit, cherry):
     return cherry
 
 
-def _update_cherrypicks(options):
-    ''' For each cherry pick, find the status from Gerrit and
-    then update on the status server if the status has changed.
+def _update_cherrypicks(status_server, target, dry_run):
+    ''' Connect to the `status_server` and get the list of cherry picks for
+    `target`.  For each cherry pick, find the current status from Gerrit and
+    then update on the status server if the status has changed.  If `dry_run`
+    is True, don't actually update the status on the server.
     Skip any cherry picks with error status.
-    Raise GerritQueryError if gerrit query fails.
+    Raise GerritQueryError if the gerrit query returns an error.
     Return total cherry picks processed, total skipped, total
     updated, and total errors occurred.
     '''
-    status_server = CherrypickStatusServer(options.status_server)
-    csvdata = status_server.get_old_cherrypicks(options.target)
+    csvdata = status_server.get_old_cherrypicks(target)
     total = len(csvdata)
 
     errors = 0
@@ -158,28 +162,30 @@ def _update_cherrypicks(options):
         for line in csvdata:
             try:
                 cherry = CherrypickStatus(line)
-                print "%s,%s" % (cherry.project, cherry.sha1)
+                logging.info("%s,%s" % (cherry.project, cherry.sha1))
                 if cherry.error:
                     if cherry.error == "Already merged":
                         cherry.set_status("MERGED")
                     else:
                         skipped += 1
-                        print "Skipping: %s" % cherry.error
+                        logging.info("Skipping: %s" % cherry.error)
                 elif cherry.change_nr:
                     cherry = _update_status_from_gerrit(gerrit, cherry)
 
                 if cherry.is_dirty():
-                    print "Updating: %s" % cherry
-                    if not options.dry_run:
-                        status_server.update_status(options.target,
-                                                    "%s" % cherry)
+                    logging.info("Updating: %s" % cherry)
+                    if not dry_run:
+                        status_server.update_status(target, "%s" % cherry)
                     updated += 1
             except CherrypickStatusError, e:
                 errors += 1
-                print >> sys.stderr, "Cherry pick status error: %s" % e
+                logging.error("Cherry pick status error: %s" % e)
             except GerritQueryError, e:
                 errors += 1
-                print >> sys.stderr, "Gerrit query error: %s" % e
+                logging.error("Gerrit query error: %s" % e)
+            except ChildExecutionError, e:
+                errors += 1
+                logging.error("Gerrit query execution error: %s" % e)
 
     return total, skipped, updated, errors
 
@@ -187,8 +193,9 @@ def _update_cherrypicks(options):
 def _main():
     usage = "usage: %prog [options]"
     options = optparse.OptionParser(usage=usage)
-    options.add_option("", "--target", action="store", default="",
-                       dest="target", help="Target branch.")
+    options.add_option("", "--target", action="store", default=None,
+                       dest="target", help="Target branch.  Update all " \
+                            "targets if not specified.")
     options.add_option("", "--dry-run", dest="dry_run", action="store_true",
                        help="Do everything except actually update the " \
                            "status.")
@@ -197,12 +204,30 @@ def _main():
                        action="store", default=DEFAULT_STATUS_SERVER)
     (options, args) = options.parse_args()
 
+    logging.basicConfig(format='%(message)s', level=logging.INFO)
+
     try:
-        total, skipped, updated, errors = _update_cherrypicks(options)
-        print "\nProcessed %d cherry picks" % total
-        print "Updated: %d" % updated
-        print "Skipped: %d" % skipped
-        print "Errors: %d" % errors
+        status_server = CherrypickStatusServer(options.status_server)
+        if not options.target:
+            targets = status_server.get_all_targets()
+        else:
+            targets = [options.target]
+
+        error_count = 0
+        for target in targets:
+            logging.info("Updating status for %s" % target)
+
+            total, skipped, updated, errors = _update_cherrypicks(
+                                                status_server, target,
+                                                options.dry_run)
+            error_count += errors
+            logging.info("\nProcessed %d cherry picks\n" % total +
+                         "Updated: %d\n" % updated +
+                         "Skipped: %d\n" % skipped +
+                         "Errors: %d\n" % errors)
+        return error_count
+    except CherrypickStatusError, e:
+        fatal(1, "Cherry pick status error: %s" % e)
     except GerritSshConfigError, e:
         fatal(1, "Gerrit SSH error: %s" % e)
 
