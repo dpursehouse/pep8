@@ -96,7 +96,7 @@ from dmsutil import DMSTagServer, DMSTagServerError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.14'
+__version__ = '0.3.15'
 
 REPO = 'repo'
 GIT = 'git'
@@ -127,6 +127,9 @@ SHA1_STR_LEN = 40
 
 #Gerrit server URL
 GERRIT_URL = "review.sonyericsson.net"
+
+# Number of times to attempt git push of the cherry picked change
+MAX_PUSH_ATTEMPTS = 3
 
 
 class Httpdump:
@@ -1110,31 +1113,41 @@ def cherry_pick(unique_commit_list, target_branch):
                 #amend to add a new change id
                 git_log, err, ret = execmd([GIT, 'commit', '--amend',
                                             '-F', '.git/COMMIT_EDITMSG'])
-                cmd = [GIT, 'push',
-                       '--receive-pack=git receive-pack %s' %
-                       ' '.join(['--reviewer %s' % r for r in reviewers]),
-                       'ssh://%s@%s:29418/%s.git' %
-                       (gituser, GERRIT_URL, cmt.name),
-                       'HEAD:refs/for/%s' % cmt.target]
-                if OPT.dry_run:
-                    cmd.append('--dry-run')
-                git_log, err, ret = execmd(cmd)
-                do_log(err)
-                if ret == 0:
+                push_attempts = 0
+                push_ok = False
+                while (push_attempts < MAX_PUSH_ATTEMPTS) and (not push_ok):
+                    push_attempts += 1
+                    cmd = [GIT, 'push',
+                           '--receive-pack=git receive-pack %s' %
+                           ' '.join(['--reviewer %s' % r for r in reviewers]),
+                           'ssh://%s@%s:29418/%s.git' %
+                           (gituser, GERRIT_URL, cmt.name),
+                           'HEAD:refs/for/%s' % cmt.target]
                     if OPT.dry_run:
-                        pick_result = 'Dry-run ok'
-                    else:
-                        match = re.search('https?://%s/[0-9]+'
-                                          % GERRIT_URL, err)
-                        if match:
-                            #collect the gerrit id
-                            pick_result = match.group(0)
-                            if OPT.approve:
-                                gerrit.approve(pick_result)
+                        cmd.append('--dry-run')
+                    git_log, err, ret = execmd(cmd)
+                    do_log(err)
+                    if ret == 0:
+                        push_ok = True
+                        if OPT.dry_run:
+                            pick_result = 'Dry-run ok'
                         else:
-                            pick_result = 'Gerrit URL not found after push'
-                else:
-                    pick_result = 'Failed to push to Gerrit'
+                            match = re.search('https?://%s/[0-9]+'
+                                              % GERRIT_URL, err)
+                            if match:
+                                #collect the gerrit id
+                                pick_result = match.group(0)
+                                if OPT.approve:
+                                    gerrit.approve(pick_result)
+                            else:
+                                pick_result = 'Gerrit URL not found after push'
+                    else:
+                        if push_attempts == MAX_PUSH_ATTEMPTS:
+                            do_log('Failed to push %d times, giving up.' %
+                                    MAX_PUSH_ATTEMPTS, echo=True)
+                            pick_result = 'Failed to push to Gerrit'
+                        else:
+                            do_log('git push failed.  Retrying...', echo=True)
             else:
                 if OPT.dry_run:
                     emails = [gituser + '@sonyericsson.com']
