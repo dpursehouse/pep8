@@ -300,6 +300,7 @@ my $session = get_session($site);
 if($session == -1) {
   print "Error with site $site";
   logg(ERROR, "Could not get a session for site $site");
+  die;
 }
 
 #Create SW label only on site $site, label should be synchronised to other
@@ -559,6 +560,7 @@ sub update {
   my $issues_data = shift @_;
 
   my @unverified;
+  my @verified;
   my %site_issues = (
                       SELD => [],
                       JPTO => [],
@@ -595,9 +597,19 @@ sub update {
       ### proceed w/o conditions ###
       ### If DMS is of OLD structure, proceed with conditions like before ###
       if ($issue_h{DELIVERY()} && ($deliver_to_in_query ne $deliver_to || ($issue_h{DELIVERY.".".DELIVERY_SOLUTION_DONE()} ne "Yes"))) {
-        push(@unverified, $issue);
-        logg(WARN, "Skipping issue $issue_id for branch \"$deliver_to_in_query\", either \"deliver_to\" or \"Solution Done\" not matched with expected value");
+        if ((!grep(/^$issue_id$/,@unverified)) && (!grep(/^$issue_id$/,@verified))) {
+          push(@unverified, $issue_id);
+        }
+        logg(WARN, "Skipping $issue_id for DR \"$deliver_to_in_query\", either \"deliver_to\" or \"Solution Done\" not matched with expected value");
         next;
+      }
+      ### Here we found verified issue or DR with required field values      ###
+      ### Now need to check and delete if issue is in unverified issues pool ###
+      if (!grep(/^$issue_id$/,@verified)) {
+        push(@verified, $issue_id);
+        if (grep(/^$issue_id$/,@unverified)) {
+          @unverified = grep { $_ ne $issue_id } @unverified;
+        }
       }
       if(($issue_h{DELIVERY()}) || ((!$issue_h{DELIVERY()}) && ($issue_h{STATE_FIELD()} eq RESTRICTED_STATE) && ($issue_h{INTEGRATED_STATUS_FIELD()} eq PREFERRED_STATUS))) {
         ### If one or more tags are passed as input argument then the system
