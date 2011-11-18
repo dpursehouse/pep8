@@ -92,11 +92,12 @@ import tempfile
 from cherry_status import CherrypickStatusServer, CherrypickStatusError
 from cherry_status import DEFAULT_STATUS_SERVER
 from dmsutil import DMSTagServer, DMSTagServerError
+from find_reviewers import FindReviewers, AddReviewersError
 
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.15'
+__version__ = '0.3.16'
 
 REPO = 'repo'
 GIT = 'git'
@@ -281,6 +282,16 @@ class Gerrit():
                 print_err("%s %s" % (out, err))
             else:
                 do_log("Code review for %s set to +2" % url)
+
+    def add_reviewers(self, change_id, reviewers):
+        ''' Add `reviewers` to `change_id`.  Print an error log on failure.
+        '''
+        finder = FindReviewers(user=self.gerrit_user)
+        try:
+            finder.add(change_id, reviewers)
+        except AddReviewersError, e:
+            do_log("Unable to add all reviewers on change %s: %s" % \
+                    (change_id, e), echo=True)
 
 
 class Commit:
@@ -1118,8 +1129,6 @@ def cherry_pick(unique_commit_list, target_branch):
                 while (push_attempts < MAX_PUSH_ATTEMPTS) and (not push_ok):
                     push_attempts += 1
                     cmd = [GIT, 'push',
-                           '--receive-pack=git receive-pack %s' %
-                           ' '.join(['--reviewer %s' % r for r in reviewers]),
                            'ssh://%s@%s:29418/%s.git' %
                            (gituser, GERRIT_URL, cmt.name),
                            'HEAD:refs/for/%s' % cmt.target]
@@ -1132,11 +1141,13 @@ def cherry_pick(unique_commit_list, target_branch):
                         if OPT.dry_run:
                             pick_result = 'Dry-run ok'
                         else:
-                            match = re.search('https?://%s/[0-9]+'
+                            match = re.search('https?://%s/([0-9]+)'
                                               % GERRIT_URL, err)
                             if match:
-                                #collect the gerrit id
+                                # Get the change URL and ID
                                 pick_result = match.group(0)
+                                change_id = match.group(1)
+                                gerrit.add_reviewers(change_id, reviewers)
                                 if OPT.approve:
                                     gerrit.approve(pick_result)
                             else:
