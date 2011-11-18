@@ -97,7 +97,7 @@ from find_reviewers import FindReviewers, AddReviewersError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.16'
+__version__ = '0.3.17'
 
 REPO = 'repo'
 GIT = 'git'
@@ -1073,32 +1073,39 @@ def cherry_pick(unique_commit_list, target_branch):
     do_log("", info="Cherry pick starting", echo=True)
     gerrit = Gerrit(gerrit_user=gituser)
     for cmt in unique_commit_list:
-        #Check old cherries
-        go_next = False
+        # Check if the commit is in the list of commits returned
+        # from the status server.
+        found = False
         if old_cherries:
             for cherry in old_cherries:
                 if cmt.commit in cherry:
-                    do_log('Already processed once %s' % cherry, echo=True)
-                    go_next = True
+                    found = True
                     break
-        #end of old cherry check
-        url_date = gerrit.is_commit_available(cmt.commit, cmt.target,
-                                              cmt.name)
-        if url_date[0]:
-            do_log('%s is %s in Gerrit, url %s, last updated on %s' %
-                   (cmt, url_date[2], url_date[0],
-                    time.ctime(url_date[1])),
-                    echo=True)
-            if not go_next:  # if not in tag server, but in Gerrit, add it
+
+        # If we didn't find the commit in the status server, check if
+        # it is already uploaded in Gerrit.
+        if not found:
+            url, date, status = gerrit.is_commit_available(cmt.commit,
+                                                           cmt.target,
+                                                           cmt.name)
+            if url and date and status:
+                # It was found.  Update it in the status server.
+                found = True
+                do_log('%s is %s in Gerrit, url %s, last updated on %s' %
+                       (cmt, status, url, time.ctime(date)), echo=True)
                 if status_server and not OPT.dry_run:
                     try:
                         status_server.update_status(target_branch,
-                            str(cmt) + ',' + url_date[0])
+                            str(cmt) + ',' + url)
                     except CherrypickStatusError, e:
                         print_err("Status Server Error: %s" % e)
+
+        # If we've found this commit, no need to cherry pick it
+        if found:
+            do_log('Already processed once %s,%s' % (cmt.name, cmt.commit),
+                   echo=True)
             continue
-        if go_next:
-            continue
+
         pick_result = ''
         do_log('Cherry picking %s ..' % cmt, echo=True)
         os.chdir(os.path.join(OPT.cwd, cmt.path))
