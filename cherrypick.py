@@ -96,7 +96,7 @@ from dmsutil import DMSTagServer, DMSTagServerError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.13'
+__version__ = '0.3.14'
 
 REPO = 'repo'
 GIT = 'git'
@@ -873,19 +873,19 @@ def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
                    '%s:refs/heads/%s' % (sha1, target_branch)]
             log, err, ret = execmd(cmd)
             if ret == 0:
-                do_log("Branch %s created for %s." % (target_branch, git_name),
-                       echo=True)
+                do_log("Branch %s created on %s.  Branch point: %s" %
+                        (target_branch, git_name, sha1), echo=True)
                 do_log(log)
                 do_log(err)
                 execmd([GIT, 'fetch'])
                 dst_manifest.update_revision(git_name, target_branch)
                 manifest_change_required = True
                 upd_project_list.append(git_name)
-                create_branch_mail(cmt.target, cmt.name, recipient)
+                create_branch_mail(cmt.target, cmt.name, sha1, recipient)
                 return True
             else:
-                do_log("Failed to create %s branch for %s." %
-                       (target_branch, git_name), echo=True)
+                do_log("Failed to create %s branch on %s. Branch point: %s" %
+                       (target_branch, git_name, sha1), echo=True)
                 do_log(log)
                 do_log(err)
                 return False
@@ -1265,15 +1265,16 @@ def do_log(contents, file_name=None, info=None, echo=False):
     sys.stdout.flush()
 
 
-def create_branch_mail(branch, name, recipient):
+def create_branch_mail(branch, name, sha1, recipient):
     """
     Mail to notify branch creation.
     """
-    subject = ('[Cherrypick] [%s] New branch created for %s' %
+    subject = ('[Cherrypick] [%s] New branch created on %s' %
                (branch, name))
-    body = ('Hello,\n\nNew branch has been created for %s.' % name +
-            '\nThe manifest file of %s branch will be updated.' % branch +
-            '\n\nCherry-picker')
+    body = ('Hello,\n\nBranch %s has been created on %s.' % (branch, name) +
+            '\nBranch point: %s' % sha1 +
+            '\nThe manifest for %s will be updated.' % branch +
+            '\n\nRegards,\nCherry-picker')
     email(subject, body, recipient)
 
 
