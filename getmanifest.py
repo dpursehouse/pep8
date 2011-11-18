@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
+from debian_bundle import debfile, arfile
 from optparse import OptionParser
 import os
 import shutil
 import sys
+import tarfile
 import tempfile
 
 import processes
@@ -73,16 +75,19 @@ def get_package_version(label, package, repo_name=None, repo_url=None):
 
 
 def get_and_extract_package(label, package, outdir, repo_name=None,
-                            repo_url=None):
+                            repo_url=None, extract=True):
     '''
     Downloads the correct version of the debian package from a given
     snapshot label and extracts it to the specified output directory.
+    Returns The full path name of the downloaded debian package.
     Raises GetManifestError exception if it fails.
     `label` -- Snapshot label
     `package` -- Name of the debian package
     `outdir` -- Path to the output directory
     `repo_name` -- Type of the repository used, for example, 'protected'
     `repo_url` -- Qualified URL to the C2D repository
+    `extract` -- If True (default) extracts the downloaded package, else
+                 just downloads the package in `outdir`
     '''
     pversion = get_package_version(label, package, repo_name, repo_url)
     args = ["repository", "getpackage", "-o", outdir, package, pversion]
@@ -101,8 +106,13 @@ def get_and_extract_package(label, package, outdir, repo_name=None,
                                              failed:" % (package, pversion))
     lines = stdout.splitlines()
     debpath = lines[-1].strip()
-    run_or_fail(["dpkg-deb", "-x", debpath, outdir],
-        "Failed to extract package %s to %s:" % (package, outdir))
+    if extract:
+        try:
+            debfile.DebFile(debpath).data.tgz().extractall(path=outdir)
+        except (debfile.DebError, arfile.ArError, tarfile.TarError), e:
+            raise GetManifestError("Error extracting data from '%s'" % debpath,
+                                   e)
+    return debpath
 
 
 def get_file_from_package(label, package, outfile, frompath,
@@ -127,7 +137,7 @@ def get_file_from_package(label, package, outfile, frompath,
             raise GetManifestError("Failed to copy manifest to %s" % (outfile),
                                    e)
     finally:
-        shutil.rmtree(tempdir)
+        shutil.rmtree(tempdir, ignore_errors=True)
 
 
 def get_manifest(label, outfile="manifest_static.xml",
@@ -144,6 +154,30 @@ def get_manifest(label, outfile="manifest_static.xml",
     '''
     get_file_from_package(label, "build-metadata", outfile, frompath,
                           repo_name, repo_url)
+
+
+def get_control_fields(label, package="build-metadata", repo_name=None,
+                       repo_url=None):
+    '''
+    Extracts the control information from `package` package
+    from the `label` software build.
+    Returns a dict with control names as keys.
+    Raises GetManifestError exception if it fails.
+    `label` -- Snapshot label
+    `package` -- Name of the debian package, defaults to 'build-metadata'
+    `repo_name` -- Type of the repository used, for example, 'protected'
+    `repo_url` -- Qualified URL to the C2D repository
+    '''
+    tempdir = tempfile.mkdtemp()
+    try:
+        debpath = get_and_extract_package(label, package, tempdir, repo_name,
+                                          repo_url, extract=False)
+        return debfile.DebFile(debpath).debcontrol()
+    except (debfile.DebError, arfile.ArError), e:
+        raise GetManifestError("Unable to extract control information " + \
+                               "from file '%s'" % debpath, e)
+    finally:
+        shutil.rmtree(tempdir, ignore_errors=True)
 
 
 def _main(argv):
