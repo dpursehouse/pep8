@@ -57,13 +57,14 @@ class FindReviewers:
         `change` is any change identifier accepted by Gerrit.
         Raises AddReviewersError if Gerrit returns an error
         '''
-        add_cmd = ["set-reviewers", change]
-        for reviewer in reviewers:
-            add_cmd += ["--add", reviewer]
-        try:
-            self.g.run_gerrit_command(add_cmd)
-        except ChildExecutionError, e:
-            raise AddReviewersError("Error adding reviewers: %s" % (e))
+        if len(reviewers):
+            add_cmd = ["set-reviewers", change]
+            for reviewer in reviewers:
+                add_cmd += ["--add", reviewer]
+            try:
+                self.g.run_gerrit_command(add_cmd)
+            except ChildExecutionError, e:
+                raise AddReviewersError("Error adding reviewers: %s" % (e))
 
     def find(self, change=None, project=None, branch=None,
         limit=DEFAULT_LIMIT, exclude=[]):
