@@ -97,7 +97,7 @@ from find_reviewers import FindReviewers, AddReviewersError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.17'
+__version__ = '0.3.18'
 
 REPO = 'repo'
 GIT = 'git'
@@ -201,7 +201,7 @@ class Gerrit():
                  '--current-patch-set',
                  'commit:' + commit
                  ]
-        out, err, ret = execmd(r_cmd)
+        out, err, ret = execmd(r_cmd, timeout=120)
         if ret != 0:
             print_err("%s %s" % (out, err))
             cherry_pick_exit(STATUS_GERRIT_ERR)
@@ -238,7 +238,7 @@ class Gerrit():
                  'message:cherry.picked.from.commit.' + commit,
                  '--current-patch-set'
                   ]
-        out, err, ret = execmd(r_cmd)
+        out, err, ret = execmd(r_cmd, timeout=120)
         if ret != 0:
             print_err("%s %s" % (out, err))
             cherry_pick_exit(STATUS_GERRIT_ERR)
