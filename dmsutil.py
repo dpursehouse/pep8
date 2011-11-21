@@ -16,12 +16,13 @@ class DMSTagServer():
     '''
     This is interface to send request to dms_tag_server.py to get dms for tags.
     '''
-    def __init__(self, server, port=55655):
+    def __init__(self, server, port=55655, timeout=30):
         '''
         Constructor
         '''
         self.server = server
         self.port = port
+        self.timeout = timeout
 
     def dms_for_tags(self, dmss, dms_tags, target_branch):
         """
@@ -44,7 +45,7 @@ class DMSTagServer():
         '''
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(30)  # Disconnect after 30 sec
+            sock.settimeout(self.timeout)
             sock.connect((self.server, self.port))
             sock.send(query)
             sock.send(SRV_END)
