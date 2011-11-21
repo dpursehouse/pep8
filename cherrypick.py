@@ -74,30 +74,33 @@ Example:
 
 '''
 
-import pycurl
-import sys
-import subprocess
+import errno
+import json
 import optparse
 import os
+import pycurl
 import re
-import json
-import xml.dom.minidom
-import time
-import socket
-import errno
 import signal
-import threading
+import socket
+import subprocess
+import sys
 import tempfile
+import threading
+import time
+import xml.dom.minidom
+
 
 from cherry_status import CherrypickStatusServer, CherrypickStatusError
 from cherry_status import DEFAULT_STATUS_SERVER
 from dmsutil import DMSTagServer, DMSTagServerError
 from find_reviewers import FindReviewers, AddReviewersError
+from gerrit import GerritSshConnection, GerritSshConfigError, GerritQueryError
+from processes import ChildExecutionError
 
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.18'
+__version__ = '0.3.19'
 
 REPO = 'repo'
 GIT = 'git'
@@ -172,126 +175,95 @@ class HelpFormatter(optparse.IndentedHelpFormatter):
         return ''
 
 
+class GerritError(Exception):
+    ''' GerritError is raised when a problem occurs connecting
+    to Gerrit, or when a gerrit command returns an error.
+    '''
+
+
 class Gerrit():
+    ''' Gerrit interface class to collect data from Gerrit
     '''
-    Gerrit interface class to collect data from Gerrit
-    '''
-    def __init__(self,
-                 address='%s' % (GERRIT_URL),
-                 port='29418',
-                 gerrit_user=None):
+    def __init__(self, gerrit_user=None):
+        ''' Constructor
         '''
-        Constructor
-        '''
-        self.address = address
-        self.port = port
-        self.gerrit_user = gerrit_user
-        self.data_format = 'JSON'
+        try:
+            self.gerrit_user = gerrit_user
+            self.gerrit = GerritSshConnection(GERRIT_URL, gerrit_user)
+        except GerritSshConfigError, e:
+            raise GerritError("Gerrit config error: %s" % e)
 
     def collect_email_addresses(self, commit):
+        ''' Collect approver email addresses from `commit`.
+        Return list of email addresses and review url.
+        Raise GerritError if anything goes wrong.
         '''
-        Collect email addresses from Gerrit of a review
-        '''
-        r_cmd = ['ssh', '-p', self.port, self.address,
-                 '-l', self.gerrit_user,
-                 'gerrit',
-                 'query',
-                 '--format=' + self.data_format,
-                 'status:merged', 'limit:1',
-                 '--current-patch-set',
-                 'commit:' + commit
-                 ]
-        out, err, ret = execmd(r_cmd, timeout=120)
-        if ret != 0:
-            print_err("%s %s" % (out, err))
-            cherry_pick_exit(STATUS_GERRIT_ERR)
-        #collect email addresses from Gerrit
-        gerrit_patchsets = json.JSONDecoder().raw_decode(out)[0]
-        emails, url = None, None
-        if gerrit_patchsets:
+        query = 'status:merged limit:1 commit:%s' % commit
+
+        try:
+            results = self.gerrit.query(query)
+            if len(results) != 1:
+                raise GerritError("Unexpected Gerrit query result")
             approvals_email = filter(lambda a: "email" in a["by"],
-                                     gerrit_patchsets["currentPatchSet"]
+                                     results[0]["currentPatchSet"]
                                      ["approvals"])
             emails = list(set([a["by"]["email"] for a in approvals_email]))
             for email in emails:
                 if re.match("^(hudson|jenkins)@", email):
                     emails.remove(email)
-            url = gerrit_patchsets['url'].strip()
-        return emails, url
+            url = results[0]['url'].strip()
+            return emails, url
+        except GerritQueryError, e:
+            raise GerritError("Gerrit query error: %s", e)
+        except ChildExecutionError, e:
+            raise GerritError("Gerrit query execution error: %s", e)
 
     def is_commit_available(self, commit, target_branch, prj_name):
+        ''' Return (url,date,status) tuple if `commit` is available in open
+        or abandoned state on `target_branch` of `prj_name`.
+        Otherwise return (None,None,None) tuple.
+        Raise GerritError if anything goes wrong.
         '''
-        Return (url,date,status) tuple if commit is available in target_branch
-        in open or abandoned state, otherwise return (None,None,None) tuple
-        '''
-        r_cmd = ['ssh', '-p', self.port, self.address,
-                 '-l', self.gerrit_user,
-                 'gerrit',
-                 'query',
-                 '--format=' + self.data_format,
-                 'project:' + prj_name, 'status:open',
-                 'branch:' + target_branch,
-                 'message:cherry.picked.from.commit.' + commit,
-                 'OR',
-                 'project:' + prj_name, 'status:abandoned',
-                 'branch:' + target_branch,
-                 'message:cherry.picked.from.commit.' + commit,
-                 '--current-patch-set'
-                  ]
-        out, err, ret = execmd(r_cmd, timeout=120)
-        if ret != 0:
-            print_err("%s %s" % (out, err))
-            cherry_pick_exit(STATUS_GERRIT_ERR)
-        gerrit_patchsets = json.JSONDecoder().raw_decode(out)[0]
-        if gerrit_patchsets:
-            if 'url' in gerrit_patchsets:
-                return (gerrit_patchsets['url'],
-                        gerrit_patchsets['lastUpdated'],
-                        gerrit_patchsets['status'])
-            else:
-                return None, None, None
+        query = "project:%s status:open branch:%s " \
+                "message:cherry.picked.from.commit.%s " \
+                "OR " \
+                "project:%s status:abandoned branch:%s " \
+                "message:cherry.picked.from.commit.%s" % \
+                (prj_name, target_branch, commit,
+                 prj_name, target_branch, commit)
+        try:
+            results = self.gerrit.query(query)
+            if len(results) and 'url' in results[0]:
+                return (results[0]['url'],
+                        results[0]['lastUpdated'],
+                        results[0]['status'])
+            return None, None, None
+        except GerritQueryError, e:
+            raise GerritError("Gerrit query error: %s", e)
+        except ChildExecutionError, e:
+            raise GerritError("Gerrit query execution error: %s", e)
 
-    def approve(self, url):
-        """Approve the change-set with +2"""
-        #first collect revision
-        r_cmd = ['ssh', '-p', self.port, self.address,
-             '-l', self.gerrit_user,
-             'gerrit',
-             'query',
-             '--format=' + self.data_format,
-             'status:open', 'limit:1',
-             '--current-patch-set',
-             'change:' + url.split('/')[-1]
-             ]
-        out, err, ret = execmd(r_cmd)
-        if ret != 0:
-            print_err("%s %s" % (out, err))
-            cherry_pick_exit(STATUS_GERRIT_ERR)
-        gerrit_patchsets = json.JSONDecoder().raw_decode(out)[0]
-        if gerrit_patchsets:
-            revision = gerrit_patchsets["currentPatchSet"]["revision"]
-            #approve with +2
-            r_cmd = ['ssh', '-p', self.port, self.address,
-                     '-l', self.gerrit_user,
-                     'gerrit',
-                     'approve',
-                     '--code-review=+2',
-                     revision]
-            out, err, ret = execmd(r_cmd)
-            if ret != 0:
-                print_err("%s %s" % (out, err))
-            else:
-                do_log("Code review for %s set to +2" % url)
+    def approve(self, change_id):
+        ''' Approve the `change_id` with +2 score.
+        Raise GerritError if anything goes wrong.
+        '''
+        try:
+            self.gerrit.review_patchset(change_nr=int(change_id),
+                                        patchset=1,
+                                        codereview=2)
+        except ChildExecutionError, e:
+            raise GerritError("Error setting code review for change %s: %s" % \
+                              (change_id, e))
 
     def add_reviewers(self, change_id, reviewers):
-        ''' Add `reviewers` to `change_id`.  Print an error log on failure.
+        ''' Add `reviewers` to `change_id`.
         '''
         finder = FindReviewers(user=self.gerrit_user)
         try:
             finder.add(change_id, reviewers)
         except AddReviewersError, e:
-            do_log("Unable to add all reviewers on change %s: %s" % \
-                    (change_id, e), echo=True)
+            raise GerritError("Error adding reviewers on change %s: %s" % \
+                              (change_id, e), echo=True)
 
 
 class Commit:
@@ -860,13 +832,22 @@ def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
     if delta_list:
         #We have some change to cherry pick, so need to create branch
         gituser = get_git_user()
-        gerrit = Gerrit(gerrit_user=gituser)
+        try:
+            gerrit = Gerrit(gerrit_user=gituser)
+        except GerritError, e:
+            do_log("Gerrit error: %s" % e, echo=True)
+            return False
+
         #take a commit
         cmt = delta_list[0]
+        recipient = None
         if OPT.dry_run:
             recipient = [gituser + '@sonyericsson.com']
         else:
-            recipient = gerrit.collect_email_addresses(cmt.commit)[0]
+            try:
+                recipient = gerrit.collect_email_addresses(cmt.commit)[0]
+            except GerritError, e:
+                do_log("Unable to get recipient email: %s" % e)
         ret = execmd([GIT, 'show-ref', '-q', '--verify',
                       'refs/remotes/origin/' + target_branch])[2]
         if ret == 0:
@@ -895,7 +876,8 @@ def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
                 dst_manifest.update_revision(git_name, target_branch)
                 manifest_change_required = True
                 upd_project_list.append(git_name)
-                create_branch_mail(cmt.target, cmt.name, sha1, recipient)
+                if recipient:
+                    create_branch_mail(cmt.target, cmt.name, sha1, recipient)
                 return True
             else:
                 do_log("Failed to create %s branch on %s. Branch point: %s" %
@@ -1071,7 +1053,13 @@ def cherry_pick(unique_commit_list, target_branch):
             print_err("Status Server Error: %s " % e)
 
     do_log("", info="Cherry pick starting", echo=True)
-    gerrit = Gerrit(gerrit_user=gituser)
+
+    try:
+        gerrit = Gerrit(gerrit_user=gituser)
+    except GerritError, e:
+        do_log("Gerrit error: %s" % e)
+        cherry_exit(STATUS_GERRIT_ERR)
+
     for cmt in unique_commit_list:
         # Check if the commit is in the list of commits returned
         # from the status server.
@@ -1085,21 +1073,23 @@ def cherry_pick(unique_commit_list, target_branch):
         # If we didn't find the commit in the status server, check if
         # it is already uploaded in Gerrit.
         if not found:
-            url, date, status = gerrit.is_commit_available(cmt.commit,
-                                                           cmt.target,
-                                                           cmt.name)
-            if url and date and status:
-                # It was found.  Update it in the status server.
-                found = True
-                do_log('%s is %s in Gerrit, url %s, last updated on %s' %
-                       (cmt, status, url, time.ctime(date)), echo=True)
-                if status_server and not OPT.dry_run:
-                    try:
-                        status_server.update_status(target_branch,
-                            str(cmt) + ',' + url)
-                    except CherrypickStatusError, e:
-                        print_err("Status Server Error: %s" % e)
-
+            try:
+                url, date, status = gerrit.is_commit_available(cmt.commit,
+                                                               cmt.target,
+                                                               cmt.name)
+                if url and date and status:
+                    # It was found.  Update it in the status server.
+                    found = True
+                    do_log('%s is %s in Gerrit, url %s, last updated on %s' %
+                           (cmt, status, url, time.ctime(date)), echo=True)
+                    if status_server and not OPT.dry_run:
+                        try:
+                            status_server.update_status(target_branch,
+                                str(cmt) + ',' + url)
+                        except CherrypickStatusError, e:
+                            print_err("Status Server Error: %s" % e)
+            except GerritError, e:
+                print_err("Gerrit error: %s" % e)
         # If we've found this commit, no need to cherry pick it
         if found:
             do_log('Already processed once %s,%s' % (cmt.name, cmt.commit),
@@ -1113,7 +1103,13 @@ def cherry_pick(unique_commit_list, target_branch):
         r_cmd = [GIT, 'checkout', '-b', 'topic-cherrypick', cmt.target_origin]
         git_log, err, ret = execmd(r_cmd)
         if ret == 0:
-            reviewers, url = gerrit.collect_email_addresses(cmt.commit)
+            reviewers = []
+            url = None
+            try:
+                reviewers, url = gerrit.collect_email_addresses(cmt.commit)
+            except GerritError, e:
+                print_err("Gerrit error: %s" % e)
+
             if  OPT.reviewers:
                 reviewers += OPT.reviewers.split(',')
             # now cherry pick
@@ -1154,9 +1150,12 @@ def cherry_pick(unique_commit_list, target_branch):
                                 # Get the change URL and ID
                                 pick_result = match.group(0)
                                 change_id = match.group(1)
-                                gerrit.add_reviewers(change_id, reviewers)
-                                if OPT.approve:
-                                    gerrit.approve(pick_result)
+                                try:
+                                    gerrit.add_reviewers(change_id, reviewers)
+                                    if OPT.approve:
+                                        gerrit.approve(change_id)
+                                except GerritError, e:
+                                    print_err("Gerrit error: %s", e)
                             else:
                                 pick_result = 'Gerrit URL not found after push'
                     else:
@@ -1167,10 +1166,15 @@ def cherry_pick(unique_commit_list, target_branch):
                         else:
                             do_log('git push failed.  Retrying...', echo=True)
             else:
-                if OPT.dry_run:
-                    emails = [gituser + '@sonyericsson.com']
-                else:
-                    emails = reviewers
+                # Send failure notification email to user who is running the
+                # script, and when not in dry-run mode to the reviewers.
+                emails = [gituser + '@sonyericsson.com']
+                if not OPT.dry_run:
+                    emails += reviewers
+                # If we were unable to get the source change URL, use the
+                # sha1 instead.
+                if not url:
+                    url = cmt.commit
                 if 'the conflicts' in err:
                     pick_result = 'Failed due to merge conflict'
                     conflict_mail(target_branch, url, cmt.commit,
@@ -1180,7 +1184,7 @@ def cherry_pick(unique_commit_list, target_branch):
                     conflict_mail(target_branch, url, cmt.commit,
                                   emails, pick_result)
                 elif 'nothing to commit' in git_log:
-                    pick_result = 'Already merged, nothing to commit'
+                    pick_result = 'Already merged'
                 else:
                     pick_result = 'Failed due to unknown reason'
                     conflict_mail(target_branch, url, cmt.commit,
