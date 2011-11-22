@@ -5,6 +5,8 @@ SRV_DMS_STATUS = 'DMS_STATUS'
 SRV_ERROR = 'SRV_ERROR'
 SRV_END = '|END'
 
+BUFFER_LEN = 1024
+
 
 class DMSTagServerError(Exception):
     '''DMSTagServerError is raised when an error occurs during
@@ -47,15 +49,17 @@ class DMSTagServer():
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(self.timeout)
             sock.connect((self.server, self.port))
-            sock.send(query)
+            totalsent = 0
+            while totalsent != len(query):
+                totalsent += sock.send(query[totalsent:totalsent + BUFFER_LEN])
             sock.send(SRV_END)
-            data = sock.recv(1024)
+            data = sock.recv(BUFFER_LEN)
             msg = ''
             while 1:
                 msg = msg + data
                 if SRV_END in str(data):
                     break
-                data = sock.recv(1024)
+                data = sock.recv(BUFFER_LEN)
             sock.close()
             if SRV_ERROR in msg:
                 raise DMSTagServerError('Server side error: ' + msg)
