@@ -133,7 +133,7 @@ class DmsTagServer (win32serviceutil.ServiceFramework):
             self.arg = args
             win32serviceutil.ServiceFramework.__init__(self, args)
             self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
-            socket.setdefaulttimeout(30)
+            socket.setdefaulttimeout(60)
             self.keep_running = 1
         except:
             print "Service exception"
@@ -232,12 +232,12 @@ class DmsTagServer (win32serviceutil.ServiceFramework):
 def process_req(working_dir, channel, address, user, password):
     '''Listen request of client and send data back to client'''
     request = ''
-    data = channel.recv(1024)
+    data = channel.recv(dmsutil.BUFFER_LEN)
     while 1:
         request = request + data
         if dmsutil.SRV_END in str(data):
             break
-        data = channel.recv(1024)
+        data = channel.recv(dmsutil.BUFFER_LEN)
 
     data_list = request.split('|')
     # Error handling for insufficient data in the stream
@@ -318,7 +318,11 @@ def process_req(working_dir, channel, address, user, password):
             return
 
         dms_list.sort()
-        channel.send(','.join(dms_list))
+        totalsent = 0
+        send_data = ','.join(dms_list)
+        while totalsent != len(send_data):
+            totalsent += channel.send(
+                            send_data[totalsent:totalsent + dmsutil.BUFFER_LEN])
         channel.send(dmsutil.SRV_END)
         channel.close()
     else:
