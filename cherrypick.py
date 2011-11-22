@@ -100,7 +100,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.19'
+__version__ = '0.3.20'
 
 REPO = 'repo'
 GIT = 'git'
@@ -942,10 +942,8 @@ def dms_get_fix_for(commit_list):
             if tags_dmss != None:
                 for cmt in commit_list:
                     dms = cmt.dms
-                    for tag in OPT.dms_tags.split(','):
-                        if dms in tags_dmss[tag]:
-                            commit_tag_list.append(cmt)
-                            break
+                    if dms in tags_dmss:
+                        commit_tag_list.append(cmt)
                 return commit_tag_list
     except DMSTagServerError, e:
         do_log('DMS tag server error: %s' % e, echo=True)
@@ -1058,7 +1056,7 @@ def cherry_pick(unique_commit_list, target_branch):
         gerrit = Gerrit(gerrit_user=gituser)
     except GerritError, e:
         do_log("Gerrit error: %s" % e)
-        cherry_exit(STATUS_GERRIT_ERR)
+        cherry_pick_exit(STATUS_GERRIT_ERR)
 
     for cmt in unique_commit_list:
         # Check if the commit is in the list of commits returned
@@ -1155,7 +1153,7 @@ def cherry_pick(unique_commit_list, target_branch):
                                     if OPT.approve:
                                         gerrit.approve(change_id)
                                 except GerritError, e:
-                                    print_err("Gerrit error: %s", e)
+                                    print_err("Gerrit error: %s" % e)
                             else:
                                 pick_result = 'Gerrit URL not found after push'
                     else:

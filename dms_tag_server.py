@@ -250,7 +250,7 @@ def process_req(working_dir, channel, address, user, password):
         return
 
     req_type = data_list[0]
-    tag = data_list[1]
+    tag_list = [tag.strip() for tag in data_list[1].rstrip(',').split(',')]
     issues = data_list[2]
     # Make it compatible with old cherry-pick script
     deliver_to = ''
@@ -302,13 +302,16 @@ def process_req(working_dir, channel, address, user, password):
                 # Select the DMS issues that match one of the below criteria:
                 # 1. The new type of issues should have Delivery records and
                 #    `Delivery.deliver_to` should match the `target_branch` and
-                #    `Delivery.fix_for` should match the provided `tag`.
+                #    `Delivery.fix_for` should match one of the provided
+                #    `tag_list`.
                 # 2. The old type of issues should NOT have the Delivery
-                #    records and the `fix_for` should match the provided `tag`
+                #    records and the `fix_for` should match one of the provided
+                #    `tag_list`
                 if (delivery_in_qry != "" and \
-                    deliver_to_in_qry == deliver_to and \
-                    deliveryfixfor_in_qry == tag) or \
-                    (delivery_in_qry == "" and fixfor_in_qry == tag):
+                            deliver_to_in_qry == deliver_to and \
+                            deliveryfixfor_in_qry in tag_list) or \
+                            (delivery_in_qry == "" and \
+                            fixfor_in_qry in tag_list):
                         dms_list.append(line.split(':')[0].strip())
 
         except Exception, exp:

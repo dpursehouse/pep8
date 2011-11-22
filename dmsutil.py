@@ -31,15 +31,8 @@ class DMSTagServer():
         Connect to tag server and collect dmss tagged with one of the
         `dms_tags`, specific to the `target_branch`
         """
-        dms_list = {}
-        for tag in dms_tags.split(','):
-            tagged_dms = self.query_srv('%s|%s|%s|%s'
-                                        % (SRV_DMS_STATUS,
-                                        tag, dmss, target_branch))
-            if tagged_dms == None:
-                return None
-            dms_list[tag] = tagged_dms
-        return dms_list
+        return self.query_srv('%s|%s|%s|%s' % (SRV_DMS_STATUS, dms_tags,
+                              dmss, target_branch))
 
     def query_srv(self, query):
         '''Send the query to server and collect the data
