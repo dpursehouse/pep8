@@ -107,9 +107,10 @@ def get_branches_html(branches, pattern_matcher):
     """
     projects = find_projects(branches)
 
-    data = """<h1>Red: The same component branch is used on another _of these_
+    data = """<h1>Red: The same component branch is used on another of these
  manifest branch(es)</h1>\n\n<h1>Bold+Italic: The branch of the component has
- a different name than the manifest branch</h1>\n\n"""
+ a different name than the manifest branch</h1>\n\n<h1>Green: The component is
+ not included in the manifest.</h1>\n\n"""
 
     data += '<table style="padding: 10px;"><tr><th></th>'
     for ref, branch, manifest in branches:
