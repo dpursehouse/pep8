@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<branches>
-  <branch pattern="^edream6\.0-fuji-r2-release$">
-    <dms-required>true</dms-required>
-    <allowed-dms-tag name="ATT ASAP"/>
-    <allowed-dms-tag name="ATT LE"/>
-  </branch>
-</branches>
