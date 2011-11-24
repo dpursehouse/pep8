@@ -1,0 +1,27 @@
+tree 1a0b82493bad4a92141940c26de2274fdaaf0ca3
+parent 2334941e5261e74c5a93cae7fb818471f733dbd5
+author Ashish Manav <ashish.x.manav@sonyericsson.com> 1318317148 +0900
+committer Ashish Manav <ashish.x.manav@sonyericsson.com> 1318317148 +0900
+
+Updated run_query.pl: Bug fix for new DMS Structure
+
+run_query.pl is updated to change the way of handling .qry files.
+Query files given to this script in Hudson job was not updated
+as per new requirement. This script is updated to add requirements
+within this script only.
+
+Valid entries:
+FIX=DMS00111111
+Fix=DMS00222222
+fix=DMS00333333
+
+Not valid entries:
+FIX = DMS00444444
+Fix = DMS00555555
+fix = DMS00666666
+FIX= DMS00777777
+Fix= DMS00888888
+fix= DMS00999999
+FIX= DMS01111111
+Fix= DMS01222222
+fix= DMS01333333
