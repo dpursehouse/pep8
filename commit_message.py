@@ -57,28 +57,24 @@ class CommitMessage:
         raise CommitMessageError("Could not find %s" % _QUERY_SCRIPT)
 
     def get_fixed_issues(self):
-        '''Get a list of fixed issues that are recorded in the commit message.
-        Return list of issues, or empty list if no issues were found.
+        '''Get the fixed issues that are listed in the commit message.
+        Return a list of issues, or an empty list if no issues were found.
         Raise CommitMessageError if any error occurs.
         '''
         try:
-            errcode, rawlist, err = \
-                processes.run_cmd(self._find_query_script(),
-                                  "--show",
-                                  input=self.message)
+            errcode, rawlist, err = processes.run_cmd(
+                                        self._find_query_script(),
+                                        "--show",
+                                        "--quiet",
+                                        input=self.message)
 
-            if rawlist == "No DMS Issues found":
-                issuelist = []
-            else:
-                # The output is one issue per line, but there may be
-                # leading and trailing whitespace. Clean this up.
-                issuelist = [s.strip() for s in rawlist.splitlines()]
+            # The output is one issue per line, but there may be
+            # leading and trailing whitespace. Clean this up.
+            return [s.strip() for s in rawlist.splitlines()]
         except CommitMessageError, e:
             raise e
         except Exception:
             raise CommitMessageError("Error extracting issue information")
-
-        return issuelist
 
     def __init__(self, data):
         '''Initialize the class with the commit message in `data`.
