@@ -2,7 +2,7 @@
 <branches>
   <branch pattern="^edream6\.0-fuji-r2-release$">
     <dms-required>true</dms-required>
-    <allowed-dms-tag name="ATT ASAP"/>
-    <allowed-dms-tag name="ATT LE"/>
+    <allowed-dms-tag name="Fix ASAP"/>
+    <allowed-dms-tag name="ATT IFW"/>
   </branch>
 </branches>
