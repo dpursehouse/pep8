@@ -100,7 +100,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.20'
+__version__ = '0.3.21'
 
 REPO = 'repo'
 GIT = 'git'
@@ -1334,10 +1334,10 @@ def conflict_mail(branch, url, change_id, recipient, result):
     body = ('Hello,\n\nAutomated cherry-pick of %s into %s ' % (url, branch) +
             'branch has failed.\n\n%s.\n\nPlease ' % (result) +
             'manually upload this if it is needed for %s branch and' % branch +
-            ' add the following persons as reviewers:\n%s' \
+            ' add the following persons as reviewers:\n\n%s' \
             % '\n'.join(recipient) +
-            '\nPlease reply to this mail with the new change ID once it is' +
-            ' done.\n\nThanks,\nCherry-picker.' +
+            '\n\nPlease reply to this mail with the Gerrit link for the new ' +
+            'change once it is done.\n\nThanks,\nCherry-picker.' +
             '\n\nUseful links:' +
             '\n\nHow to cherry pick:' +
             ' https://wiki.sonyericsson.net/androiki/How_to_cherry-pick' +
