@@ -430,7 +430,12 @@ def _main():
                 message += MESSAGE_DMS_VIOLATION_PART_1
 
                 for violation in violations:
-                    message += "* %s\n" % violation
+                    # Gerrit creates new bullet items when it gets newline
+                    # characters within a bullet list paragraph, so unless
+                    # we remove the newlines from the violation texts the
+                    # resulting bullet list will contain multiple bullets
+                    # and look crappy.
+                    message += "* %s\n" % violation.replace("\n", " ")
 
                 message += MESSAGE_DMS_VIOLATION_PART_2
             else:
