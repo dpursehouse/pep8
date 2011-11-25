@@ -19,6 +19,7 @@ project, and both manifest branches and the destination branches of the
 changes being inspected. """
 
 
+import logging
 import optparse
 import os
 import re
@@ -143,8 +144,7 @@ def _get_patchset_fixed_issues(options):
     """ Returns a list of issues fixed in the patchset.
     """
     try:
-        if options.verbose:
-            print "Fetching patch set %s" % options.patchset_ref
+        logging.info("Fetching patch set %s" % options.patchset_ref)
         git = CachedGitWorkspace(
             os.path.join("git://", options.gerrit_url, options.affected_git),
             options.cache_path)
@@ -327,12 +327,16 @@ def _main():
     except ValueError:
         semcutil.fatal(1, "Patchset number must be a number.")
 
+    if options.verbose:
+        logging.basicConfig(format='%(message)s', level=logging.INFO)
+    else:
+        logging.basicConfig(format='%(message)s', level=logging.ERROR)
+
     # If the git does not match our patterns there's no reason
     # to continue.
     git_matcher = IncludeExcludeMatcher(options.git_in, options.git_ex)
     if not git_matcher.match(options.affected_git):
-        if options.verbose:
-            print "No match for git %s" % options.affected_git
+        logging.info("No match for git %s" % options.affected_git)
         return 0
 
     # If the git branch does not match our patterns there's no reason
@@ -340,8 +344,7 @@ def _main():
     branch_matcher = IncludeExcludeMatcher(options.git_branch_in,
                                            options.git_branch_ex)
     if not branch_matcher.match(options.affected_branch):
-        if options.verbose:
-            print "No match for git branch %s" % options.affected_branch
+        logging.info("No match for git branch %s" % options.affected_branch)
         return 0
 
     # Find all available manifest branches. Let `branches`
@@ -359,16 +362,14 @@ def _main():
     # If no manifest branches matched our patterns there's no reason
     # to continue.
     if not branches:
-        if options.verbose:
-            print "No match for manifest branch"
+        logging.info("No match for manifest branch")
         return 0
 
     # Extract the manifest XML data from all manifest branches found
     # earlier. Store the subset of branches that would be affected if
     # the change is submitted in `affected_manifests`.
     affected_manifests = []
-    if options.verbose:
-        print "Extracting affected system branches from manifest data..."
+    logging.info("Extracting affected system branches from manifest data...")
     for branch in branches:
         try:
             manifests = manifestbranches.get_manifests(branch,
@@ -378,12 +379,11 @@ def _main():
                         options.affected_branch == \
                             mfest[options.affected_git]["revision"]:
                     affected_manifests.append(prettybranch)
-                    if options.verbose:
-                        print "- " + prettybranch
+                    logging.info("- " + prettybranch)
         except processes.ChildExecutionError, err:
             semcutil.fatal(2, err)
         except manifest.ManifestParseError, err:
-            print >> sys.stderr, "Skipping %s: %s" % (branch, err)
+            logging.error("Skipping %s: %s" % (branch, err))
 
     message = ""
 
@@ -396,8 +396,8 @@ def _main():
             message += "* %s\n" % branch
 
         message += MESSAGE_MULTIPLE_SYSTEMS_PART_2
-    elif options.verbose:
-        print "No impact on multiple system branches"
+    else:
+        logging.info("No impact on multiple system branches")
 
     # If a policy configuration is specified, check that the commit follows
     # the policy.
@@ -411,17 +411,15 @@ def _main():
         # Check this commit's DMS tags if at least one affected manifest
         # branch has a policy associated with it.
         if not filter(config.branch_has_policy, affected_manifests):
-            if options.verbose:
-                print "No affected system branches with DMS tag policy"
+            logging.info("No affected system branches with DMS tag policy")
         else:
             # Find the DMS issue(s) listed in the commit message of this patch
             # set.
             dmslist = _get_patchset_fixed_issues(options)
-            if options.verbose:
-                if not len(dmslist):
-                    print "No DMS found in commit message"
-                else:
-                    print "Found DMS: " + ", ".join(dmslist)
+            if not len(dmslist):
+                logging.info("No DMS found in commit message")
+            else:
+                logging.info("Found DMS: " + ", ".join(dmslist))
 
             violations = _get_dms_violations(config, dmslist,
                                              affected_manifests)
@@ -435,15 +433,14 @@ def _main():
                     message += "* %s\n" % violation
 
                 message += MESSAGE_DMS_VIOLATION_PART_2
-            elif options.verbose:
-                print "No DMS violations"
-    elif options.verbose:
-        print "No DMS policy"
+            else:
+                logging.info("No DMS violations")
+    else:
+        logging.info("No DMS policy")
 
     # If any message has been generated, post it as a note to the change.
     if message:
-        if options.verbose:
-            print message
+        logging.info(message)
         if not options.dry_run:
             try:
                 gerrit_conn = \
