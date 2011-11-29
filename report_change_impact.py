@@ -57,14 +57,13 @@ DEFAULT_GERRIT_SERVER = "review.sonyericsson.net"
 DMS_TAG_SERVER_HOSTNAME = "android-cm-web.sonyericsson.net"
 
 # Greeting to start the message that will be posted to Gerrit
-MESSAGE_GREETING = \
-"""Dear uploader,
-
-"""
+MESSAGE_GREETING = "Dear uploader,"
 
 # First part of the message about multiple systems impact
 MESSAGE_MULTIPLE_SYSTEMS_PART_1 = \
-"""The commit you've uploaded will affect more than one system branch
+"""
+
+The commit you've uploaded will affect more than one system branch
 (aka manifest), namely the following:
 
 """
@@ -82,7 +81,9 @@ change). Please use good judgement."""
 
 # First part of the message about DMS policy violation
 MESSAGE_DMS_VIOLATION_PART_1 = \
-"""One or more system branches (aka manifest branches) affected by this
+"""
+
+One or more system branches (aka manifest branches) affected by this
 change have DMS-based restrictions on which changes may be submitted.
 It looks like you will violate one or more of these restrictions if you
 submit this change.
