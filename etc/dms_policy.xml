@@ -4,4 +4,8 @@
     <dms-required>true</dms-required>
     <allowed-dms-tag name="Fix ASAP"/>
   </branch>
+  <branch pattern="^edream6\.0-riogrande-ca-release$">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="CA1"/>
+  </branch>
 </branches>
