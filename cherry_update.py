@@ -18,7 +18,6 @@ class CherrypickStatus:
         ''' Initialise self with `csvdata`.
         Raise CherrypickStatusError if CSV data is not valid.
         '''
-        self.dirty = False
         data = csvdata.rstrip().split(',')
         if len(data) < 9:
             raise CherrypickStatusError("Not enough data in csv")
@@ -27,22 +26,31 @@ class CherrypickStatus:
         self.project = data[2]
         self.sha1 = data[3]
         self.dms = data[4]
-        self.pick_status = data[5]
+        self.pick_status = None
+        self.set_pick_status(data[5])
         self.review = data[6]
         self.verify = data[7]
         self.status = data[8]
+        self.dirty = False
 
-        # If the pick status is a Gerrit review URL, extract
-        # the change number.  Otherwise extract the error message.
-        match = re.match("^https?.*?(\d+)$", self.pick_status)
-        if not match:
-            self.error = self.pick_status
-            self.change_nr = None
-        else:
-            self.error = None
-            self.change_nr = match.group(1)
+    def set_pick_status(self, pick_status):
+        ''' Update pick_status, error and change_nr according to `pick_status`,
+        if it has changed, and set the state to dirty.
+        '''
+        if self.pick_status != pick_status:
+            self.pick_status = pick_status
+            # If the pick status is a Gerrit review URL, extract
+            # the change number.  Otherwise extract the error message.
+            match = re.match("^https?.*?(\d+)$", self.pick_status)
+            if not match:
+                self.error = self.pick_status
+                self.change_nr = None
+            else:
+                self.error = None
+                self.change_nr = match.group(1)
+            self.dirty = True
 
-    def set_status(self, status):
+    def set_merge_status(self, status):
         ''' Update status with `status` if it has changed and
         set the state to dirty.
         '''
@@ -107,35 +115,50 @@ def _update_status_from_gerrit(gerrit, cherry):
     ''' Query `gerrit` for the change specified in `cherry` and then
     update `cherry` with the status, review and verify values returned
     in the query results.
-    Raise CherrypickStatusError if query does not return exactly one
-    result.
     Raise GerritQueryError if the gerrit query returns an error.
     Raise ChildExecutionError if the gerrit query command fails.
     '''
     reviews = []
     verifies = []
+    query = None
 
-    # Query Gerrit for the change number.
-    # This should return exactly one result.
-    results = gerrit.query(cherry.change_nr)
-    if len(results) != 1:
-        raise CherrypickStatusError("Too many results from Gerrit")
+    # For cherry picks recorded as an error, check if a change has been
+    # uploaded in the meantime.
+    if cherry.error:
+        if cherry.error == "Already merged":
+            cherry.set_merge_status("MERGED")
+            cherry.set_review("2")
+            cherry.set_verify("1")
+        elif cherry.error == "Failed due to merge conflict":
+            query = "project:%s " \
+                    "branch:%s " \
+                    "message:cherry.picked.from.commit.%s" % \
+                    (cherry.project, cherry.branch, cherry.sha1)
+    elif cherry.change_nr:
+        query = cherry.change_nr
 
-    # Extract the data from the Gerrit query results, if it exists,
-    # and update in the cherry pick.
-    result = results[0]
-    if "status" in result:
-        cherry.set_status(result["status"])
-    if "currentPatchSet" in result:
-        if "approvals" in result["currentPatchSet"]:
-            approvals = result["currentPatchSet"]["approvals"]
-            for approval in approvals:
-                if approval["type"] == "CRVW":
-                    reviews += [int(approval["value"])]
-                elif approval["type"] == "VRIF":
-                    verifies += [int(approval["value"])]
-        cherry.set_review("%d" % _calculate_score(reviews, -2))
-        cherry.set_verify("%d" % _calculate_score(verifies, -1))
+    if query:
+        # Query Gerrit for the change.
+        results = gerrit.query(query)
+        if len(results) == 1:
+            # Extract the data from the Gerrit query results, if it exists,
+            # and update in the cherry pick.
+            result = results[0]
+            if "number" in result:
+                cherry.set_pick_status("http://review.sonyericsson.net/%s" % \
+                                       result["number"])
+            if "status" in result:
+                cherry.set_merge_status(result["status"])
+            if "currentPatchSet" in result:
+                if "approvals" in result["currentPatchSet"]:
+                    approvals = result["currentPatchSet"]["approvals"]
+                    for approval in approvals:
+                        if approval["type"] == "CRVW":
+                            reviews += [int(approval["value"])]
+                        elif approval["type"] == "VRIF":
+                            verifies += [int(approval["value"])]
+                cherry.set_review("%d" % _calculate_score(reviews, -2))
+                cherry.set_verify("%d" % _calculate_score(verifies, -1))
 
     return cherry
 
@@ -162,21 +185,23 @@ def _update_cherrypicks(status_server, target, dry_run):
         for line in csvdata:
             try:
                 cherry = CherrypickStatus(line)
-                logging.info("%s,%s" % (cherry.project, cherry.sha1))
-                if cherry.error:
-                    if cherry.error == "Already merged":
-                        cherry.set_status("MERGED")
-                    else:
-                        skipped += 1
-                        logging.info("Skipping: %s" % cherry.error)
-                elif cherry.change_nr:
+
+                # No need to update the status if it's already merged
+                if cherry.status != "MERGED":
                     cherry = _update_status_from_gerrit(gerrit, cherry)
 
                 if cherry.is_dirty():
-                    logging.info("Updating: %s" % cherry)
+                    logging.info("Updating: %s,%s,%s,%s,%s,%s" % \
+                                 (cherry.project, cherry.sha1,
+                                  cherry.pick_status, cherry.review,
+                                  cherry.verify, cherry.status))
                     if not dry_run:
                         status_server.update_status(target, "%s" % cherry)
                     updated += 1
+                else:
+                    logging.info("Skipping: %s,%s" % \
+                                 (cherry.project, cherry.sha1))
+                    skipped += 1
             except CherrypickStatusError, e:
                 errors += 1
                 logging.error("Cherry pick status error: %s" % e)
