@@ -227,6 +227,7 @@ if(scalar(@ARGV) == 0) {
     }
     print "Sites: ", join(', ', @sites), "\n";
 
+    $done = "";
     # Query user if input is ok. Offer to rerun if not.
     while(!($done =~ /^y(es)?/ || $done =~ /^no?/)) {
       print "Options Ok? (y[es]/n[o]): ";
