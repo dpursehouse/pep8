@@ -43,6 +43,7 @@ use constant DEFAULT_SITE => SELD;
 use constant STATE_ACTION => "Pass";
 
 #### NEW DMS APPROACH #####
+use constant DELIVERY_DECISION_STATUS => "decisionStatus";
 use constant DELIVERY_SOLUTION_DONE => "solutiondone";
 use constant DELIVERY_DELIVERED_IN => "delivered_in";
 use constant DELIVERY_DELIVER_TO => "deliver_to";
@@ -328,6 +329,7 @@ if(defined($query)) {
                      DELIVERY,
                      DELIVERY.".".DELIVERY_DELIVER_TO,
                      DELIVERY.".".DELIVERY_SOLUTION_DONE,
+                     DELIVERY.".".DELIVERY_DECISION_STATUS,
                      DELIVERY.".".FIX_FOR_FIELD,
                      DELIVERY.".".DELIVERY_DELIVERED_IN) {
     if(!is_field_in_query($query_def, $field)) {
@@ -377,6 +379,7 @@ my $issues_data = build_issue_hash($session,
                                    DELIVERY,
                                    DELIVERY.".".DELIVERY_DELIVER_TO,
                                    DELIVERY.".".DELIVERY_SOLUTION_DONE,
+                                   DELIVERY.".".DELIVERY_DECISION_STATUS,
                                    DELIVERY.".".FIX_FOR_FIELD,
                                    DELIVERY.".".DELIVERY_DELIVERED_IN);
 
@@ -1074,6 +1077,7 @@ sub placeholder_issues {
                                        DELIVERY,
                                        DELIVERY.".".DELIVERY_DELIVER_TO,
                                        DELIVERY.".".DELIVERY_SOLUTION_DONE,
+                                       DELIVERY.".".DELIVERY_DECISION_STATUS,
                                        DELIVERY.".".FIX_FOR_FIELD,
                                        DELIVERY.".".DELIVERY_DELIVERED_IN);
 
@@ -1893,6 +1897,7 @@ sub get_query_for_ids {
   $query->BuildField(DELIVERY.".".DELIVERY_SOLUTION_DONE);
   $query->BuildField(DELIVERY.".".FIX_FOR_FIELD);
   $query->BuildField(DELIVERY.".".DELIVERY_DELIVERED_IN);
+  $query->BuildField(DELIVERY.".".DELIVERY_DECISION_STATUS);
 
   my $filter_node_1 = $query->BuildFilterOperator(CQ_OR);
 
