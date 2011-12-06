@@ -100,7 +100,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.21'
+__version__ = '0.3.22'
 
 REPO = 'repo'
 GIT = 'git'
@@ -1094,111 +1094,124 @@ def cherry_pick(unique_commit_list, target_branch):
                    echo=True)
             continue
 
-        pick_result = ''
-        do_log('Cherry picking %s ..' % cmt, echo=True)
-        os.chdir(os.path.join(OPT.cwd, cmt.path))
-        #checkout the topic branch
-        r_cmd = [GIT, 'checkout', '-b', 'topic-cherrypick', cmt.target_origin]
-        git_log, err, ret = execmd(r_cmd)
-        if ret == 0:
-            reviewers = []
-            url = None
-            try:
-                reviewers, url = gerrit.collect_email_addresses(cmt.commit)
-            except GerritError, e:
-                print_err("Gerrit error: %s" % e)
+        # Start the cherry pick
+        try:
+            pick_result = ''
+            do_log('Cherry picking %s' % cmt, echo=True)
+            os.chdir(os.path.join(OPT.cwd, cmt.path))
 
-            if  OPT.reviewers:
-                reviewers += OPT.reviewers.split(',')
-            # now cherry pick
-            git_log, err, ret = execmd([GIT, 'cherry-pick', '-x', cmt.commit])
+            # Check out the topic branch
+            topic_branch = "cherrypick-%s-%s" % \
+                            (cmt.commit, time.strftime("%Y%m%d%H%M%S"))
+            r_cmd = [GIT, 'checkout', '-b', topic_branch, cmt.target_origin]
+            git_log, err, ret = execmd(r_cmd)
             if ret == 0:
-                #now edit commit msg to remove change id
-                commit_msg = open(".git/COMMIT_EDITMSG",
-                                  'r').read().split('\n')
-                commit_msg_file = open(".git/COMMIT_EDITMSG", 'w')
-                for msg in commit_msg:
-                    if not re.match(r"^Change-Id: \S+\s*$", msg):
-                        commit_msg_file.write(msg + '\n')
-                commit_msg_file.close()
+                reviewers = []
+                url = None
+                try:
+                    reviewers, url = gerrit.collect_email_addresses(cmt.commit)
+                except GerritError, e:
+                    print_err("Gerrit error: %s" % e)
 
-                #amend to add a new change id
-                git_log, err, ret = execmd([GIT, 'commit', '--amend',
-                                            '-F', '.git/COMMIT_EDITMSG'])
-                push_attempts = 0
-                push_ok = False
-                while (push_attempts < MAX_PUSH_ATTEMPTS) and (not push_ok):
-                    push_attempts += 1
-                    cmd = [GIT, 'push',
-                           'ssh://%s@%s:29418/%s.git' %
-                           (gituser, GERRIT_URL, cmt.name),
-                           'HEAD:refs/for/%s' % cmt.target]
-                    if OPT.dry_run:
-                        cmd.append('--dry-run')
-                    git_log, err, ret = execmd(cmd)
-                    do_log(err)
-                    if ret == 0:
-                        push_ok = True
+                if  OPT.reviewers:
+                    reviewers += OPT.reviewers.split(',')
+                # now cherry pick
+                r_cmd = [GIT, 'cherry-pick', '-x', cmt.commit]
+                git_log, err, ret = execmd(r_cmd)
+                if ret == 0:
+                    #now edit commit msg to remove change id
+                    commit_msg = open(".git/COMMIT_EDITMSG",
+                                      'r').read().split('\n')
+                    commit_msg_file = open(".git/COMMIT_EDITMSG", 'w')
+                    for msg in commit_msg:
+                        if not re.match(r"^Change-Id: \S+\s*$", msg):
+                            commit_msg_file.write(msg + '\n')
+                    commit_msg_file.close()
+
+                    #amend to add a new change id
+                    git_log, err, ret = execmd([GIT, 'commit', '--amend',
+                                                '-F', '.git/COMMIT_EDITMSG'])
+                    push_attempts = 0
+                    push_ok = False
+                    while (push_attempts < MAX_PUSH_ATTEMPTS) and (not push_ok):
+                        push_attempts += 1
+                        cmd = [GIT, 'push',
+                               'ssh://%s@%s:29418/%s.git' %
+                               (gituser, GERRIT_URL, cmt.name),
+                               'HEAD:refs/for/%s' % cmt.target]
                         if OPT.dry_run:
-                            pick_result = 'Dry-run ok'
-                        else:
-                            match = re.search('https?://%s/([0-9]+)'
-                                              % GERRIT_URL, err)
-                            if match:
-                                # Get the change URL and ID
-                                pick_result = match.group(0)
-                                change_id = match.group(1)
-                                try:
-                                    gerrit.add_reviewers(change_id, reviewers)
-                                    if OPT.approve:
-                                        gerrit.approve(change_id)
-                                except GerritError, e:
-                                    print_err("Gerrit error: %s" % e)
+                            cmd.append('--dry-run')
+                        git_log, err, ret = execmd(cmd)
+                        do_log(err)
+                        if ret == 0:
+                            push_ok = True
+                            if OPT.dry_run:
+                                pick_result = 'Dry-run ok'
                             else:
-                                pick_result = 'Gerrit URL not found after push'
-                    else:
-                        if push_attempts == MAX_PUSH_ATTEMPTS:
-                            do_log('Failed to push %d times, giving up.' %
-                                    MAX_PUSH_ATTEMPTS, echo=True)
-                            pick_result = 'Failed to push to Gerrit'
+                                match = re.search('https?://%s/([0-9]+)'
+                                                  % GERRIT_URL, err)
+                                if match:
+                                    # Get the change URL and ID
+                                    pick_result = match.group(0)
+                                    change_id = match.group(1)
+                                    try:
+                                        gerrit.add_reviewers(change_id,
+                                                             reviewers)
+                                        if OPT.approve:
+                                            gerrit.approve(change_id)
+                                    except GerritError, e:
+                                        print_err("Gerrit error: %s" % e)
+                                else:
+                                    pick_result = 'Gerrit URL not found ' \
+                                                  'after push'
                         else:
-                            do_log('git push failed.  Retrying...', echo=True)
-            else:
-                # Send failure notification email to user who is running the
-                # script, and when not in dry-run mode to the reviewers.
-                emails = [gituser + '@sonyericsson.com']
-                if not OPT.dry_run:
-                    emails += reviewers
-                # If we were unable to get the source change URL, use the
-                # sha1 instead.
-                if not url:
-                    url = cmt.commit
-                if 'the conflicts' in err:
-                    pick_result = 'Failed due to merge conflict'
-                    conflict_mail(target_branch, url, cmt.commit,
-                                  emails, pick_result)
-                elif 'is a merge but no -m' in err:
-                    pick_result = 'It is a merge commit'
-                    conflict_mail(target_branch, url, cmt.commit,
-                                  emails, pick_result)
-                elif 'nothing to commit' in git_log:
-                    pick_result = 'Already merged'
+                            if push_attempts == MAX_PUSH_ATTEMPTS:
+                                do_log('Failed to push %d times, giving up.' %
+                                        MAX_PUSH_ATTEMPTS, echo=True)
+                                pick_result = 'Failed to push to Gerrit'
+                            else:
+                                do_log('git push failed.  Retrying...',
+                                       echo=True)
                 else:
-                    pick_result = 'Failed due to unknown reason'
-                    conflict_mail(target_branch, url, cmt.commit,
-                                  emails, pick_result)
-                print_err(err)
-                print_err("Resetting to HEAD...")
-                git_log, err, ret = execmd([GIT, 'reset', '--hard'])
-                do_log(git_log)
-        else:
-            pick_result = '%s %s' % (git_log, err)
-            do_log(pick_result)
-        #move to origin and delete topic branch
-        git_log, err, ret = execmd([GIT, 'checkout', cmt.target_origin])
-        do_log(git_log)
-        git_log, err, ret = execmd([GIT, 'branch', '-D', 'topic-cherrypick'])
-        do_log(git_log)
+                    # Send failure notification email to user who is running the
+                    # script, and when not in dry-run mode to the reviewers.
+                    emails = [gituser + '@sonyericsson.com']
+                    if not OPT.dry_run:
+                        emails += reviewers
+                    # If we were unable to get the source change URL, use the
+                    # sha1 instead.
+                    if not url:
+                        url = cmt.commit
+                    if 'the conflicts' in err:
+                        pick_result = 'Failed due to merge conflict'
+                        conflict_mail(target_branch, url, cmt.commit,
+                                      emails, pick_result)
+                    elif 'is a merge but no -m' in err:
+                        pick_result = 'It is a merge commit'
+                        conflict_mail(target_branch, url, cmt.commit,
+                                      emails, pick_result)
+                    elif 'nothing to commit' in git_log:
+                        pick_result = 'Already merged'
+                    else:
+                        pick_result = 'Failed due to unknown reason'
+                        conflict_mail(target_branch, url, cmt.commit,
+                                      emails, pick_result)
+                    print_err(err)
+                    print_err("Resetting to HEAD...")
+                    git_log, err, ret = execmd([GIT, 'reset', '--hard'])
+                    do_log(git_log)
+            else:
+                pick_result = '%s %s' % (git_log, err)
+                do_log(pick_result)
+        except Exception, e:
+            print_err("Exception occurred: %s", e)
+        finally:
+            # Move to origin and delete topic branch
+            git_log, err, ret = execmd([GIT, 'checkout', cmt.target_origin])
+            do_log(git_log)
+            git_log, err, ret = execmd([GIT, 'branch', '-D', topic_branch])
+            do_log(git_log)
+
         if OPT.dry_run:
             match = re.search('Dry-run ok', pick_result)
         else:
