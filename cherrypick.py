@@ -100,7 +100,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.22'
+__version__ = '0.3.23'
 
 REPO = 'repo'
 GIT = 'git'
@@ -134,6 +134,34 @@ GERRIT_URL = "review.sonyericsson.net"
 
 # Number of times to attempt git push of the cherry picked change
 MAX_PUSH_ATTEMPTS = 3
+
+# Mail notification when cherry pick fails
+CHERRY_PICK_FAILED_NOTIFICATION_MAIL =  \
+"""Hello,
+
+Automated cherry-pick of %s into branch %s has failed.
+
+%s.
+
+If this change is needed for %s, please manually cherry pick it with
+'git cherry-pick -x', and add the following persons as reviewers:
+
+%s
+
+Please reply to this mail with the Gerrit link for the new change once it is
+done.
+
+Thanks,
+Cherry-picker.
+
+
+Useful links:
+
+How to cherry pick:
+  https://wiki.sonyericsson.net/androiki/How_to_cherry-pick
+Cherry pick status page:
+  http://android-cm-web.sonyericsson.net/cherrypick/index.php
+"""
 
 
 class Httpdump:
@@ -1333,7 +1361,7 @@ def update_manifest_mail(branch, name, recipient):
     body = ('Hello,\n\nThe manifest file of %s branch ' % branch +
             'can\'t be updated for the following project(s):\n%s\n\n' % name +
             'Please update the manifest file ' +
-            'and reply to this mail with the change id.' +
+            'and reply to this mail with the Gerrit link.' +
             '\n\nThanks,\nCherry-picker')
     email(subject, body, recipient)
 
@@ -1344,18 +1372,8 @@ def conflict_mail(branch, url, change_id, recipient, result):
     """
     subject = ('[Cherrypick] [%s] cherry-pick of change %s has failed.' %
                (branch, change_id))
-    body = ('Hello,\n\nAutomated cherry-pick of %s into %s ' % (url, branch) +
-            'branch has failed.\n\n%s.\n\nPlease ' % (result) +
-            'manually upload this if it is needed for %s branch and' % branch +
-            ' add the following persons as reviewers:\n\n%s' \
-            % '\n'.join(recipient) +
-            '\n\nPlease reply to this mail with the Gerrit link for the new ' +
-            'change once it is done.\n\nThanks,\nCherry-picker.' +
-            '\n\nUseful links:' +
-            '\n\nHow to cherry pick:' +
-            ' https://wiki.sonyericsson.net/androiki/How_to_cherry-pick' +
-            '\nCherry pick status page:' +
-            ' http://android-cm-web.sonyericsson.net/cherrypick/index.php')
+    body = CHERRY_PICK_FAILED_NOTIFICATION_MAIL % \
+           (url, branch, result, branch, '\n'.join(recipient))
     email(subject, body, recipient)
 
 
