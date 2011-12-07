@@ -100,7 +100,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.23'
+__version__ = '0.3.24'
 
 REPO = 'repo'
 GIT = 'git'
@@ -1169,7 +1169,7 @@ def cherry_pick(unique_commit_list, target_branch):
                                'HEAD:refs/for/%s' % cmt.target]
                         if OPT.dry_run:
                             cmd.append('--dry-run')
-                        git_log, err, ret = execmd(cmd)
+                        git_log, err, ret = execmd(cmd, timeout=90)
                         do_log(err)
                         if ret == 0:
                             push_ok = True
@@ -1305,7 +1305,7 @@ def execmd(cmd, timeout=30):
         watchdog.cancel()  # if it's still waiting to run
         if kill_check.isSet():
             result_err = "Timeout: the command \"%s\" did not " \
-                         "complete in %dsec." % (" ".join(cmd), timeout)
+                         "complete in %d sec." % (" ".join(cmd), timeout)
         kill_check.clear()
         if process.poll() != 0 and OPT.verbose:
             print_err('Error executing: ' + " ".join(cmd))
