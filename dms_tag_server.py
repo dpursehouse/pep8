@@ -66,7 +66,7 @@ def initialize_path():
                                 os.path.realpath(
                                 os.path.dirname(sys.argv[0])), '\\', '\\\\')
 
-    open(working_dir + "\\new_log.txt", "ab").write("")
+    open(working_dir + "\\server_log.txt", "ab").write("")
     open(working_dir + "\\cqperl_log.txt", "ab").write("")
     argv = []
 
@@ -108,17 +108,17 @@ def parse_netrc(working_dir, home_dir):
         host = netrc.netrc(home_dir + '\\.netrc').hosts['dms_tag_server']
         return (str(host[0]), str(host[2]))
     except KeyError:
-        open(working_dir + "\\new_log.txt", "ab").write(
+        open(working_dir + "\\server_log.txt", "ab").write(
             'dms_tag_server info is not in .netrc file\n')
     except netrc.NetrcParseError:
-        open(working_dir + "\\new_log.txt", "ab").write(
+        open(working_dir + "\\server_log.txt", "ab").write(
             'Error parsing .netrc file\n')
     except IOError:
         host = ['-1']
-        open(working_dir + "\\new_log.txt", "ab").write(
+        open(working_dir + "\\server_log.txt", "ab").write(
             'Error opening .netrc file\n ' + host[0] + "'" + home_dir + "'")
     except:
-        open(working_dir + "\\new_log.txt", "ab").write(
+        open(working_dir + "\\server_log.txt", "ab").write(
             'Unexpected error %s\n' % sys.exc_info()[0])
     return (-1, -1)
 
@@ -217,7 +217,7 @@ class DmsTagServer (win32serviceutil.ServiceFramework):
             self.SvcStop()
             sys.exit(1)
 
-        open(working_dir + "\\new_log.txt", "ab").write("Server started\n")
+        open(working_dir + "\\server_log.txt", "ab").write("Server started\n")
 
         while self.keep_running:
             s.listen(MAX_QUEUE_SIZE)
@@ -250,79 +250,88 @@ def process_req(working_dir, channel, address, user, password):
         return
 
     req_type = data_list[0]
-    tag_list = [tag.strip() for tag in data_list[1].rstrip(',').split(',')]
+    tag_list = []
+    for tag in data_list[1].rstrip(',').split(','):
+        if tag.strip():
+            tag_list.append(tag.strip())
     issues = data_list[2]
+
     # Make it compatible with old cherry-pick script
     deliver_to = ''
     if len(data_list) > 3:
         deliver_to = data_list[3]
 
-    open(working_dir + "\\new_log.txt", "ab").write(
+    open(working_dir + "\\server_log.txt", "ab").write(
             'Connected by %s at %s for %s \n' % (address,
             datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S"), req_type))
     if req_type == dmsutil.SRV_DMS_STATUS:
-        cmd = ['cqperl', working_dir + '\\run_query.pl',
-                '-user', user, '-pwd', password, '-issues', issues,
-                '-log', 'cherry.log', '-list', '-site', 'JPTO']
-        try:
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE)
-            out, err = process.communicate()
-            if process.poll() != 0:
-                open(working_dir + "\\cqperl_log.txt", "ab").write(str(err))
+        send_data = issues
+        # If the tag list is empty no need to check the issues.  Just send back
+        # the issues.
+        if tag_list:
+            cmd = ['cqperl', working_dir + '\\run_query.pl',
+                    '-user', user, '-pwd', password, '-issues', issues,
+                    '-log', 'cherry.log', '-list', '-site', 'JPTO']
+            try:
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE)
+                out, err = process.communicate()
+                if process.poll() != 0:
+                    open(working_dir + "\\cqperl_log.txt", "ab").write(str(err))
+                    channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
+                    channel.close()
+                    return
+            except Exception, exp:
+                open(working_dir + "\\cqperl_log.txt", "ab").write(str(exp))
                 channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
                 channel.close()
                 return
-        except Exception, exp:
-            open(working_dir + "\\cqperl_log.txt", "ab").write(str(exp))
-            channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
-            channel.close()
-            return
 
-        try:
-            header = out.splitlines()[2]
-            # The output from the run_query.pl contains the field names
-            # in one line and its values in the following lines (one issue
-            # per line) separated by ':'.  Split the header line with
-            # ':' as delimiter and find the appropriate column index for
-            # the field names.  Later use this index to get the field values.
-            fixfor_index = header.split(':').index(' fix_for ')
-            deliver_to_index = header.split(':').index(' Delivery.deliver_to ')
-            deliveryfixfor_index = header.split(':'). \
-                                        index(' Delivery.fix_for ')
-            delivery_index = header.split(':').index(' Delivery ')
-            lines = out.splitlines()[3:]
-            dms_list = []
-            for line in lines:
-                delivery_in_qry = line.split(':')[delivery_index].strip()
-                deliveryfixfor_in_qry = line.split(':')[deliveryfixfor_index]. \
-                                            strip()
-                deliver_to_in_qry = line.split(':')[deliver_to_index].strip()
-                fixfor_in_qry = line.split(':')[fixfor_index].strip()
-                # Select the DMS issues that match one of the below criteria:
-                # 1. The new type of issues should have Delivery records and
-                #    `Delivery.deliver_to` should match the `target_branch` and
-                #    `Delivery.fix_for` should match one of the provided
-                #    `tag_list`.
-                # 2. The old type of issues should NOT have the Delivery
-                #    records and the `fix_for` should match one of the provided
-                #    `tag_list`
-                if (delivery_in_qry != "" and \
-                            deliver_to_in_qry == deliver_to and \
-                            deliveryfixfor_in_qry in tag_list) or \
-                            (delivery_in_qry == "" and \
-                            fixfor_in_qry in tag_list):
-                        dms_list.append(line.split(':')[0].strip())
+            try:
+                header = out.splitlines()[2]
+                # The output from the run_query.pl contains the field names
+                # in one line and its values in the following lines (one issue
+                # per line) separated by ':'.  Split the header line with
+                # ':' as delimiter and find the appropriate column index for
+                # the field names.  Later use this index to get the field
+                # values.
+                field_names = header.split(':')
+                fixfor_index = field_names.index(' fix_for ')
+                deliver_to_index = field_names.index(' Delivery.deliver_to ')
+                deliveryfixfor_index = field_names.index(' Delivery.fix_for ')
+                delivery_index = field_names.index(' Delivery ')
+                lines = out.splitlines()[3:]
+                dms_list = []
+                for line in lines:
+                    fields = line.split(':')
+                    delivery_in_qry = fields[delivery_index].strip()
+                    deliveryfixfor_in_qry = fields[deliveryfixfor_index].strip()
+                    deliver_to_in_qry = fields[deliver_to_index].strip()
+                    fixfor_in_qry = fields[fixfor_index].strip()
+                    # Select the DMS issues that match one of the below
+                    # criteria:
+                    # 1. The new type of issues should have Delivery records and
+                    #    `Delivery.deliver_to` should match the `target_branch`
+                    #    and `Delivery.fix_for` should match one of the provided
+                    #    `tag_list`.
+                    # 2. The old type of issues should NOT have the Delivery
+                    #    records and the `fix_for` should match one of the
+                    #    provided `tag_list`
+                    if (delivery_in_qry != "" and \
+                                deliver_to_in_qry == deliver_to and \
+                                deliveryfixfor_in_qry in tag_list) or \
+                                (delivery_in_qry == "" and \
+                                fixfor_in_qry in tag_list):
+                            dms_list.append(line.split(':')[0].strip())
+                dms_list.sort()
+                send_data = ','.join(dms_list)
+            except Exception, exp:
+                open(working_dir + "\\cqperl_log.txt", "ab").write(str(exp))
+                channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
+                channel.close()
+                return
 
-        except Exception, exp:
-            open(working_dir + "\\cqperl_log.txt", "ab").write(str(exp))
-            channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
-            channel.close()
-            return
-
-        dms_list.sort()
         totalsent = 0
-        send_data = ','.join(dms_list)
         while totalsent != len(send_data):
             totalsent += channel.send(
                             send_data[totalsent:totalsent + dmsutil.BUFFER_LEN])
