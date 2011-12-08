@@ -100,7 +100,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.24'
+__version__ = '0.3.25'
 
 REPO = 'repo'
 GIT = 'git'
@@ -161,6 +161,22 @@ How to cherry pick:
   https://wiki.sonyericsson.net/androiki/How_to_cherry-pick
 Cherry pick status page:
   http://android-cm-web.sonyericsson.net/cherrypick/index.php
+"""
+
+# Mail notification when DMS Tag Server fails and no fallback option is used
+TAG_SERVER_FAILED_NOTIFICATION_MAIL = \
+"""Hello,
+
+Automated cherry-pick failed.  Unable to verify DMS status.
+
+The DMS tag server, '%s', returned error.
+
+%s
+
+Rectify the server error and rerun.
+
+Thanks,
+Cherry-picker.
 """
 
 
@@ -441,6 +457,10 @@ def option_parser():
                      dest='dms_tag_server',
                      help='IP address or name of DMS tag server',
                      action="store", default=None)
+    opt_parser.add_option('--use-web-interface',
+                     dest='use_web_interface',
+                     help='Use DMS web interface if DMS tag server fails',
+                     action="store", default=False)
     opt_parser.add_option('--status-server',
                      dest='status_server',
                      help='IP address or name of status server',
@@ -975,6 +995,14 @@ def dms_get_fix_for(commit_list):
                 return commit_tag_list
     except DMSTagServerError, e:
         do_log('DMS tag server error: %s' % e, echo=True)
+        if not OPT.use_web_interface:
+            # No fallback option specified.  Report the error and quit.
+            do_log('Fallback to web interface is disabled.  Aborting.')
+            recipient = [get_git_user() + '@sonyericsson.com']
+            subject = '[Cherrypick] DMS tag server error'
+            body = TAG_SERVER_FAILED_NOTIFICATION_MAIL % (OPT.dms_tag_server, e)
+            email(subject, body, recipient)
+            cherry_pick_exit(STATUS_DMS_SRV)
 
     do_log('Using DMS web interface', echo=True)
     for cmt in commit_list:
