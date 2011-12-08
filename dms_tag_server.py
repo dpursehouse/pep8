@@ -299,6 +299,7 @@ def process_req(working_dir, channel, address, user, password):
                 fixfor_index = field_names.index(' fix_for ')
                 deliver_to_index = field_names.index(' Delivery.deliver_to ')
                 deliveryfixfor_index = field_names.index(' Delivery.fix_for ')
+                decision_index = field_names.index(' Delivery.decisionStatus ')
                 delivery_index = field_names.index(' Delivery ')
                 lines = out.splitlines()[3:]
                 dms_list = []
@@ -306,6 +307,7 @@ def process_req(working_dir, channel, address, user, password):
                     fields = line.split(':')
                     delivery_in_qry = fields[delivery_index].strip()
                     deliveryfixfor_in_qry = fields[deliveryfixfor_index].strip()
+                    decision_in_qry = fields[decision_index].strip()
                     deliver_to_in_qry = fields[deliver_to_index].strip()
                     fixfor_in_qry = fields[fixfor_index].strip()
                     # Select the DMS issues that match one of the below
@@ -318,11 +320,12 @@ def process_req(working_dir, channel, address, user, password):
                     #    records and the `fix_for` should match one of the
                     #    provided `tag_list`
                     if (delivery_in_qry != "" and \
-                                deliver_to_in_qry == deliver_to and \
-                                deliveryfixfor_in_qry in tag_list) or \
-                                (delivery_in_qry == "" and \
-                                fixfor_in_qry in tag_list):
-                            dms_list.append(line.split(':')[0].strip())
+                            deliver_to_in_qry == deliver_to and \
+                            string.lower(decision_in_qry) == "accepted" and \
+                            deliveryfixfor_in_qry in tag_list) or \
+                            (delivery_in_qry == "" and \
+                            fixfor_in_qry in tag_list):
+                        dms_list.append(line.split(':')[0].strip())
                 dms_list.sort()
                 send_data = ','.join(dms_list)
             except Exception, exp:
