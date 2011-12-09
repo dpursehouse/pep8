@@ -96,12 +96,13 @@ from cherry_status import DEFAULT_STATUS_SERVER
 from dmsutil import DMSTagServer, DMSTagServerError
 from find_reviewers import FindReviewers, AddReviewersError
 from gerrit import GerritSshConnection, GerritSshConfigError, GerritQueryError
+import git
 from processes import ChildExecutionError
 
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.26'
+__version__ = '0.3.27'
 
 REPO = 'repo'
 GIT = 'git'
@@ -126,9 +127,6 @@ STATUS_USER_ABORTED = 10
 STATUS_RM_MANIFEST_DIR = 11
 STATUS_CLONE_MANIFEST = 12
 STATUS_UPDATE_MANIFEST = 13
-
-#Commit SHA1 string length
-SHA1_STR_LEN = 40
 
 #Gerrit server URL
 GERRIT_URL = "review.sonyericsson.net"
@@ -351,7 +349,7 @@ class ManifestData():
            XML or ValueError if the passed base SHA1 isn't a valid commit
            SHA1"""
         self.dom = xml.dom.minidom.parseString(xml_input_data)
-        if (is_str_git_sha1(base_sha1)):
+        if (git.is_sha1(base_sha1)):
             self.base_sha1 = base_sha1
         else:
             raise ValueError('Invalid base SHA1')
@@ -625,24 +623,6 @@ def repo_sync():
         cherry_pick_exit(STATUS_REPO, "Repo sync error %s" % err)
 
 
-def is_str_git_sha1(input_string):
-    """
-    Checks if the input string is a valid commit SHA1.
-    A character string is considered to be a commit SHA1 if it has exactly
-    the expected length and is a base 16 represented integer.
-    """
-    if (len(input_string) != SHA1_STR_LEN):
-        return False
-    else:
-        try:
-            #convert from base 16 to base 10 to ensure it's a valid base 16
-            #integer
-            sha10 = int(input_string, 16)
-        except:
-            return False
-    return True
-
-
 def loop_match(patterns, string):
     """
     Checks if the input string matches one of the provided patterns.
@@ -694,7 +674,7 @@ def get_dms_list(target_branch):
             #no need to proceed if both have same revision
             continue
 
-        if (is_str_git_sha1(t_revision)):
+        if (git.is_sha1(t_revision)):
             target_revision = t_revision  # it's a sha1
             target_is_sha1 = True
         elif (loop_match(OPT.target_branch_patterns.split(','), t_revision)):
