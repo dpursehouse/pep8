@@ -102,7 +102,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.27'
+__version__ = '0.3.28'
 
 REPO = 'repo'
 GIT = 'git'
@@ -660,18 +660,28 @@ def get_dms_list(target_branch):
             continue      # exclude gits
 
         os.chdir(os.path.join(OPT.cwd, path))
-        #check base rev is sha1 or branch
+
+        # If the revision of the source git is a sha1 or tag, we don't need
+        # to cherry pick from it.
+        if git.is_sha1_or_tag(base_rev):
+            continue
+
+        # Skip any source gits that do not have a valid revision
         ret = execmd([GIT, 'show-ref', '-q', '--verify',
                       'refs/remotes/origin/' + base_rev])[2]
         if ret != 0:
-            continue  # it is sha1 or tag, so ignore
-        #check target branch for this git is available
-        if not path in dst_proj_rev:
-            logging.error("Branch not found in destination for git %s" % name)
+            logging.error("Invalid revision %s for project %s" % \
+                          (base_rev, name))
             continue
+
+        # Check that the git is available in the target manifest
+        if not path in dst_proj_rev:
+            logging.info("Project %s does not exist in target manifest" % name)
+            continue
+
         t_revision = dst_proj_rev[path]
         if t_revision == base_rev:
-            #no need to proceed if both have same revision
+            # No need to proceed if source and target both have same revision
             continue
 
         if (git.is_sha1(t_revision)):
