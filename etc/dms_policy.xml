@@ -8,4 +8,11 @@
     <dms-required>true</dms-required>
     <allowed-dms-tag name="CA1"/>
   </branch>
+  <branch pattern="^edream6\.0-fuji-release$">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="CAF"/>
+    <allowed-dms-tag name="Fix ASAP"/>
+    <allowed-dms-tag name="DCM S2"/>
+    <allowed-dms-tag name="DCM CAF"/>
+  </branch>
 </branches>
