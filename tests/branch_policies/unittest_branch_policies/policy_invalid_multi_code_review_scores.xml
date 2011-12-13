@@ -2,9 +2,8 @@
 <branches>
   <branch pattern="branch-1">
     <dms-required>true</dms-required>
-    <allowed-dms-tag name="TAG 1"/>
     <allowed-dms-tag name="TAG 2"/>
+    <code-review>-1</code-review>
     <code-review>-2</code-review>
-    <verify>-1</verify>
   </branch>
 </branches>

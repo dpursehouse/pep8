@@ -46,6 +46,7 @@ class TestBranchPolicies(unittest.TestCase):
         self.assertTrue(p.is_tag_allowed("TAG 1", "branch-1"))
         self.assertTrue(p.is_tag_allowed("TAG 2", "branch-1"))
         self.assertFalse(p.is_tag_allowed("TAG 3", "branch-1"))
+        self.assertEquals((-2, -1), p.get_branch_score_values("branch-1"))
 
     def test_valid_config_multi_branch(self):
         """ Test that the class constructor and its methods behave
@@ -101,6 +102,16 @@ class TestBranchPolicies(unittest.TestCase):
         self.assertTrue(p.is_tag_allowed("TAG 123", "branch-name"))
         self.assertFalse(p.is_tag_allowed("TAG 2", "branch-name"))
 
+    def test_valid_dms_not_required(self):
+        """ Test that the class constructor and its methods behave
+        correctly when it is instantiated with a config containing
+        a branch policy that does not require DMS.
+        """
+        p = self._get_policy("policy_valid_dms_not_required.xml")
+        self.assertFalse(p.branch_requires_dms("branch-name"))
+        self.assertTrue(p.is_tag_allowed("tag", "branch-name"))
+        self.assertEquals((0, 0), p.get_branch_score_values("branch-name"))
+
     def test_invalid_xml(self):
         """ Test that the class constructor raises an exception
         when instantiated with invalid XML data.
@@ -118,10 +129,58 @@ class TestBranchPolicies(unittest.TestCase):
     def test_invalid_multiple_dms_required(self):
         """ Test that the class constructor raises an exception
         when instantiated with a config that specifies more than
-        one "dms-required" elements in a branch.
+        one "dms-required" element in a branch.
         """
         self.assertRaises(BranchPolicyError, self._get_policy,
             "policy_invalid_multi_dms_required.xml")
+
+    def test_invalid_multiple_code_review_scores(self):
+        """ Test that the class constructor raises an exception
+        when instantiated with a config that specifies more than
+        one "code-review" element in a branch.
+        """
+        self.assertRaises(BranchPolicyError, self._get_policy,
+            "policy_invalid_multi_code_review_scores.xml")
+
+    def test_invalid_multiple_verify_scores(self):
+        """ Test that the class constructor raises an exception
+        when instantiated with a config that specifies more than
+        one "verify" element in a branch.
+        """
+        self.assertRaises(BranchPolicyError, self._get_policy,
+            "policy_invalid_multi_verify_scores.xml")
+
+    def test_invalid_code_review_score(self):
+        """ Test that the class constructor raises an exception
+        when instantiated with a config that specifies an invalid
+        "code-review" element in a branch.
+        """
+        self.assertRaises(BranchPolicyError, self._get_policy,
+            "policy_invalid_code_review_score.xml")
+
+    def test_invalid_verify_score(self):
+        """ Test that the class constructor raises an exception
+        when instantiated with a config that specifies an invalid
+        "verify" element in a branch.
+        """
+        self.assertRaises(BranchPolicyError, self._get_policy,
+            "policy_invalid_verify_score.xml")
+
+    def test_invalid_score_without_dms(self):
+        """ Test that the class constructor raises an exception
+        when instantiated with a config that specifies a score
+        element in a branch that does not require DMS.
+        """
+        self.assertRaises(BranchPolicyError, self._get_policy,
+            "policy_invalid_score_without_dms.xml")
+
+    def test_invalid_missing_dms_required_element(self):
+        """ Test that the class constructor raises an exception
+        when instantiated with a config does not have a "dms-required"
+        element.
+        """
+        self.assertRaises(BranchPolicyError, self._get_policy,
+            "policy_invalid_missing_dms_required_element.xml")
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,6 +1,9 @@
 import re
 from xml.etree.ElementTree import ElementTree
 
+VALID_CODE_REVIEW = ["-2", "-1", "0"]
+VALID_VERIFY = ["-1", "0"]
+
 
 class BranchPolicyError(Exception):
     """ BranchPolicyError is raised when an invalid policy is
@@ -32,6 +35,8 @@ class BranchPolicies():
                     tagnames = []
                     tagpatterns = []
                     dms_required = False
+                    codereview = 0
+                    verify = 0
                     for element in branch.findall("allowed-dms-tag"):
                         tagname = element.get("name")
                         if tagname:
@@ -39,17 +44,55 @@ class BranchPolicies():
                         tagpattern = element.get("pattern")
                         if tagpattern:
                             tagpatterns.append(tagpattern.strip())
-                    elements = branch.findall("dms-required")
-                    if len(elements) > 1:
-                        raise BranchPolicyError("Cannot have more than one "
-                                                "`dms-required` element per "
-                                                "branch")
-                    dms_required = elements[0].text.lower() == "true"
+
+                    dms_required_element = self._get_element(branch,
+                                                             "dms-required")
+                    if not dms_required_element:
+                        raise BranchPolicyError("`dms-required` value not "
+                                                "specified for branch %s" % \
+                                                pattern)
+                    dms_required = dms_required_element == "true"
+
+                    code_review = self._get_score(branch, "code-review",
+                                                  VALID_CODE_REVIEW)
+                    verify = self._get_score(branch, "verify", VALID_VERIFY)
+
+                    if (code_review or verify) and not dms_required:
+                        raise BranchPolicyError("Cannot specify score unless "
+                                                "DMS is required")
+
                     if dms_required or tagnames or tagpatterns:
                         self.branches.append({"pattern": pattern,
                                               "tagnames": tagnames,
                                               "tagpatterns": tagpatterns,
-                                              "dms_required": dms_required})
+                                              "dms_required": dms_required,
+                                              "code_review": code_review,
+                                              "verify": verify})
+
+    def _get_element(self, node, element_name):
+        """ Get `element_name` from `node` and return its text value
+        converted to lower case, or None if the element was not found.
+        Raise BranchPolicyError if more than one element was found.
+        """
+        elements = node.findall(element_name)
+        if not elements:
+            return None
+        if len(elements) > 1:
+            raise BranchPolicyError("Cannot have more than one `%s` element "
+                                    "per branch" % element_name)
+        return elements[0].text.lower()
+
+    def _get_score(self, node, type, valid_scores):
+        """ Get the score `type` from `node` and return it as an integer, or
+        zero if the score was not found in the node.
+        Raise BranchPolicyError if the score is not in `valid_scores`.
+        """
+        score = self._get_element(node, type)
+        if score:
+            if score not in valid_scores:
+                raise BranchPolicyError("Invalid %s value: %s" % (type, score))
+            return int(score)
+        return 0
 
     def branch_has_policy(self, dest_branch):
         """ Check if the `dest_branch` has a tag policy.
@@ -68,6 +111,16 @@ class BranchPolicies():
             # If the branch doesn't have a policy, default to being
             # permissive.
             return False
+
+    def get_branch_score_values(self, dest_branch):
+        """ Get the Gerrit review scores to be used for `dest_branch` if its
+        DMS policy is not met.
+        Return a tuple of code review and verify scores.
+        """
+        if self.branch_requires_dms(dest_branch):
+            policy = self.get_policy(dest_branch)
+            return (policy["code_review"], policy["verify"])
+        return (0, 0)
 
     def get_branch_tagnames(self, dest_branch):
         """ Get the tags required by `dest_branch`.
