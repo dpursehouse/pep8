@@ -100,8 +100,9 @@ DL-WW-Android-SW-CM and tell us about this.
 
 If you think you have listed the DMS issue in the commit message but
 you're still getting this report, you might not be using the correct
-notation. If so, have a look at
-https://wiki.sonyericsson.net/androiki/Commit_messages."""
+notation. If so, have a look at the commit message guideline:
+
+https://wiki.sonyericsson.net/androiki/Commit_messages"""
 
 # Message when DMS in the commit message do not have required tag
 MESSAGE_DMS_TAG_REQUIRED = \
@@ -167,16 +168,22 @@ def _get_patchset_fixed_issues(options):
 
 
 def _get_dms_violations(config, dmslist, affected_manifests):
-    """ Checks `dmslist` against the `affected_manifests` and
-    returns a list of violations, or an empty list if there are no
-    violations.
+    """ Checks `dmslist` against the `affected_manifests` and returns a
+    list of violations (empty if there are none), code review score, and
+    verify score.
     """
     violations = []
-    if dmslist:
-        for branch in filter(config.branch_has_policy,
-                             affected_manifests):
+    code_review = 0
+    verify = 0
+
+    for branch in filter(config.branch_requires_dms,
+                         affected_manifests):
+        msg = None
+        if dmslist:
             tagnames = config.get_branch_tagnames(branch)
 
+            # If this branch does not require DMS tags, there is no
+            # need to process further.
             if not tagnames:
                 continue
 
@@ -185,25 +192,32 @@ def _get_dms_violations(config, dmslist, affected_manifests):
             except DMSTagServerError, e:
                 semcutil.fatal(1, "DMS tag server error: %s" % e)
 
+            # Find any DMS issues that are not tagged with the
+            # required tag(s) for this branch.
             invalid_issues = []
             for issue in dmslist:
                 if issue not in tagged_issues:
                     invalid_issues += [issue]
 
             if invalid_issues:
-                violations.append(MESSAGE_DMS_TAG_REQUIRED % \
-                    (branch,
-                     ", ".join(tagnames),
-                     ", ".join(invalid_issues)))
-    else:
-        for branch in filter(config.branch_has_policy,
-                             affected_manifests):
+                msg = MESSAGE_DMS_TAG_REQUIRED % (branch,
+                                                  ", ".join(tagnames),
+                                                  ", ".join(invalid_issues))
+        else:
             msg = MESSAGE_DMS_REQUIRED % branch
             tagnames = config.get_branch_tagnames(branch)
             if tagnames:
                 msg += MESSAGE_TAG_REQUIRED % ", ".join(tagnames)
+
+        if msg:
             violations.append(msg)
-    return violations
+            _code_review, _verify = config.get_branch_score_values(branch)
+            if _code_review < code_review:
+                code_review = _code_review
+            if _verify < verify:
+                verify = _verify
+
+    return violations, code_review, verify
 
 
 def _main():
@@ -400,6 +414,9 @@ def _main():
     else:
         logging.info("No impact on multiple system branches")
 
+    code_review = 0
+    verify = 0
+
     # If a policy configuration is specified, check that the commit follows
     # the policy.
     if options.policy_file:
@@ -422,8 +439,8 @@ def _main():
             else:
                 logging.info("Found DMS: " + ", ".join(dmslist))
 
-            violations = _get_dms_violations(config, dmslist,
-                                             affected_manifests)
+            violations, code_review, verify = \
+                _get_dms_violations(config, dmslist, affected_manifests)
 
             if violations:
                 if not message:
@@ -447,6 +464,8 @@ def _main():
     # If any message has been generated, post it as a note to the change.
     if message:
         logging.info(message)
+        logging.info("\nCode review: %s" % code_review)
+        logging.info("Verify: %s" % verify)
         if not options.dry_run:
             try:
                 gerrit_conn = \
@@ -454,14 +473,16 @@ def _main():
                                                username=options.gerrit_user)
                 gerrit_conn.review_patchset(change_nr=change_nr,
                                             patchset=patchset_nr,
-                                            message=message)
+                                            message=message,
+                                            codereview=code_review,
+                                            verified=verify)
             except gerrit.GerritSshConfigError, err:
-                semcutil.fatal(1, "Error: getting Gerrit ssh config: %s" % err)
+                semcutil.fatal(1, "Error getting Gerrit ssh config: %s" % err)
             except processes.ChildExecutionError, err:
-                semcutil.fatal(2, "Error scoring change: %s" % err)
+                semcutil.fatal(2, "Error submitting review to Gerrit: %s" % err)
 
 if __name__ == "__main__":
     try:
         sys.exit(_main())
     except KeyboardInterrupt:
-        sys.exit(1)
+        semcutil.fatal(3, "Interrupted by user")
