@@ -6,12 +6,14 @@ import wikitools
 import urlparse
 import urllib
 
+
 class SemcWikiError(Exception):
     def __init__(self, message):
         self.message = message
 
     def __str__(self):
         return self.message
+
 
 class WikiOperation():
     def __init__(self, f):
@@ -24,6 +26,7 @@ class WikiOperation():
             raise SemcWikiError("The wiki returned an error:\n" + str(e))
         except wikitools.wiki.WikiError, e:
             raise SemcWikiError("The wiki returned an error:\n" + str(e))
+
 
 def read_netrc_cred(wikiserver):
     try:
@@ -38,6 +41,7 @@ def read_netrc_cred(wikiserver):
                 return parts[3], parts[5]
     raise SemcWikiError("Could not find %s in $HOME/.netrc" % (wikiserver))
 
+
 def get_page_rss(wiki, pagename):
     url = wiki.apibase
     url = url.replace("api.php", "index.php")
@@ -45,12 +49,14 @@ def get_page_rss(wiki, pagename):
     url += "?title=%s&action=feed" % (encpage)
     return url
 
+
 @WikiOperation
 def get_wiki(url):
     urlp = urlparse.urlparse(url)
     cred = read_netrc_cred(urlp.netloc)
     wiki = wikitools.wiki.Wiki(url, cred)
     return wiki
+
 
 @WikiOperation
 def add_item_to_feed(wiki, page, title, text):
@@ -76,12 +82,19 @@ def add_item_to_feed(wiki, page, title, text):
     editedpage = result["edit"]["title"]
     return editedpage
 
+
 @WikiOperation
-def add_section_to_page(wiki, page, title, text):
+def add_section_to_page(wiki, page, title, text, prepend=False):
     p = wikitools.page.Page(wiki, page)
-    result = p.edit(section="new", summary=title, text=text)
-    editedpage = result["edit"]["title"]
+    if prepend:
+        text = "== %s ==\n\n%s" % (title, text)
+        result = p.edit(section=0, text=text)
+        editedpage = result["edit"]["title"]
+    else:
+        result = p.edit(section="new", summary=title, text=text)
+        editedpage = result["edit"]["title"]
     return editedpage
+
 
 @WikiOperation
 def write_page(wiki, page, text):
@@ -89,6 +102,7 @@ def write_page(wiki, page, text):
     result = p.edit(text=text)
     editedpage = result["edit"]["title"]
     return editedpage
+
 
 @WikiOperation
 def get_sections(wiki, page):
@@ -98,6 +112,7 @@ def get_sections(wiki, page):
                                         "prop": "sections"})
     result = r.query()
     return [x["line"] for x in result["parse"]["sections"]]
+
 
 @WikiOperation
 def upload_file_to_wiki(wiki, page, filepath):
