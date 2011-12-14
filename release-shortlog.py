@@ -3,12 +3,15 @@
 import glob
 from optparse import OptionParser
 import os
+import processes
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import xml.dom.minidom
 import urllib
+import xml.dom.minidom
+
 
 import debrevision
 import deltapi
@@ -125,6 +128,7 @@ def main(argv):
     dg.generateDiff(oldManifestUrl, newManifestUrl, notFilter)
     if "external_package_gits" in sys.modules:
         dg.diffDecoupledApps(oldManifestUrl, newManifestUrl, notFilter)
+    dg.printRevertLog()
     dg.printCommitCount()
     dg.dmsqueryQry()
 
@@ -143,6 +147,7 @@ class DiffGenerator(object):
         self.concatLog = ""
         self.commitCountFiltered = 0
         self.commitCount = 0
+        self.revert_logs = ""
 
     def generateDiff(self, oldManifestUri, newManifestUri, notFilter=None):
         print "Old manifest: %s" % oldManifestUri
@@ -181,14 +186,20 @@ class DiffGenerator(object):
                         newProjPath = newProject.getAttribute("name")
                     print "** %s **" % newProjPath
                     print "\n".join(self.runGitlog(newProjPath,
-                                                newrev,
-                                                oldrev))
+                                                   newrev,
+                                                   oldrev))
 
                     log = "\n".join(self.runLog(newProjPath,
                                            newrev,
                                            oldrev))
 
                     dmslist.extend(self.dmsqueryShow(log))
+
+                    self.revert_logs += self.get_revert_info(newProjPath,
+                                                             newrev,
+                                                             oldrev)
+
+                    self.revert_dms = self.dmsqueryShow(self.revert_logs)
 
                     if notFilter != None:
                         filteredLog = "\n".join(self.runLog(
@@ -528,6 +539,34 @@ class DiffGenerator(object):
 
         return len(res)
 
+    def get_revert_info(self, path, newrev, oldrev):
+        """look up the reverted commits between newrev and oldrev """
+        revert_log = ""
+        commit_id = ""
+        cmdargs = ["git", "rev-list", "--no-merges",
+                   "--pretty=oneline", "%s..%s" % (oldrev, newrev)]
+        try:
+            (code, out, err) = processes.run_cmd(cmdargs, path=path)
+            for line in out.split('\n'):
+                commit_id = line.split(" ")[0]
+                commit_subject = line.split(" ", 1)[-1]
+                if commit_subject.startswith("Revert \""):
+                    try:
+                        cmdargs = ["git", "rev-list", "--no-walk",
+                                   "--pretty=medium", commit_id]
+                        (code, out, err) = processes.run_cmd(cmdargs, path=path)
+                        revert_log += out + '\n'
+                    except (processes.ChildExecutionError, IndexError,
+                            ValueError), err:
+                        raise deltapi.gitrevision.GitExecutionError(
+                                              "Tried to execute: %s\n" \
+                                              "Result was: %s" % (cmdargs, err))
+        except (processes.ChildExecutionError, IndexError, ValueError), err:
+            raise deltapi.gitrevision.GitExecutionError("Tried to execute: " \
+                                                        "%s\nResult was: %s" %
+                                                        (cmdargs, err))
+        return revert_log
+
     def runGitlog(self, path=None, newrev=None, oldrev=None):
         rootdir = os.getcwd()
         try:
@@ -566,6 +605,16 @@ class DiffGenerator(object):
         if self.count == True:
             print "\nCommits introduced: %d" % self.commitCount
             print "Commits used for DMS query: %d" % self.commitCountFiltered
+
+    def printRevertLog(self):
+        """Prints the reverted commits log by self.revert_logs and list
+        reverted commits DMS by self.revert_dms
+        Showing the commits that revert other commits"""
+        if self.revert_logs:
+            print "\nShowing the commits that revert " \
+                  "other commits:\n%s" % self.revert_logs
+            if self.revert_dms:
+                print "\nReverted DMS:\n%s" % '\n'.join(self.revert_dms)
 
     def dmsqueryQry(self):
         cmd = "dmsquery -qry %s" % self.query
