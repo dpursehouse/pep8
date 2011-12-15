@@ -71,6 +71,7 @@ my $unlabeled_query;
 my $project;
 my $deliver_to;
 my $create_DR;
+my $remove_query;
 my %incorrect_tagged_issues = ();
 my @untagged_issues = ();
 
@@ -172,6 +173,16 @@ if(scalar(@ARGV) == 0) {
     chomp $sites_list;
     @sites = split(/,/, $sites_list);
 
+    $done = "";
+    # Query user if the generated query file can be deleted.
+    while(!($done =~ /^y(es)?/ || $done =~ /^no?/)) {
+      print "Do you want to remove the temporary query file? (y[es]/n[o]): ";
+      $done = <STDIN>;
+      chomp $done;
+      if($done =~ /^y(es)?/) {$remove_query = 1;}
+      if($done =~ /^no?/) {$remove_query = 0;}
+    }
+
     # Project (Technical name) refers to the name of project that the label should exist in.
     # Necessary if a label should be created.
     $choice = 0;
@@ -227,6 +238,11 @@ if(scalar(@ARGV) == 0) {
       print "No unverified query generated!\n";
     }
     print "Sites: ", join(', ', @sites), "\n";
+    if ($remove_query) {
+      print "Remove generated query file: Yes\n";
+    } else {
+      print "Remove generated query file: No\n";
+    }
 
     $done = "";
     # Query user if input is ok. Offer to rerun if not.
@@ -250,6 +266,7 @@ if(scalar(@ARGV) == 0) {
                             "list"          => \$list,
                             "update"        => \$update,
                             "sites=s"       => \@sites,
+                            "remove_query"  => \$remove_query,
                             "unv=s"         => \$unverified_query,
                             "unl=s"         => \$unlabeled_query,
                             "issues=s"      => \@issues,
@@ -352,6 +369,10 @@ $query_def = $session->OpenQueryDef($query_path);
 my $result_set = $session->BuildResultSet($query_def);
 $result_set->EnableRecordCount();
 $result_set->Execute();
+
+if ($remove_query) {
+    unlink($query_path);
+}
 
 if (Win32::OLE->LastError != 0) {
   print "Problem with DMS Query\n";
@@ -2002,6 +2023,6 @@ sub create_time_stamp {
 #######################################
 
 sub usage {
-  print "cqperl <script> -user <user> -pwd <password> -log <logfile> [-sites <site>[,...]] [-tags <\"tag[,...]\">] (-list [-unv <query> | -unl <query>] | -update -label <label> -deliver_to <branch name>) (-query <query file> | -issues <issue[,...]>) -createlabel <labelproject>\n";
+  print "cqperl <script> -user <user> -pwd <password> -log <logfile> [-sites <site>[,...]] [-remove_query] [-tags <\"tag[,...]\">] (-list [-unv <query> | -unl <query>] | -update -label <label> -deliver_to <branch name>) (-query <query file> | -issues <issue[,...]>) -createlabel <labelproject>\n";
 }
 
