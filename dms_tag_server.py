@@ -269,7 +269,7 @@ def process_req(working_dir, channel, address, user, password):
         # If the tag list is empty no need to check the issues.  Just send back
         # the issues.
         if tag_list:
-            cmd = ['cqperl', working_dir + '\\run_query.pl',
+            cmd = ['cqperl', working_dir + '\\run_query.pl', '-remove_query',
                     '-user', user, '-pwd', password, '-issues', issues,
                     '-log', 'cherry.log', '-list', '-site', 'JPTO']
             try:
