@@ -461,28 +461,43 @@ def _main():
     else:
         logging.info("No DMS policy")
 
-    # If any message has been generated, post it as a note to the change.
+    # If any message has been generated, post it as a note to the change
+    # along with code review and verify scores.
     if message:
-        logging.info(message)
+        logging.info("\nReview message: \n====\n%s\n====" % message)
         logging.info("\nCode review: %s" % code_review)
         logging.info("Verify: %s" % verify)
+
         if not options.dry_run:
             try:
-                gerrit_conn = \
-                    gerrit.GerritSshConnection(options.gerrit_url,
+                g = gerrit.GerritSshConnection(options.gerrit_url,
                                                username=options.gerrit_user)
-                gerrit_conn.review_patchset(change_nr=change_nr,
-                                            patchset=patchset_nr,
-                                            message=message,
-                                            codereview=code_review,
-                                            verified=verify)
+
+                # It is possible that the change has been merged or
+                # abandoned during the time it has taken to run this script.
+                # Only attempt to include code review and verify scores if
+                # the change is still open.
+                if g.change_is_open(str(change_nr)):
+                    g.review_patchset(change_nr=change_nr,
+                                      patchset=patchset_nr,
+                                      message=message,
+                                      codereview=code_review,
+                                      verified=verify)
+                else:
+                    logging.info("Change is closed: adding review message " \
+                                 "without code review or verify scores")
+                    g.review_patchset(change_nr=change_nr,
+                                      patchset=patchset_nr,
+                                      message=message)
             except gerrit.GerritSshConfigError, err:
                 semcutil.fatal(1, "Error getting Gerrit ssh config: %s" % err)
             except processes.ChildExecutionError, err:
                 semcutil.fatal(2, "Error submitting review to Gerrit: %s" % err)
+            except gerrit.GerritQueryError, err:
+                semcutil.fatal(3, "Error submitting review to Gerrit: %s" % err)
 
 if __name__ == "__main__":
     try:
         sys.exit(_main())
     except KeyboardInterrupt:
-        semcutil.fatal(3, "Interrupted by user")
+        semcutil.fatal(4, "Interrupted by user")
