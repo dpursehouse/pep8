@@ -18,4 +18,10 @@
     <allowed-dms-tag name="DCM CAF"/>
     <code-review>-1</code-review>
   </branch>
+  <branch pattern="^edream6\.0-fuji-kddi-release$">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="CAF"/>
+    <allowed-dms-tag name="Fix ASAP"/>
+    <code-review>-1</code-review>
+  </branch>
 </branches>
