@@ -1,6 +1,5 @@
-import glob
-from optparse import OptionParser
-import os
+#!/usr/bin/env python
+
 import processes
 import re
 import shutil
@@ -14,9 +13,6 @@ class Snapshot:
     def __init__(self, from_snapshot=None, from_file=None, name=None):
         self.packages = {}
         # key = package name, value = (old version, new version) tuple.
-        self.replaced = {}
-        self.removed = {}
-        self.new = {}
         self.server = None
         self.tempDir = tempfile.mkdtemp()
 
@@ -53,10 +49,14 @@ class Snapshot:
     def add_package(self, package, replace=True):
         """Takes a package name/version tuple and adds to
            the packages dictionary instance variable.
+           Returns one dict with all new packages and one with all
+           replaced packages
         """
         # TODO: Add version control to see whether the package exists and so,
         #       we are trying to set an older version than the current one. If
         #       so, print a warning in the log
+        replaced = {}
+        newp = {}
         cmd = self._repository_cmd()
         cmd.extend(['getpackage', package[0], package[1],
                     "--out=%s" % self.tempDir])
@@ -65,24 +65,28 @@ class Snapshot:
             if res == 0:
                 if package[0] in self.packages:
                     if self.packages[package[0]] != package[1]:
-                        self.replaced[package[0]] = (self.packages[package[0]],
-                                                     package[1])
+                        replaced[package[0]] = (self.packages[package[0]],
+                                                 package[1])
                 else:
-                    self.new[package[0]] = package[1]
+                    newp[package[0]] = package[1]
                 self.packages[package[0]] = package[1]
             else:
                 print >> sys.stderr, err
         except processes.ChildExecutionError, e:
             print >> sys.stderr, "Could not find package %s, rev %s in the " \
             "repository: %s " % (package[0], package[1], e)
+        return (newp, replaced)
 
     def remove_package(self, packageName):
         """ Deletes the package from the package dict if it is present.
+            Returns a dict with all removed packages
         """
+        removed = {}
         try:
-            self.removed[packageName] = self.packages.pop(packageName)
+            removed[packageName] = self.packages.pop(packageName)
         except KeyError:
             pass
+        return removed
 
     def create_label(self, name=None):
         """Emits a package list (xml) and uses this to promote the packages
@@ -97,27 +101,42 @@ class Snapshot:
     def add_from_file(self, package_file):
         """Takes a package list xml file as imput and
            adds the listed packages to the package list
+           Returns one dict with the new packages and one with the updated ones
         """
+        newPacks = {}
+        replacedPacks = {}
         tags = ET.parse(package_file)
         for package in tags.findall("package"):
-            self.add_package([package.attrib["name"],
-                              package.attrib["revision"]])
+            (newp, replp) = self.add_package([package.attrib["name"],
+                                              package.attrib["revision"]])
+            newPacks.update(newp)
+            replacedPacks.update(replp)
         for packageGroup in tags.findall("package-group"):
             for package in packageGroup.findall("package"):
                 if "revision" in package.attrib:
+                    (newp, replp) = \
                     self.add_package([package.attrib["name"],
                                       package.attrib["revision"]])
+                    newPacks.update(newp)
+                    replacedPacks.update(replp)
                 else:
+                    (newp, replp) = \
                     self.add_package([package.attrib["name"],
                                       packageGroup.attrib["revision"]])
+                    newPacks.update(newp)
+                    replacedPacks.update(replp)
+        return(newPacks, replacedPacks)
 
     def remove_from_file(self, package_file):
         """Takes a package list xml file as input and removes
            the listed packages from the package list.
+           Returns a dict of the removed packages
         """
+        rmPacks = {}
         tags = ET.parse(package_file)
         for package in tags.findall("package"):
-            self.remove_package(package.attrib("name"))
+            rmPacks.update(self.remove_package(package.attrib("name")))
+        return rmPacks
 
     def filter_packages(self, package_filter):
         filter_exp = re.compile(package_filter)
@@ -129,20 +148,6 @@ class Snapshot:
         """Sets the snapshot name
         """
         self.name = name
-
-    def report(self):
-        """Prints a report of changes made to the package list
-        """
-        print("Added packages:")
-        for pName in self.new.keys():
-            print "  %s:\t%s" % (pName, self.new[pName])
-        print("Updated packages:")
-        for pName in self.replaced.keys():
-            print "  %s:\t%s\t%s" % (pName, self.replaced[pName][0],
-                                     self.replaced[pName][1])
-        print("Removed packages:")
-        for pName in self.removed.keys():
-            print "  %s:\t%s" % (pName, self.removed[pName])
 
     def emit_package_file(self, path=None):
         """Emits a package file to <path> stream or stdout
@@ -157,7 +162,7 @@ class Snapshot:
         print >> path, "</packages>"
 
     def promote_from_file(self, name=None, path=None):
-        """Promotes packages from package list in path to label named <name
+        """Promotes packages from package list in path to label named <name>
         """
         if name == None:
             name = self.name
@@ -169,6 +174,28 @@ class Snapshot:
         cmd.extend(['promotefromfile', path.name, "--label=%s" % name])
         (res, ret, err) = processes.run_cmd(cmd)
 
+    def diff(self, otherSnapshot):
+        """Compares this snapshot with oldSnapshot.
+           Returns one dict with new packages, one with removed packages and
+           one with updated packages"""
+        inCurrent = {}
+        inBoth = {}
+        inOther = {}
+
+        curKeys = set(self.packages.keys())
+        otherKeys = set(otherSnapshot.packages.keys())
+
+        for packName in curKeys.intersection(otherKeys):
+            if self.packages[packName] != otherSnapshot.packages[packName]:
+                inBoth[packName] = [otherSnapshot.packages[packName],
+                                      self.packages[packName]]
+        for packName in curKeys.difference(otherKeys):
+            inCurrent[packName] = self.packages[packName]
+        for packName in otherKeys.difference(curKeys):
+            inOther[packName] = otherSnapshot.packages[packName]
+
+        return(inCurrent, inOther, inBoth)
+
     def _repository_cmd(self):
         if self.server == None:
             return ['repository']
@@ -177,71 +204,7 @@ class Snapshot:
 
 
 def main(argv=None):
-    if argv == None:
-        argv = sys.argv
-
-    parser = OptionParser()
-    parser.add_option("-c", "--copy", dest="copy", help="Snapshot to copy")
-    parser.add_option("-n", "--name", dest="name", help="New snapshot name")
-    parser.add_option("-a", "--add", action="append", dest="add_packages",
-                      help="Packages to add. Enter with <name>:<revision>")
-    parser.add_option("-d", "--dir", dest='package_dir',
-                        help="A directory containing package files")
-    parser.add_option("-r", "--remove", action="append",
-                      dest="remove_packages", help="Packages to remove")
-    parser.add_option("-s", "--server", help="Repository server")
-    parser.add_option("-p", "--promote",
-                        action="store_true",
-                        default=False,
-                        dest="promote",
-                        help="Create snapshot and promote packages")
-    parser.add_option("-q", "--quiet", action="store_true", default=False,
-                        dest="quiet", help="Suppresses reporting")
-    parser.add_option("-f", "--filter", action="append", dest='package_filter',
-                        help="Filter package list using provided regexp")
-
-    (options, args) = parser.parse_args()
-
-    snap = Snapshot()
-
-    if options.server:
-        snap.server = options.server
-
-    if options.copy:
-        try:
-            snap.copy_snapshot(options.copy)
-        except processes.ChildExecutionError, e:
-            print >> sys.stderr, "Could not get packages\
-                                  for snapshot %s: %s" % (options.copy, e)
-            return(1)
-
-    if options.name:
-        snap.name = options.name
-    if options.package_dir:
-        for package_file in glob.glob(os.path.join(
-            options.package_dir, '*.xml')):
-            snap.add_from_file(package_file)
-    if options.add_packages:
-        for item in options.add_packages:
-            if item.endswith(".xml") and os.path.exists(item):
-                snap.add_from_file(item)
-            else:
-                snap.add_package(item.split(':'))
-    if options.remove_packages:
-        for item in options.remove_packages:
-            if item.endswith(".xml") and os.path.exists(item):
-                snap.remove_from_file(item)
-            else:
-                snap.remove_package(item)
-    if options.package_filter:
-        for f in options.package_filter:
-            snap.filter_packages(f)
-    if options.promote:
-        snap.promote_from_file()
-    else:
-        snap.emit_package_file()
-    if not options.quiet:
-        snap.report()
+    pass
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))
