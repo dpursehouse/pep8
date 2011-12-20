@@ -753,8 +753,10 @@ if (!$AMSSPackage && $extPack1 ne $extPack2)
       $revList{$_} =~s/\s$//;
       print  "- ", $revList{$_}, "\n   Changed from $rev1 -> $rev2 ...\n\n";
       my $cmd = $com;
-      $cmd .= '__PRODUCTS__' . join('_', split(/\s/, $revList{$_})) . "__AMSS__" if $generateExcelFile;
-      my $pack = "fw-amss-" . lc((split(/ /, $revList{$_}))[0]);
+      my $shortRevList = $revList{$_};
+      $shortRevList =~ s/fw-amss-//g;
+      $cmd .= '__PRODUCTS__' . join('_', split(/\s/, $shortRevList)) . "__AMSS__" if $generateExcelFile;
+      my $pack = lc((split(/ /, $revList{$_}))[0]);
       if (execCmd( "$cmd -amss $pack -label1 $rev1 -label2 $rev2", \$result, \@result ) == 0)
       {
         print @result, "\n";
