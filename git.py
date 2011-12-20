@@ -5,7 +5,7 @@ import os
 import shutil
 import urlparse
 
-from processes import run_cmd
+import processes
 
 #Commit SHA1 string length
 SHA1_STR_LEN = 40
@@ -42,32 +42,91 @@ def is_sha1_or_tag(revision):
     return (is_sha1(revision) or is_tag(revision))
 
 
+class GitError(Exception):
+    ''' GitError is raised if a git command fails for some reason.
+    '''
+
+
 class CachedGitWorkspace():
     ''' Encapsulation of a git workspace.
     '''
 
-    def __init__(self, url, cache_root):
-        self.url = url
-        self.cache_root = cache_root
+    def __init__(self, working_dir, url=None):
+        ''' Initilialize the git referred to by `url`, using `working_dir`
+        as the root folder in which the git is locally cached.
 
-        # The path part of the URL will for sure contain a leading
-        # slash and it might contain a trailing slash. Let's normalize
-        # the git name by removing both.
-        self.git_name = urlparse.urlparse(self.url).path.strip("/")
-        self.git_path = os.path.join(self.cache_root, self.git_name + ".git")
+        `url`, if specified, is expected to be the full URL to the git on the
+        repository server, for example "git://url.to.server/path/to/git".
 
-        try:
-            if not os.path.exists(self.git_path):
-                os.makedirs(self.git_path)
-            run_cmd("git", "init", "--bare", path=self.git_path)
-        except Exception, err:
-            # We must take care to remove all traces of the directory
-            # if anything fails. Otherwise we risk leaving an only
-            # partially initialized git directory in the cache.
-            shutil.rmtree(self.git_path, ignore_errors=True)
-            raise err
+        If `url` is specified, `working_directory` is expected to be the root
+        path of the local cache folder, and the git name will be parsed from
+        the url will be appended to it, i.e. if `working_dir` is "/cache", and
+        the url is "git://url.to.server/path/to/git", the git folder will be
+        "/cache/path/to/git/.git".
 
-    def fetch(self, refspec):
-        ''' Fetch the `refspec`.
+        If `url` is not specified, `working_directory` is expected to be the
+        path in which an existing git resides and the git folder will be
+        "working_dir/.git".
+
+        In both cases, `working_dir` will be converted to an absolute path.
         '''
-        run_cmd("git", "fetch", self.url, refspec, path=self.git_path)
+        self.url = url
+
+        if self.url:
+            # The path part of the URL will for sure contain a leading
+            # slash. It might also contain a trailing slash.
+            # Normalize the git name by removing both.
+            self.git_name = urlparse.urlparse(self.url).path.strip("/")
+
+            # Append the git name onto the working directory name, to get
+            # the absolute path of the git in the local filesystem.
+            self.working_dir = os.path.abspath(os.path.join(working_dir,
+                                                            self.git_name))
+        else:
+            self.git_name = os.path.basename(working_dir)
+            self.working_dir = os.path.abspath(working_dir)
+
+        # The git's control files reside in the .git folder within
+        # the directory.
+        self.git_path = os.path.join(self.working_dir, ".git")
+
+        # If the .git folder does not exist, initialize a new git
+        if not os.path.exists(self.git_path):
+            try:
+                os.makedirs(self.git_path)
+                processes.run_cmd(["git", "init"], path=self.working_dir)
+            except Exception, err:
+                # We must take care to remove all traces of the directory
+                # if anything fails. Otherwise we risk leaving an only
+                # partially initialized git directory in the cache.
+                shutil.rmtree(self.git_path, ignore_errors=True)
+                raise err
+
+        self.gitstart = ["git", "--git-dir=" + self.git_path,
+                         "--work-tree=" + self.working_dir]
+
+    def run_cmd(self, args):
+        '''Run the git command specified in `args`. The "git" command
+        is not required as it is already set in the member `gitstart`.
+        Return a tuple with status, output from stdout, output from stderr.
+        Raise GitError if any error occurs.
+        '''
+        if isinstance(args, list):
+            cmd = self.gitstart + args
+        else:
+            cmd = self.gitstart + [args]
+        return processes.run_cmd(cmd)
+
+    def fetch(self, url=None, refspec=None):
+        ''' Fetch the `refspec` from `url`.
+        Return a tuple with status, output from stdout, output from stderr.
+        Raise GitError if any error occurs.
+        '''
+        cmd = ["fetch"]
+        if url:
+            cmd += [url]
+        elif self.url:
+            cmd += [self.url]
+        if refspec:
+            cmd += [refspec]
+        return self.run_cmd(cmd)

@@ -237,10 +237,11 @@ def get_commit_message(options):
                                                options.patchset_nr)
 
     logging.info("Fetching patch set %s" % patchset_ref)
-    git = CachedGitWorkspace(
-        os.path.join("git://", options.gerrit_url, options.affected_git),
-        options.cache_path)
-    git.fetch(patchset_ref)
+    git = CachedGitWorkspace(options.cache_path,
+                             os.path.join("git://",
+                                          options.gerrit_url,
+                                          options.affected_git))
+    git.fetch(refspec=patchset_ref)
 
     # Extract the commit message and find any DMS issues in it.
     errcode, msg, err = processes.run_cmd("git",
