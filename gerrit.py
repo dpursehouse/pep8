@@ -176,7 +176,7 @@ class GerritSshConnection():
             raise GerritQueryError("Change not found")
         elif len(results) > 1:
             raise GerritQueryError("Too many results")
-        return ("status" in results[0] and results[0]["status"] == "OPEN")
+        return ("status" in results[0] and results[0]["status"] == "NEW")
 
     def review_patchset(self, commit_sha1=None, change_nr=None,
                         patchset=None, message=None, codereview=None,
