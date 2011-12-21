@@ -56,6 +56,15 @@ DEFAULT_GERRIT_SERVER = "review.sonyericsson.net"
 # The name of the host that runs the specialized DMS tag server.
 DMS_TAG_SERVER_HOSTNAME = "android-cm-web.sonyericsson.net"
 
+# Default value (kB) to use when checking commit size.
+DEFAULT_MAX_COMMIT_SIZE = 0
+
+# Filename of the commit-size script
+_COMMIT_SIZE_SCRIPT = "commit_size.sh"
+
+# This file's location
+_mydir = os.path.abspath(os.path.dirname(__file__))
+
 # Greeting to start the message that will be posted to Gerrit
 MESSAGE_GREETING = "Dear uploader,"
 
@@ -120,6 +129,30 @@ DMS issue to be present in the commit message."""
 MESSAGE_TAG_REQUIRED = \
 """ Additionally, all issues listed must have one of the following
 tags: %s."""
+
+# Message when the commit is too large
+MESSAGE_COMMIT_TOO_LARGE = \
+"""
+
+WARNING: Your commit is very large (%s kB).
+
+Please make sure that you don't commit large binary files as git
+does not handle these very efficiently.
+
+If you are committing test input (or similar), you might want to
+consider saving them outside the git repository."""
+
+
+def _find_commit_size_script():
+    '''Attempt to find the script that will be used to check the size
+    of the commit.
+    Return the absolute path to the script.
+    Raise an Exception if it could not be found.
+    '''
+    file = os.path.join(_mydir, _COMMIT_SIZE_SCRIPT)
+    if os.path.exists(file):
+        return file
+    raise Exception("Could not find %s" % _COMMIT_SIZE_SCRIPT)
 
 
 def _get_tagged_issues(issues, tags, target_branch):
@@ -316,6 +349,11 @@ def _main():
     options.add_option("", "--branch", dest="affected_branch",
                        help="The name of the branch on which the " \
                            "change is uploaded.")
+    options.add_option("", "--commit-size", dest="commit_size",
+                       help="Limit (kB) before warning about commit size " \
+                            "(default %d).  Setting 0 disables this " \
+                            "warning." % DEFAULT_MAX_COMMIT_SIZE,
+                       type="int", default=DEFAULT_MAX_COMMIT_SIZE)
     (options, args) = options.parse_args()
 
     if not options.manifest_path:
@@ -460,6 +498,20 @@ def _main():
                 logging.info("No DMS violations")
     else:
         logging.info("No DMS policy")
+
+    # Check that the size of the commit is not too large
+    if options.commit_size > 0:
+        try:
+            script = _find_commit_size_script()
+            ret, out, err = processes.run_cmd([script])
+            commit_size = int(out)
+            logging.info("Commit size: %d" % commit_size)
+            if commit_size > options.commit_size:
+                if not message:
+                    message = MESSAGE_GREETING
+                message += MESSAGE_COMMIT_TOO_LARGE % commit_size
+        except Exception, e:
+            logging.error("Failed to check commit size: %s" % e)
 
     # If any message has been generated, post it as a note to the change
     # along with code review and verify scores.
