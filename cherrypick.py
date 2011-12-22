@@ -102,7 +102,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.28'
+__version__ = '0.3.29'
 
 REPO = 'repo'
 GIT = 'git'
@@ -247,14 +247,20 @@ class Gerrit():
             results = self.gerrit.query(query)
             if len(results) != 1:
                 raise GerritError("Unexpected Gerrit query result")
+            result = results[0]
             approvals_email = filter(lambda a: "email" in a["by"],
-                                     results[0]["currentPatchSet"]
+                                     result["currentPatchSet"]
                                      ["approvals"])
             emails = list(set([a["by"]["email"] for a in approvals_email]))
             for email in emails:
                 if re.match("^(hudson|jenkins)@", email):
                     emails.remove(email)
-            url = results[0]['url'].strip()
+            url = result['url'].strip()
+            owner_email = result['owner']['email']
+            logging.info("Change owner: %s" % owner_email)
+            if owner_email not in emails:
+                emails.append(owner_email)
+            logging.info("Emails: %s" % ",".join(emails))
             return emails, url
         except GerritQueryError, e:
             raise GerritError("Gerrit query error: %s", e)
