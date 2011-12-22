@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.30'
+__version__ = '0.3.31'
 
 REPO = 'repo'
 GIT = 'git'
@@ -142,6 +142,9 @@ GERRIT_URL = "review.sonyericsson.net"
 
 # Number of times to attempt git push of the cherry picked change
 MAX_PUSH_ATTEMPTS = 3
+
+# Mail server to use when sending notifications
+SMTP_MAIL_SERVER = "smtpem1.sonyericsson.net"
 
 # Mail notification when cherry pick fails
 CHERRY_PICK_FAILED_NOTIFICATION_MAIL =  \
@@ -434,8 +437,8 @@ def option_parser():
     """
     Option parser
     """
-    usage = ("%prog -t TARGET_BRANCH [--config CONF_FILE |-d DMS_TAGS" +
-             ",... [options]]")
+    usage = ("%prog -t TARGET_BRANCH [--config CONF_FILE | -d DMS_TAGS" +
+             " --mail-sender SENDER_ADDRESS [options]]")
     opt_parser = optparse.OptionParser(formatter=HelpFormatter(),
                                        usage=usage, description=DESCRIPTION,
                                        version='%prog ' + __version__)
@@ -808,7 +811,7 @@ def update_manifest(branch, skip_review):
     global upd_project_list
     logging.info("Updating the target manifest")
     gituser = get_git_user()
-    recipient = [gituser + '@sonyericsson.com']
+    recipient = []
     os.chdir(OPT.cwd + '/manifest')
     #Creates a topic branch for the manifest changes
     #and writes the changes to default.xml
@@ -914,7 +917,7 @@ def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
         cmt = delta_list[0]
         recipient = None
         if OPT.dry_run:
-            recipient = [gituser + '@sonyericsson.com']
+            recipient = []
         else:
             try:
                 recipient = gerrit.collect_email_addresses(cmt.commit)[0]
@@ -1021,7 +1024,7 @@ def dms_get_fix_for(commit_list):
         logging.error('DMS tag server error: %s' % e)
         if not OPT.use_web_interface:
             # No fallback option specified.  Report the error and quit.
-            recipient = [get_git_user() + '@sonyericsson.com']
+            recipient = []
             subject = '[Cherrypick] DMS tag server error'
             body = TAG_SERVER_FAILED_NOTIFICATION_MAIL % (OPT.dms_tag_server, e)
             email(subject, body, recipient)
@@ -1114,8 +1117,6 @@ def cherry_pick(unique_commit_list, target_branch):
     """
     ret_err = STATUS_OK
     gituser = get_git_user()
-    if not OPT.mail_sender:
-        OPT.mail_sender = gituser + '@sonyericsson.com'
 
     #keep the result here
     cherrypick_result = []
@@ -1254,9 +1255,9 @@ def cherry_pick(unique_commit_list, target_branch):
                             else:
                                 logging.info('git push failed.  Retrying...')
                 else:
-                    # Send failure notification email to user who is running the
-                    # script, and when not in dry-run mode to the reviewers.
-                    emails = [gituser + '@sonyericsson.com']
+                    # Send failure notification email to the reviewers
+                    # when not in dry-run mode.
+                    emails = []
                     if not OPT.dry_run:
                         emails += reviewers
                     # If we were unable to get the source change URL, use the
@@ -1441,15 +1442,20 @@ def email(subject, body, recipient):
         recipient.append(sender)
     msg['From'] = sender
     msg['To'] = ', '.join(recipient)
-    # Send the email via our own SMTP server.
-    try:
-        mailer = smtplib.SMTP('smtpem1.sonyericsson.net')
-        mailer.sendmail(sender, recipient, msg.as_string())
-        mailer.quit()
-    except smtplib.SMTPException, exp:
-        logging.error('Failed to send mail due to SMTP error: %s' % exp[1])
-        return
-    logging.info('Mail sent to %s for %s' % (', '.join(recipient), subject))
+    if recipient:
+        # Send the email via our own SMTP server.
+        try:
+            mailer = smtplib.SMTP(SMTP_MAIL_SERVER)
+            mailer.sendmail(sender, recipient, msg.as_string())
+            mailer.quit()
+        except smtplib.SMTPException, exp:
+            logging.error('Failed to send mail due to SMTP error: %s' % exp[1])
+            return
+        logging.info('Mail sent to %s for %s' % (', '.join(recipient),
+                                                 subject))
+    else:
+        logging.error('Mail not sent: No recipients')
+        logging.error('%s\n%s' % (subject, body))
 
 
 def config_parser():
@@ -1507,6 +1513,9 @@ def main():
         if not OPT.target_branch:
             cherry_pick_exit(STATUS_ARGS, "Must pass target (-t) branch name")
         config_parser()
+    if not OPT.mail_sender:
+        cherry_pick_exit(STATUS_ARGS,
+                         "Must pass mail sender (--mail-sender) address")
 
     if not OPT.target_branch_include:
         OPT.target_branch_include = DEFAULT_TARGET_BRANCH_INCLUDES
