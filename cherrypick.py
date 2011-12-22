@@ -97,12 +97,13 @@ from dmsutil import DMSTagServer, DMSTagServerError
 from find_reviewers import FindReviewers, AddReviewersError
 from gerrit import GerritSshConnection, GerritSshConfigError, GerritQueryError
 import git
+from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.29'
+__version__ = '0.3.30'
 
 REPO = 'repo'
 GIT = 'git'
@@ -127,6 +128,14 @@ STATUS_USER_ABORTED = 10
 STATUS_RM_MANIFEST_DIR = 11
 STATUS_CLONE_MANIFEST = 12
 STATUS_UPDATE_MANIFEST = 13
+
+# The default value of the command line option to select which
+# branches in the target manifest can be cherry picked to.
+DEFAULT_TARGET_BRANCH_INCLUDES = [r"^"]
+
+# The default value of the command line option to select which
+# branches in the target manifest can not be cherry picked to.
+DEFAULT_TARGET_BRANCH_EXCLUDES = [r"^rel-", r"^maint-", "refs/tags/"]
 
 #Gerrit server URL
 GERRIT_URL = "review.sonyericsson.net"
@@ -441,11 +450,30 @@ def option_parser():
     opt_parser.add_option('-t', '--target-branch',
                      dest='target_branch',
                      help='target branch')
-    opt_parser.add_option('--target-branch-patterns',
-                     dest='target_branch_patterns',
-                     help='List of branch patterns accepted in the target ' \
-                          'manifest for cherry picking to (comma separated)',
-                     default='(?!refs/tags)',)
+    opt_parser.add_option("-i", "--include-target-branch",
+                          dest="target_branch_include",
+                          action="append", metavar="REGEXP",
+                          default=[],
+                          help="A regular expression that will be matched " \
+                               "against the branches of the gits found in " \
+                               "the target manifest to include them in the " \
+                               "cherry pick.  This option can be used " \
+                               "multiple times to add more expressions. The " \
+                               "first use of this option will clear the " \
+                               "default value (%s) before appending the new " \
+                               "expression." % \
+                               ", ".join(DEFAULT_TARGET_BRANCH_INCLUDES))
+    opt_parser.add_option("-e", "--exclude-target-branch",
+                          dest="target_branch_exclude",
+                          action="append", metavar="REGEXP",
+                          default=DEFAULT_TARGET_BRANCH_EXCLUDES,
+                          help="Same as --include-git-branch but for " \
+                               "excluding branches on gits found in the " \
+                               "target manifest. This option can also be " \
+                               "used multiple times to add more expressions. " \
+                               "The first use of this option will append the " \
+                               "new expression onto the default value (%s)." % \
+                               ", ".join(DEFAULT_TARGET_BRANCH_EXCLUDES))
     opt_parser.add_option('-d', '--dms-tags',
                      dest='dms_tags',
                      help='DMS tags (comma separated)',
@@ -629,16 +657,6 @@ def repo_sync():
         cherry_pick_exit(STATUS_REPO, "Repo sync error %s" % err)
 
 
-def loop_match(patterns, string):
-    """
-    Checks if the input string matches one of the provided patterns.
-    """
-    for pattern in patterns:
-        if (re.match(pattern, string) != None):
-            return True
-    return False
-
-
 def get_dms_list(target_branch):
     """
     Collect the DMSs from all projects, from MERGE_BASE to  BASE_BRANCH and
@@ -682,21 +700,30 @@ def get_dms_list(target_branch):
 
         # Check that the git is available in the target manifest
         if not path in dst_proj_rev:
-            logging.info("Project %s does not exist in target manifest" % name)
+            logging.info("%s: project does not exist in target manifest" % name)
             continue
 
         t_revision = dst_proj_rev[path]
         if t_revision == base_rev:
             # No need to proceed if source and target both have same revision
+            logging.info("%s: project has same revision (%s) in target "
+                         "manifest" % (name, t_revision))
             continue
 
         if (git.is_sha1(t_revision)):
             target_revision = t_revision  # it's a sha1
             target_is_sha1 = True
-        elif (loop_match(OPT.target_branch_patterns.split(','), t_revision)):
-            target_revision = 'origin/' + t_revision
+            logging.info("%s: target revision is a sha-1" % name)
         else:
-            continue
+            matcher = IncludeExcludeMatcher(OPT.target_branch_include,
+                                            OPT.target_branch_exclude)
+            if (matcher.match(t_revision)):
+                target_revision = 'origin/' + t_revision
+                logging.info("%s: target branch is %s" % (name, t_revision))
+            else:
+                logging.info("%s: target branch %s is excluded" % \
+                             (name, t_revision))
+                continue
 
         os.chdir(os.path.join(OPT.cwd, path))
         mergebase, err, ret = execmd([GIT, 'merge-base', 'origin/' +
@@ -1451,8 +1478,6 @@ def config_parser():
             if value:  # handle default values here and give priority to config
                 if key == 'cwd':
                     OPT.__dict__[key] = items[key]
-                if key == 'target_branch_patterns':
-                    OPT.__dict__[key] = items[key]
             else:      # cmd line parameter has higher priority on non-defaults
                 if items[key].lower() == 'true':
                     OPT.__dict__[key] = True
@@ -1482,6 +1507,9 @@ def main():
         if not OPT.target_branch:
             cherry_pick_exit(STATUS_ARGS, "Must pass target (-t) branch name")
         config_parser()
+
+    if not OPT.target_branch_include:
+        OPT.target_branch_include = DEFAULT_TARGET_BRANCH_INCLUDES
 
     if OPT.verbose:
         logging.getLogger().setLevel(logging.INFO)
