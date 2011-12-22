@@ -525,22 +525,29 @@ def _main():
                 g = gerrit.GerritSshConnection(options.gerrit_url,
                                                username=options.gerrit_user)
 
-                # It is possible that the change has been merged or
-                # abandoned during the time it has taken to run this script.
+                # It is possible that the change has been merged, abandoned,
+                # or a new patch set added during the time it has taken for this
+                # script to run.
                 # Only attempt to include code review and verify scores if
-                # the change is still open.
-                if g.change_is_open(str(change_nr)):
-                    g.review_patchset(change_nr=change_nr,
-                                      patchset=patchset_nr,
-                                      message=message,
-                                      codereview=code_review,
-                                      verified=verify)
-                else:
+                # the change is still open and the patch set is still current.
+                is_open, current_patchset = g.change_is_open(str(change_nr))
+                if not is_open:
                     logging.info("Change is closed: adding review message " \
                                  "without code review or verify scores")
-                    g.review_patchset(change_nr=change_nr,
-                                      patchset=patchset_nr,
-                                      message=message)
+                    code_review = None
+                    verify = None
+                elif patchset_nr != current_patchset:
+                    logging.info("Patchset %d has been replaced by patchset " \
+                                 "%d: adding review message without code " \
+                                 "review or verify scores" % \
+                                 (patchset_nr, current_patchset))
+                    code_review = None
+                    verify = None
+                g.review_patchset(change_nr=change_nr,
+                                  patchset=patchset_nr,
+                                  message=message,
+                                  codereview=code_review,
+                                  verified=verify)
             except gerrit.GerritSshConfigError, err:
                 semcutil.fatal(1, "Error getting Gerrit ssh config: %s" % err)
             except processes.ChildExecutionError, err:

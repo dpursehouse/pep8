@@ -166,7 +166,7 @@ class GerritSshConnection():
     def change_is_open(self, change):
         """ Checks if the change specified by `change` is open.  `change` is
         assumed to be a valid gerrit query string.
-        Returns True or False.
+        Returns True or False, and the current patch set.
         Raises GerritQueryError if the change was not found, the Gerrit
         query raises more than one result, or the gerrit query fails for
         some other reason.
@@ -176,7 +176,14 @@ class GerritSshConnection():
             raise GerritQueryError("Change not found")
         elif len(results) > 1:
             raise GerritQueryError("Too many results")
-        return ("status" in results[0] and results[0]["status"] == "NEW")
+        result = results[0]
+        if not "status" in result:
+            raise GerritQueryError("Status not in query result")
+        if not "currentPatchSet" in result:
+            raise GerritQueryError("Current patch set not in query result")
+        is_open = (result["status"] == "NEW")
+        current_patchset = int(result["currentPatchSet"]["number"])
+        return is_open, current_patchset
 
     def review_patchset(self, commit_sha1=None, change_nr=None,
                         patchset=None, message=None, codereview=None,
