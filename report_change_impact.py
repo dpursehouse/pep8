@@ -286,8 +286,7 @@ def _main():
                        help="Do everything except actually add the note " \
                            "to the affected change.")
     options.add_option("", "--include-manifest-ref", dest="manifest_ref_in",
-                       action="append", metavar="REGEXP",
-                       default=DEFAULT_MANIFEST_REF_INCLUDES,
+                       action="append", metavar="REGEXP", default=[],
                        help="A regular expression that will be matched " \
                            "against the fully-qualified ref names of the " \
                            "available manifest branches to include them " \
@@ -304,8 +303,7 @@ def _main():
                            "can also be used multiple times to add more " \
                            "expressions (default: <empty>).")
     options.add_option("", "--include-git", dest="git_in",
-                       action="append", metavar="REGEXP",
-                       default=DEFAULT_GIT_INCLUDES,
+                       action="append", metavar="REGEXP", default=[],
                        help="A regular expression that will be matched " \
                            "against the name of the git to which the " \
                            "change has been uploaded. This option can be " \
@@ -320,8 +318,7 @@ def _main():
                            "multiple times to add more expressions " \
                            "(default: <empty>).")
     options.add_option("", "--include-git-branch", dest="git_branch_in",
-                       action="append", metavar="REGEXP",
-                       default=DEFAULT_GIT_BRANCH_INCLUDES,
+                       action="append", metavar="REGEXP", default=[],
                        help="A regular expression that will be matched " \
                            "against the branches of the gits found in the " \
                            "manifests to include them in the examination. " \
@@ -384,6 +381,15 @@ def _main():
         logging.basicConfig(format='%(message)s', level=logging.INFO)
     else:
         logging.basicConfig(format='%(message)s', level=logging.ERROR)
+
+    # Use default patterns unless the user has specified replacement
+    # patterns explicitly.
+    if not options.git_in:
+        options.git_in = DEFAULT_GIT_INCLUDES
+    if not options.git_branch_in:
+        options.git_branch_in = DEFAULT_GIT_BRANCH_INCLUDES
+    if not options.manifest_ref_in:
+        options.manifest_ref_in = DEFAULT_MANIFEST_REF_INCLUDES
 
     # If the git does not match our patterns there's no reason
     # to continue.
