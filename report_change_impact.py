@@ -556,12 +556,12 @@ def _main():
                                   message=message,
                                   codereview=code_review,
                                   verified=verify)
-            except gerrit.GerritSshConfigError, err:
-                semcutil.fatal(1, "Error getting Gerrit ssh config: %s" % err)
-            except processes.ChildExecutionError, err:
-                semcutil.fatal(2, "Error submitting review to Gerrit: %s" % err)
-            except gerrit.GerritQueryError, err:
-                semcutil.fatal(3, "Error submitting review to Gerrit: %s" % err)
+        except gerrit.GerritSshConfigError, err:
+            semcutil.fatal(1, "Error getting Gerrit ssh config: %s" % err)
+        except processes.ChildExecutionError, err:
+            semcutil.fatal(2, "Error submitting review to Gerrit: %s" % err)
+        except gerrit.GerritQueryError, err:
+            semcutil.fatal(3, "Error submitting review to Gerrit: %s" % err)
 
 if __name__ == "__main__":
     try:
