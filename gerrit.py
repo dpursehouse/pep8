@@ -11,6 +11,51 @@ import processes
 GERRIT_SSH_INFO_URL_TEMPLATE = "http://%s/ssh_info"
 
 
+def escape_string(string):
+    """Adds necessary escapes and surrounding double quotes to a
+    string so that it can be passed to any of the Gerrit commands
+    that require double-quoted strings.
+    """
+
+    result = string
+    result = result.replace('\\', '\\\\')
+    result = result.replace('"', '\\"')
+    return '"' + result + '"'
+
+
+def get_patchset_id(commit_sha1=None, change_nr=None,
+                    patchset=None):
+    """Returns a string ID describing a particular patch set of a
+    Gerrit change. Such a string can be passed to Gerrit commands
+    that require patch set identifiers.
+
+    Gerrit supports identification of a patch set to e.g. comment
+    or score either by the SHA-1 of the commit or by its (change
+    number, patch set number) tuple. This function will use the
+    three arguments passed and return a suitable string ID based
+    on them. Either `commit_sha1` or `change_nr` and `patchset`
+    must be set, the latter two to integers. If the information
+    passed isn't enough to unambiguously compute a patch set ID,
+    a ValueError exception will be thrown.
+    """
+
+    if commit_sha1 and not change_nr and not patchset:
+        return commit_sha1
+    elif not commit_sha1 and change_nr and patchset:
+        return "%d,%d" % (change_nr, patchset)
+    else:
+        raise ValueError("Either commit_sha1 or change_nr "
+                         "and patchset must be supplied.")
+
+
+def get_patchset_refspec(change_nr, patchset):
+    """Returns a string representing the patchset refspec for
+    the change identified by `change_nr` and `patchset`.
+    """
+    infix = change_nr % 100
+    return "refs/changes/%d/%02d/%d" % (change_nr, infix, patchset)
+
+
 class GerritQueryError(Exception):
     """GerritQueryError exceptions are raised when Gerrit returns an
     error for a posted query, typically indicating a syntax error in
@@ -93,43 +138,6 @@ class GerritSshConnection():
                                        "contained unexpected data." %
                                        config_url)
 
-    def escape_string(self, string):
-        """Adds necessary escapes and surrounding double quotes to a
-        string so that it can be passed to any of the Gerrit commands
-        that require double-quoted strings.
-        """
-
-        result = string
-        result = result.replace('\\', '\\\\')
-        result = result.replace('"', '\\"')
-        return '"' + result + '"'
-
-    def get_patchset_id(self, commit_sha1=None, change_nr=None,
-                        patchset=None):
-        """Returns a string ID describing a particular patch set of a
-        Gerrit change. Such a string can be passed to Gerrit commands
-        that require patch set identifiers.
-
-        Gerrit supports identification of a patch set to e.g. comment
-        or score either by the SHA-1 of the commit or by its (change
-        number, patch set number) tuple. This function will use the
-        three arguments passed and return a suitable string ID based
-        on them. Either `commit_sha1` or `change_nr` and `patchset`
-        must be set, the latter two to integers. If the information
-        passed isn't enough to unambiguously compute a patch set ID,
-        a ValueError exception will be thrown.
-        """
-
-        if commit_sha1 and not change_nr and not patchset:
-            return commit_sha1
-        elif not commit_sha1 and change_nr and patchset:
-            return "%d,%d" % (change_nr, patchset)
-        else:
-            raise ValueError("%s.%s(): Either commit_sha1 or change_nr "
-                             "and patchset must be supplied." %
-                             (self.__class__.__name__,
-                              sys._getframe().f_code.co_name))
-
     def query(self, querystring):
         """Sends the query `querystring` to Gerrit and returns the
         response as a (possibly empty) list of dictionaries. The keys
@@ -142,7 +150,7 @@ class GerritSshConnection():
 
         args = ["query", "--current-patch-set", "--all-approvals",
                 "--format", "JSON",
-                self.escape_string(querystring)]
+                escape_string(querystring)]
         response, err = self.run_gerrit_command(args)
 
         result = []
@@ -219,12 +227,12 @@ class GerritSshConnection():
         return any output for reviewing patch sets in this manner.
         """
 
-        args = ["review", self.get_patchset_id(commit_sha1=commit_sha1,
-                                               change_nr=change_nr,
-                                               patchset=patchset)]
+        args = ["review", get_patchset_id(commit_sha1=commit_sha1,
+                                          change_nr=change_nr,
+                                          patchset=patchset)]
 
         if message is not None:
-            args += ["--message", self.escape_string(message)]
+            args += ["--message", escape_string(message)]
 
         if codereview is not None:
             args += ["--code-review", str(codereview)]
