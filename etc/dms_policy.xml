@@ -4,6 +4,7 @@
     <dms-required>true</dms-required>
     <allowed-dms-tag name="Fix ASAP"/>
     <allowed-dms-tag name="ATT IFW"/>
+    <allowed-dms-tag name="ATT FFW"/>
     <code-review>-1</code-review>
   </branch>
   <branch pattern="^edream6\.0-riogrande-ca-release$">
