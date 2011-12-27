@@ -206,8 +206,8 @@ def _get_dms_violations(config, dmslist, affected_manifests):
     verify score.
     """
     violations = []
-    code_review = 0
-    verify = 0
+    code_review = None
+    verify = None
 
     for branch in filter(config.branch_requires_dms,
                          affected_manifests):
@@ -245,10 +245,12 @@ def _get_dms_violations(config, dmslist, affected_manifests):
         if msg:
             violations.append(msg)
             _code_review, _verify = config.get_branch_score_values(branch)
-            if _code_review < code_review:
-                code_review = _code_review
-            if _verify < verify:
-                verify = _verify
+            if _code_review:
+                if code_review is None or _code_review < code_review:
+                    code_review = _code_review
+            if _verify:
+                if verify is None or _verify < verify:
+                    verify = _verify
 
     return violations, code_review, verify
 
@@ -458,8 +460,8 @@ def _main():
     else:
         logging.info("No impact on multiple system branches")
 
-    code_review = 0
-    verify = 0
+    code_review = None
+    verify = None
 
     # If a policy configuration is specified, check that the commit follows
     # the policy.
@@ -526,29 +528,29 @@ def _main():
         logging.info("\nCode review: %s" % code_review)
         logging.info("Verify: %s" % verify)
 
-        if not options.dry_run:
-            try:
-                g = gerrit.GerritSshConnection(options.gerrit_url,
-                                               username=options.gerrit_user)
+        try:
+            g = gerrit.GerritSshConnection(options.gerrit_url,
+                                           username=options.gerrit_user)
 
-                # It is possible that the change has been merged, abandoned,
-                # or a new patch set added during the time it has taken for this
-                # script to run.
-                # Only attempt to include code review and verify scores if
-                # the change is still open and the patch set is still current.
-                is_open, current_patchset = g.change_is_open(str(change_nr))
-                if not is_open:
-                    logging.info("Change is closed: adding review message " \
-                                 "without code review or verify scores")
-                    code_review = None
-                    verify = None
-                elif patchset_nr != current_patchset:
-                    logging.info("Patchset %d has been replaced by patchset " \
-                                 "%d: adding review message without code " \
-                                 "review or verify scores" % \
-                                 (patchset_nr, current_patchset))
-                    code_review = None
-                    verify = None
+            # It is possible that the change has been merged, abandoned,
+            # or a new patch set added during the time it has taken for this
+            # script to run.
+            # Only attempt to include code review and verify scores if
+            # the change is still open and the patch set is still current.
+            is_open, current_patchset = g.change_is_open(str(change_nr))
+            if not is_open:
+                logging.info("Change is closed: adding review message " \
+                             "without code review or verify scores")
+                code_review = None
+                verify = None
+            elif patchset_nr != current_patchset:
+                logging.info("Patchset %d has been replaced by patchset " \
+                             "%d: adding review message without code " \
+                             "review or verify scores" % \
+                             (patchset_nr, current_patchset))
+                code_review = None
+                verify = None
+            if not options.dry_run:
                 g.review_patchset(change_nr=change_nr,
                                   patchset=patchset_nr,
                                   message=message,

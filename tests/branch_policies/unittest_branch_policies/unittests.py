@@ -110,7 +110,8 @@ class TestBranchPolicies(unittest.TestCase):
         p = self._get_policy("policy_valid_dms_not_required.xml")
         self.assertFalse(p.branch_requires_dms("branch-name"))
         self.assertTrue(p.is_tag_allowed("tag", "branch-name"))
-        self.assertEquals((0, 0), p.get_branch_score_values("branch-name"))
+        self.assertEquals((None, None),
+                          p.get_branch_score_values("branch-name"))
 
     def test_invalid_xml(self):
         """ Test that the class constructor raises an exception

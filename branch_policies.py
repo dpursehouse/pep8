@@ -35,8 +35,8 @@ class BranchPolicies():
                     tagnames = []
                     tagpatterns = []
                     dms_required = False
-                    codereview = 0
-                    verify = 0
+                    codereview = None
+                    verify = None
                     for element in branch.findall("allowed-dms-tag"):
                         tagname = element.get("name")
                         if tagname:
@@ -84,7 +84,7 @@ class BranchPolicies():
 
     def _get_score(self, node, type, valid_scores):
         """ Get the score `type` from `node` and return it as an integer, or
-        zero if the score was not found in the node.
+        None if the score was not found in the node.
         Raise BranchPolicyError if the score is not in `valid_scores`.
         """
         score = self._get_element(node, type)
@@ -92,7 +92,7 @@ class BranchPolicies():
             if score not in valid_scores:
                 raise BranchPolicyError("Invalid %s value: %s" % (type, score))
             return int(score)
-        return 0
+        return None
 
     def branch_has_policy(self, dest_branch):
         """ Check if the `dest_branch` has a tag policy.
@@ -120,7 +120,7 @@ class BranchPolicies():
         if self.branch_requires_dms(dest_branch):
             policy = self.get_policy(dest_branch)
             return (policy["code_review"], policy["verify"])
-        return (0, 0)
+        return (None, None)
 
     def get_branch_tagnames(self, dest_branch):
         """ Get the tags required by `dest_branch`.
