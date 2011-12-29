@@ -53,7 +53,7 @@ def get_patchset_refspec(change_nr, patchset):
     the change identified by `change_nr` and `patchset`.
     """
     infix = change_nr % 100
-    return "refs/changes/%d/%02d/%d" % (change_nr, infix, patchset)
+    return "refs/changes/%02d/%d/%d" % (infix, change_nr, patchset)
 
 
 class GerritQueryError(Exception):
