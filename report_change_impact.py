@@ -179,11 +179,13 @@ def _get_patchset_fixed_issues(options):
     """ Returns a list of issues fixed in the patchset.
     """
     try:
-        logging.info("Fetching patch set %s" % options.patchset_ref)
+        patchset_ref = gerrit.get_patchset_refspec(options.change_nr,
+                                                   options.patchset_nr)
+        logging.info("Fetching patch set %s" % patchset_ref)
         git = CachedGitWorkspace(
             os.path.join("git://", options.gerrit_url, options.affected_git),
             options.cache_path)
-        git.fetch(options.patchset_ref)
+        git.fetch(patchset_ref)
 
         # Extract the commit message and find any DMS issues in it.
         errcode, msg, err = processes.run_cmd("git",
@@ -336,12 +338,10 @@ def _main():
                            "manifests. This option can also be used " \
                            "multiple times to add more expressions " \
                            "(default: <empty>).")
-    options.add_option("", "--change", dest="change_nr",
+    options.add_option("", "--change", dest="change_nr", type="int",
                        help="The change number to check.")
-    options.add_option("", "--patchset", dest="patchset_nr",
+    options.add_option("", "--patchset", dest="patchset_nr", type="int",
                        help="The patchset number.")
-    options.add_option("", "--patchset-ref", dest="patchset_ref",
-                       help="The patch set refspec.")
     options.add_option("", "--project", dest="affected_git",
                        help="The name of the project on which the " \
                            "change is uploaded.")
@@ -362,22 +362,10 @@ def _main():
         semcutil.fatal(1, "Change nr. missing. Use --change option.")
     if not options.patchset_nr:
         semcutil.fatal(1, "Patchset nr. missing. Use --patchset option.")
-    if not options.patchset_ref:
-        semcutil.fatal(1, "Patchset refspec missing. " \
-                          "Use --patchset-ref option.")
     if not options.affected_git:
         semcutil.fatal(1, "Project name missing. Use --project option.")
     if not options.affected_branch:
         semcutil.fatal(1, "Branch name missing. Use --branch option.")
-
-    try:
-        change_nr = int(options.change_nr)
-    except ValueError:
-        semcutil.fatal(1, "Change number must be a number.")
-    try:
-        patchset_nr = int(options.patchset_nr)
-    except ValueError:
-        semcutil.fatal(1, "Patchset number must be a number.")
 
     if options.verbose:
         logging.basicConfig(format='%(message)s', level=logging.INFO)
@@ -537,22 +525,23 @@ def _main():
             # script to run.
             # Only attempt to include code review and verify scores if
             # the change is still open and the patch set is still current.
-            is_open, current_patchset = g.change_is_open(str(change_nr))
+            is_open, current_patchset = g.change_is_open(str(options.change_nr))
             if not is_open:
-                logging.info("Change is closed: adding review message " \
-                             "without code review or verify scores")
+                logging.info("Change %d is closed: adding review message " \
+                             "without code review or verify scores" % \
+                             options.change_nr)
                 code_review = None
                 verify = None
-            elif patchset_nr != current_patchset:
+            elif options.patchset_nr != current_patchset:
                 logging.info("Patchset %d has been replaced by patchset " \
                              "%d: adding review message without code " \
                              "review or verify scores" % \
-                             (patchset_nr, current_patchset))
+                             (options.patchset_nr, current_patchset))
                 code_review = None
                 verify = None
             if not options.dry_run:
-                g.review_patchset(change_nr=change_nr,
-                                  patchset=patchset_nr,
+                g.review_patchset(change_nr=options.change_nr,
+                                  patchset=options.patchset_nr,
                                   message=message,
                                   codereview=code_review,
                                   verified=verify)
