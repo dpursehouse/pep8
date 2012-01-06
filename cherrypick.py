@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.31'
+__version__ = '0.3.32'
 
 REPO = 'repo'
 GIT = 'git'
@@ -682,34 +682,37 @@ def get_dms_list(target_branch):
         base_rev = rev_path.split(',')[0]
         if OPT.include_git:
             if name not in OPT.include_git.split(','):
-                continue  # include gits
+                logging.info("%s: pass: git is not included" % name)
+                continue
         elif OPT.exclude_git and name in OPT.exclude_git.split(','):
-            continue      # exclude gits
+            logging.info("%s: pass: git is excluded" % name)
+            continue
 
         os.chdir(os.path.join(OPT.cwd, path))
 
         # If the revision of the source git is a sha1 or tag, we don't need
         # to cherry pick from it.
         if git.is_sha1_or_tag(base_rev):
+            logging.info("%s: pass: source revision is a sha1 or tag" % name)
             continue
 
         # Skip any source gits that do not have a valid revision
         ret = execmd([GIT, 'show-ref', '-q', '--verify',
                       'refs/remotes/origin/' + base_rev])[2]
         if ret != 0:
-            logging.error("Invalid revision %s for project %s" % \
-                          (base_rev, name))
+            logging.error("%s: pass: invalid revision %s" % (name, base_rev))
             continue
 
         # Check that the git is available in the target manifest
         if not path in dst_proj_rev:
-            logging.info("%s: project does not exist in target manifest" % name)
+            logging.info("%s: pass: project does not exist in target "
+                         "manifest" % name)
             continue
 
         t_revision = dst_proj_rev[path]
         if t_revision == base_rev:
             # No need to proceed if source and target both have same revision
-            logging.info("%s: project has same revision (%s) in target "
+            logging.info("%s: pass: project has same revision %s in target "
                          "manifest" % (name, t_revision))
             continue
 
@@ -724,7 +727,7 @@ def get_dms_list(target_branch):
                 target_revision = 'origin/' + t_revision
                 logging.info("%s: target branch is %s" % (name, t_revision))
             else:
-                logging.info("%s: target branch %s is excluded" % \
+                logging.info("%s: pass: target branch %s is excluded" % \
                              (name, t_revision))
                 continue
 
@@ -732,6 +735,8 @@ def get_dms_list(target_branch):
         mergebase, err, ret = execmd([GIT, 'merge-base', 'origin/' +
                                       base_rev, target_revision])
         if not mergebase:
+            logging.info("%s: pass: no merge-base for %s and %s" % \
+                         (name, base_rev, target_branch))
             merge_base_log.write('No merge-base for %s and %s\n' %
                                  (base_rev, target_branch))
             logging.error(err)
@@ -754,8 +759,10 @@ def get_dms_list(target_branch):
                 for commit in b_commit_list:
                     commit.target_origin = target_revision
             else:
+                # Nothing to cherry pick in this git, go to next
+                logging.info("%s: pass: nothing to cherry pick" % name)
                 os.chdir(OPT.cwd)
-                continue  # nothing to cherry pick in this git, go to next
+                continue
         if b_commit_list:
             base_commit_list += b_commit_list
         if t_commit_list:
