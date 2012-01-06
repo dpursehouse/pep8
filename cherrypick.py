@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.33'
+__version__ = '0.3.34'
 
 REPO = 'repo'
 GIT = 'git'
@@ -677,7 +677,6 @@ def get_dms_list(target_branch):
 
     for name, rev_path in base_proj_rev.iteritems():
         target_revision = None
-        source_is_sha1 = False
         target_is_sha1 = False
         path = rev_path.split(',')[1]
         base_rev = rev_path.split(',')[0]
@@ -691,23 +690,18 @@ def get_dms_list(target_branch):
 
         os.chdir(os.path.join(OPT.cwd, path))
 
-        # If the revision of the source git is a tag, we don't need
+        # If the revision of the source git is a sha1 or tag, we don't need
         # to cherry pick from it.
-        if git.is_tag(base_rev):
-            logging.info("%s: pass: source revision %s is a tag" % \
-                         (name, base_rev))
+        if git.is_sha1_or_tag(base_rev):
+            logging.info("%s: pass: source revision is a sha1 or tag" % name)
             continue
-        elif git.is_sha1(base_rev):
-            source_is_sha1 = True
-            logging.info("%s: source revision %s is a sha-1" % (name, base_rev))
-        else:
-            # Skip any source gits that do not have a valid revision
-            ret = execmd([GIT, 'show-ref', '-q', '--verify',
-                          'refs/remotes/origin/' + base_rev])[2]
-            if ret != 0:
-                logging.error("%s: pass: invalid revision %s" % \
-                              (name, base_rev))
-                continue
+
+        # Skip any source gits that do not have a valid revision
+        ret = execmd([GIT, 'show-ref', '-q', '--verify',
+                      'refs/remotes/origin/' + base_rev])[2]
+        if ret != 0:
+            logging.error("%s: pass: invalid revision %s" % (name, base_rev))
+            continue
 
         # Check that the git is available in the target manifest
         if not path in dst_proj_rev:
@@ -725,8 +719,7 @@ def get_dms_list(target_branch):
         if (git.is_sha1(t_revision)):
             target_revision = t_revision  # it's a sha1
             target_is_sha1 = True
-            logging.info("%s: target revision %s is a sha-1" % \
-                         (name, t_revision))
+            logging.info("%s: target revision is a sha-1" % name)
         else:
             matcher = IncludeExcludeMatcher(OPT.target_branch_include,
                                             OPT.target_branch_exclude)
@@ -739,14 +732,8 @@ def get_dms_list(target_branch):
                 continue
 
         os.chdir(os.path.join(OPT.cwd, path))
-
-        if source_is_sha1:
-            source_revision = base_rev
-        else:
-            source_revision = "origin/" + base_rev
-
-        mergebase, err, ret = execmd([GIT, 'merge-base', source_revision,
-                                      target_revision])
+        mergebase, err, ret = execmd([GIT, 'merge-base', 'origin/' +
+                                      base_rev, target_revision])
         if not mergebase:
             logging.info("%s: pass: no merge-base for %s and %s" % \
                          (name, base_rev, target_branch))
@@ -760,11 +747,11 @@ def get_dms_list(target_branch):
         else:
             rev_path = t_revision + ',' + path
         #read merge base to base branch log
-        b_commit_list = collect_fix_dms(source_revision, mergebase,
-                                        rev_path + ',' + name, base_log)
+        b_commit_list = collect_fix_dms('origin/' + base_rev, mergebase,
+                                   rev_path + ',' + name, base_log)
         #read merge base to target branch log
         t_commit_list = collect_fix_dms(target_revision, mergebase,
-                                        rev_path + ',' + name, target_log)
+                                   rev_path + ',' + name, target_log)
         #handle new branch creation if target git rev is sha1
         if target_is_sha1 and b_commit_list:
             if create_branch(target_branch, b_commit_list,
