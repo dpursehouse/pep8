@@ -86,7 +86,7 @@ def add_item_to_feed(wiki, page, title, text):
 @WikiOperation
 def add_section_to_page(wiki, page, title, text, prepend=False):
     p = wikitools.page.Page(wiki, page)
-    if prepend:
+    if prepend and p.exists and p.getWikiText():
         text = "== %s ==\n\n%s" % (title, text)
         result = p.edit(section=0, text=text)
         editedpage = result["edit"]["title"]
