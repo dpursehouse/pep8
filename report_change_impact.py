@@ -116,9 +116,9 @@ https://wiki.sonyericsson.net/androiki/Commit_messages"""
 # Message when DMS in the commit message do not have required tag
 MESSAGE_DMS_TAG_REQUIRED = \
 """The change will affect the %s system branch. That branch requires all
-issues listed in the commit message to have one of the following tags:
-%s. One or more issues found for this commit (%s) did not conform to
-this."""
+issues listed in the commit message to be accepted by triage with one of the
+following tags: %s. One or more issues found for this commit (%s) did not
+conform to this."""
 
 # Message when no DMS found in the commit message
 MESSAGE_DMS_REQUIRED = \
@@ -127,8 +127,8 @@ DMS issue to be present in the commit message."""
 
 # Message when no DMS found in the commit message and tag is required
 MESSAGE_TAG_REQUIRED = \
-""" Additionally, all issues listed must have one of the following
-tags: %s."""
+""" Additionally, all issues listed must be accepted by triage with one of the
+following tags: %s."""
 
 # Message when the commit is too large
 MESSAGE_COMMIT_TOO_LARGE = \
