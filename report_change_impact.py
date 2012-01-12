@@ -35,6 +35,7 @@ from include_exclude_matcher import IncludeExcludeMatcher
 import manifest
 import manifestbranches
 import processes
+from retry import retry
 import semcutil
 
 
@@ -155,6 +156,7 @@ def _find_commit_size_script():
     raise Exception("Could not find %s" % _COMMIT_SIZE_SCRIPT)
 
 
+@retry(DMSTagServerError, tries=3, backoff=2, delay=10)
 def _get_tagged_issues(issues, tags, target_branch):
     """Retrieves the subset of `issues` that have at least one of
     `tags` set in their "Fix For" field.
@@ -175,31 +177,26 @@ def _get_tagged_issues(issues, tags, target_branch):
                                     target_branch)
 
 
+@retry(processes.ChildExecutionError, tries=2, backoff=2, delay=30)
 def _get_patchset_fixed_issues(options):
     """ Returns a list of issues fixed in the patchset.
     """
-    try:
-        patchset_ref = gerrit.get_patchset_refspec(options.change_nr,
-                                                   options.patchset_nr)
-        logging.info("Fetching patch set %s" % patchset_ref)
-        git = CachedGitWorkspace(
-            os.path.join("git://", options.gerrit_url, options.affected_git),
-            options.cache_path)
-        git.fetch(patchset_ref)
+    patchset_ref = gerrit.get_patchset_refspec(options.change_nr,
+                                               options.patchset_nr)
+    logging.info("Fetching patch set %s" % patchset_ref)
+    git = CachedGitWorkspace(
+        os.path.join("git://", options.gerrit_url, options.affected_git),
+        options.cache_path)
+    git.fetch(patchset_ref)
 
-        # Extract the commit message and find any DMS issues in it.
-        errcode, msg, err = processes.run_cmd("git",
-                                              "cat-file",
-                                              "-p",
-                                              "FETCH_HEAD",
-                                              path=git.git_path)
-        commit_message = CommitMessage(msg)
-        return commit_message.get_fixed_issues()
-    except processes.ChildExecutionError, err:
-        semcutil.fatal(2, err)
-    except EnvironmentError, err:
-        semcutil.fatal(2, "Error extracting DMS issue information: "
-                          "%s: %s" % (err.strerror, err.filename))
+    # Extract the commit message and find any DMS issues in it.
+    errcode, msg, err = processes.run_cmd("git",
+                                          "cat-file",
+                                          "-p",
+                                          "FETCH_HEAD",
+                                          path=git.git_path)
+    commit_message = CommitMessage(msg)
+    return commit_message.get_fixed_issues()
 
 
 def _get_dms_violations(config, dmslist, affected_manifests):
@@ -467,11 +464,17 @@ def _main():
         else:
             # Find the DMS issue(s) listed in the commit message of this patch
             # set.
-            dmslist = _get_patchset_fixed_issues(options)
-            if not len(dmslist):
-                logging.info("No DMS found in commit message")
-            else:
-                logging.info("Found DMS: " + ", ".join(dmslist))
+            try:
+                dmslist = _get_patchset_fixed_issues(options)
+                if not len(dmslist):
+                    logging.info("No DMS found in commit message")
+                else:
+                    logging.info("Found DMS: " + ", ".join(dmslist))
+            except processes.ChildExecutionError, err:
+                semcutil.fatal(2, err)
+            except EnvironmentError, err:
+                semcutil.fatal(2, "Error extracting DMS issue information: "
+                                  "%s: %s" % (err.strerror, err.filename))
 
             violations, code_review, verify = \
                 _get_dms_violations(config, dmslist, affected_manifests)
