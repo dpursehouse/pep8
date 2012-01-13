@@ -1,0 +1,506 @@
+Introduction
+============
+
+This directory (cm_web in git semctools/cm_tools) contains stuff of
+the (new) CM web site which is based on Django. This document
+(README) is mainly to introduce how to setup and run the web site.
+
+This doc is in `ReStructuredText format
+<http://docutils.sourceforge.net/docs/user/rst/quickstart.html>`_
+which can be converted to html by command
+``rst2html README README.html``, after you installed Docutils
+(``sudo apt-get install python-docutils`` in Ubuntu).
+
+How to setup development environment of Django
+==============================================
+
+This section describes how to setup the development environment,
+which means using Django build-in light weight web server, and Python
+build-in lightweight database (SQLight), without Apache & PostgreSQL.
+
+Reference: `Django quick install guide Quick Guide
+<https://docs.djangoproject.com/en/1.1/intro/install/>`_
+
+Step 1: Preparation
+----------------------------------
+
+If your computer does not have general development environment yet,
+please follow section "Setup Ubuntu", "Setup Git", "Setup SSH Key
+pair", and "Setup Gerrit" on `Setup Personal Development Environment
+<https://wiki.sonyericsson.net/androiki/Setup_Personal_Development_Env
+ironment>`_.
+
+If your computer has general development environment already, you can
+just run commands below or even ignore this step.
+
+::
+
+ > sudo apt-get update
+ > sudo apt-get upgrade
+
+(Another method: Desktop menu => System => Synaptic Package Manager)
+
+
+Step 2: Install Python 2.x
+--------------------------
+
+::
+
+ > sudo apt-get install python python-doc
+
+Test::
+
+ > python
+
+Step 3: Install Django
+----------------------
+
+::
+
+ > sudo apt-get install python-django python-django-doc
+
+Test::
+
+ > cd
+ > django-admin startproject HelloDjango
+ > cd HelloDjango
+ > python manage.py runserver 0.0.0.0:8000
+
+Then in Firefox open such as `<http://cnbjlx1105:8000/>`_.
+(Pls replace cnbjlx1105 by your computer name. To get your computer
+name, check the title of any terminal window.)
+The content should be "It worked! ..." (**NOT** "It works! ...")
+
+**After test, ctrl-c to stop the server**, if you want to continue to
+setup production environment (see section below).
+
+How to setup production environment of Django
+=============================================
+
+This section describes how to setup the production environment, which
+means Django + Apache + PostgreSQL. You need to finish all steps in
+section "How to setup development environment of Django" firstly,
+before do the production specific setup below.
+
+General references:
+
+* `How to install Django
+  <https://docs.djangoproject.com/en/1.1/topics/install/>`_
+* `Installing Django with Apache and mod_wsgi on Ubuntu 10.04
+  (Django + Apache + MySQL) <http://blog.stannard.net.au/2010/12/11/
+  installing-django-with-apache-and-mod_wsgi-on-ubuntu-10-04/>`_
+
+Step 1: Install and setup Apache
+--------------------------------
+
+Install Apache by package "apache2"::
+
+ > sudo apt-get install apache2 apache2-doc
+
+Config port number from 80 to 8080 (in case of port conflict)::
+
+ > sudo gedit /etc/apache2/ports.conf
+
+ NameVirtualHost *:8080
+ Listen 8080
+
+ > sudo gedit /etc/apache2/sites-available/default
+
+ <VirtualHost *:8080>
+
+Test:
+
+Start Apache (Refer to `apachectl - Apache HTTP Server Control
+Interface
+<http://httpd.apache.org/docs/2.0/programs/apachectl.html>`_ for
+start/restart/stop etc.)::
+
+ > sudo apache2ctl restart
+
+In Firefox type such as `<http://cnbjlx1105:8080/>`_.(**NOT** "8000")
+The content should be "It works! ..." (**NOT** "It worked! ...")
+
+Step 2: Connect Apache and Python
+---------------------------------
+
+::
+
+ > sudo apt-get install libapache2-mod-wsgi
+
+Test::
+
+ > sudo mkdir /srv/www
+ > sudo gedit /srv/www/HelloPython.wsgi
+
+ def application(environ, start_response):
+     status = '200 OK'
+     output = 'Hello Python!'
+
+     response_headers = [('Content-type', 'text/plain'),
+                         ('Content-Length', str(len(output)))]
+     start_response(status, response_headers)
+
+     return [output]
+
+ > sudo gedit /etc/apache2/httpd.conf
+
+ WSGIScriptAlias /HelloPython /srv/www/HelloPython.wsgi
+
+ <Directory /srv/www/>
+     Order allow,deny
+     Allow from all
+ </Directory>
+
+ > sudo apache2ctl restart
+
+Then in Firefox type such as `<http://cnbjlx1105:8080/HelloPython>`_.
+The content should be "Hello Python!".
+If failed, check whether file (symbol link in fact) wsgi.conf and
+wsgi.load
+exist in directory /etc/apache2/mods-enabled.
+If not::
+
+ > cd /etc/apache2/mods-available
+ > sudo ln -s wsgi.conf /etc/apache2/mods-enabled
+ > sudo ln -s wsgi.load /etc/apache2/mods-enabled
+
+
+Step 3: Connect Apache and Django
+---------------------------------
+
+In fact they've connected in step above. Here just some test::
+
+ > cd
+ > sudo cp -rf HelloDjango /srv/www
+ > sudo mkdir /srv/www/HelloDjango/apache
+ > sudo gedit /srv/www/HelloDjango/apache/django.wsgi
+
+ import os
+ import sys
+
+ path = '/srv/www'
+ if path not in sys.path:
+     sys.path.insert(0, path)
+
+ os.environ['DJANGO_SETTINGS_MODULE'] = 'HelloDjango.settings'
+
+ import django.core.handlers.wsgi
+ application = django.core.handlers.wsgi.WSGIHandler()
+
+ > sudo gedit /etc/apache2/httpd.conf
+
+ # add this line, and don't delete other lines.
+ WSGIScriptAlias /HelloDjango /srv/www/HelloDjango/apache/django.wsgi
+
+ > sudo apache2ctl restart
+
+Then in Firefox check such as `<http://cnbjlx1105:8080/HelloDjango>`_.
+The content should be "It worked! ..."
+
+Reference: `Integration With Django
+<http://code.google.com/p/modwsgi/wiki/IntegrationWithDjango>`_
+
+Step 4. Install PostgreSQL
+--------------------------
+
+To install::
+
+ > sudo apt-get install postgresql postgresql-doc pgadmin3
+
+To add users into database::
+
+ > sudo -u postgres createuser --superuser $USER
+ > sudo -u postgres createuser --superuser www-data
+ > sudo -u postgres createuser --superuser root
+
+($USER stores your Ubuntu login id such as '28848460'. Apache will
+use 'www-data'. 'root' will be used when you sudo to create some
+database structure.)
+
+Test::
+
+ > sudo -u postgres createdb testdb
+ > psql testdb
+ testdb=# select version();
+
+Sometimes you may meet difficulty to quit or exit a query. Press 'q'
+then.
+And, to exit the postgreSQL prompt, type Control+D.
+
+Reference:
+
+* `PostgreSQL in ubuntu
+  <https://help.ubuntu.com/community/PostgreSQL>`_
+* `PostgreSQL Documentation
+  <http://www.postgresql.org/docs/8.4/interactive/index.html>`_
+
+Step 5. Connect PostgreSQL and Django
+-------------------------------------
+
+ > sudo apt-get install python-psycopg2
+
+Test::
+
+ > cd ~/HelloDjango
+ > gedit settings.py
+
+ DATABASE_ENGINE = 'postgresql_psycopg2'
+ DATABASE_NAME = 'testdb'
+ DATABASE_USER = ''
+ DATABASE_PASSWORD = ''
+ DATABASE_HOST = ''
+ DATABASE_PORT = ''
+
+ > python manage.py syncdb
+ > sudo python manage.py syncdb
+
+If no error message, it passed the check:
+both your login ID and root can use PostgreSQL now.
+
+How to setup and run CM web in development environment
+======================================================
+
+This section describes how to setup and run CM web in development
+environment, which means be under Git version control, and without
+Apache & PostgreSQL.
+
+Step 1: Download source code of cm_tools git
+--------------------------------------------
+
+::
+
+ > cd
+ > git clone git://review.sonyericsson.net/semctools/cm_tools cm_tools
+
+Of course if the version you want is not the head of master branch of
+cm-tools git, you have to use different command/method.
+For example, after clone, you may:
+
+::
+
+ > git fetch origin refs/changes/35/198635/15
+ > git checkout FETCH_HEAD
+
+Step 2: Download source code of Android git(s)
+----------------------------------------------
+
+(Currently only manifest git is necessary. In later version most
+likely this step will change.)
+
+::
+
+ > cd
+ > mkdir gits
+ > cd gits
+ > mkdir platform
+ > cd platform
+ > git clone git://review.sonyericsson.net/platform/manifest manifest
+
+Step 3: Configure settings
+--------------------------
+
+Settings are in ``cm_tools/cm_web/settings.py``.
+Normally you needn't modify anything. The paths are set automatically.
+
+Step 4: Generate database tables
+--------------------------------
+
+::
+
+ > cd ~/cm_tools/cm_web
+ > python manage.py syncdb
+
+By this step, a SQLite database storage file named cm_web_db (set in
+settings.py) is created under ~/cm_tools/cm_web, with proper
+structure.
+
+Step 5: Start backend program
+-----------------------------
+
+The backend program is mainly to keep Android git(s) (as well as data
+in database in later version) up-to-date.
+
+::
+
+ > cd ~/cm_tools/cm_web/backend
+ > ./main.py
+
+Step 6: Start web server
+------------------------
+
+In another terminal
+
+::
+
+  > cd ~/cm_tools/cm_web
+  > python manage.py runserver 0.0.0.0:8000
+
+Then in Firefox open such as `<http://cnbjlx1105:8000/>`_, which is
+the home page.
+
+Step 7: Add some test data to database
+--------------------------------------
+
+In such as `<http://cnbjlx1105:8000/admin/matrix/systembranch/>`_,
+add some system branches (such as ginger-fuji, ginger-fuji-r2,
+edream4.0.1-release etc.) into the database table named 'system
+branch'.
+
+Then you can play.
+
+How to setup and run CM web in production environment
+=====================================================
+
+This section describes how to setup and run CM web in production
+environment, which means be out of Git version control, and with
+Apache & PostgreSQL. (The reason of out of Git version control is,
+apache is called by root, but so far it's unknown where root stores
+his ssh key.) The procedure is similar to section "How to setup and
+run CM web in development environment", with following differences:
+
+* The location of cm_tools (and cm_web accordingly)
+  and gits are different.
+* Use PostgreSQL instead of SQLite.
+  Need to create PostgreSQL database firstly.
+* Use Apache instead of Django build-in web server.
+  Need to do additional configurations.
+* 'sudo'.
+
+In details:
+
+Step 1: Get source code of cm_tools git
+---------------------------------------
+
+::
+
+ > sudo cp -rf ~/cm_tools /srv/www
+
+Of course firstly you should have the correct code in ~/cm_tools
+firstly.
+
+Step 2: Download source code of Android git(s)
+----------------------------------------------
+
+::
+
+ > cd /srv/www
+ > sudo mkdir gits
+ > sudo chown 28848460 gits
+ > cd gits
+ > mkdir platform
+ > cd platform
+ > git clone git://review.sonyericsson.net/platform/manifest manifest
+
+Step 3: Configure settings
+--------------------------
+
+Normally you needn't modify any settings in ``cm_tools/cm_web/settings.py``
+and ``cm_tools/cm_web/apache/django.wsgi``. The paths are set automatically.
+The DATABASE_ENGINE now points to PostgreSQL instead of SQLite.
+But you need to config ``httpd.conf``.
+
+::
+
+ > sudo gedit /etc/apache2/httpd.conf
+
+Add an alias for media and admin_media, add a WSGIScriptAlias for cm_web,
+comment some others, keep the rest:
+
+::
+
+ Alias /media/ /srv/www/cm_tools/cm_web/media/
+ Alias /admin_media/ /usr/share/pyshared/django/contrib/admin/media/
+
+ WSGIScriptAlias / /srv/www/cm_tools/cm_web/apache/django.wsgi
+ # WSGIScriptAlias /HelloDjango /srv/www/HelloDjango/apache/django.wsgi
+ # WSGIScriptAlias /HelloPython /srv/www/HelloPython.wsgi
+
+ <Directory /srv/www/>
+     Order allow,deny
+     Allow from all
+ </Directory>
+
+Step 4: Generate database tables
+--------------------------------
+
+::
+
+ > sudo -u postgres createdb cm_web_db
+ > cd /srv/www/cm_tools/cm_web
+ > sudo python manage.py syncdb
+
+By this step, a PostgreSQL database named cm_web_db (set in
+settings.py) is created, with proper structure.
+
+Step 5: Start backend program
+-----------------------------
+
+::
+
+ > cd /srv/www/cm_tools/cm_web/backend
+ > sudo chown -R $USER .
+ > ./main.py
+
+Step 6: Start web server
+------------------------
+
+In another terminal
+
+::
+
+  > sudo apache2ctl restart
+
+Then in Firefox open such as `<http://cnbjlx1105:8080/>`_ (**Not**
+8000), which is the home page.
+
+Step 7: Add some test data to database
+--------------------------------------
+
+In such as `<http://cnbjlx1105:8000/admin/matrix/systembranch/>`_,
+add some system branches (such as ginger-fuji, ginger-fuji-r2,
+edream4.0.1-release etc.) into the database table named 'system
+branch'.
+
+Then you can play.
+
+How to modify and deliver
+=========================
+
+Yes, create topic branch, modify, test, commit to local git, push to
+gerrit to review... However, some special things to take care:
+
+* Expect urgent cases, always modify in development environment
+  instead of product environment especially the published one.
+* Never submit local specific settings in settings.py and django.wsgi.
+* Never submit following files: cm_web_db which is a database file;
+  README.html which can be generated from README easily;
+  \*.log file(s). (These files are in .gitignore now.)
+
+How to upgrade CM Web
+=====================
+
+To upgrade development environment, yes, pull. For trivial change it
+may just work. However,
+
+* If any specific settings in settings.py, be careful.
+* If new files, then restart the web server.
+* If database structure change, then "python manage.py syncdb"
+  or even more step(s).
+* If back-end codes change, then restart the back-end script.
+
+To upgrade production environment, besides bullets above, you should
+also:
+
+* To upgrade the product environment of the published one, use
+  non-working time, unless urgent or trivial change.
+* Test in the product environment for test,
+  before upgrade the published one.
+* Don't overwrite specific setting(s) in production environment
+  in settings.py and apache/django.wsgi.
+* Don't copy specific setting(s) in settings.py for development environment
+  to production environment.
+* Be careful for the existing data in database.
+* ``sudo chown -R $USER \srv\www\cm_tools\cm_web\backend``
+* Always restart Apache and backend script.
+* Always have a rough check after upgrade and run,
+  on both web GUI and backend script.

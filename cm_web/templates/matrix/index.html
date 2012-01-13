@@ -1,0 +1,20 @@
+<img src = "{{ MEDIA_URL }}img/spider2.jpg">
+
+<h1>System Branch Composition Matrix</h1>
+
+<b>Please select manifest branches you want to look into: </b>
+
+{% if error_message %}<p><strong>{{ error_message }}</strong></p>{% endif %}
+
+<form action="/matrix/result" method="post">
+{% for sys_branch in sys_branches %}
+    <input type="checkbox" name="br{{ sys_branch.id }}" id="br{{ forloop.counter }}" value="{{ sys_branch.name }}" />
+    <label for="br{{ forloop.counter }}">{{ sys_branch.name }}</label><br />
+{% endfor %}
+<input type="submit" value="Query" />
+</form>
+
+<p>
+  For miracles, unclears and suggestions please mail to
+  <a href = "mailto:SG-WW-Android-CM-Web-G@sonyericsson.com">SG-WW-Android-CM-Web-G</a>.
+</p>
