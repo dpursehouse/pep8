@@ -1,8 +1,17 @@
+#! /usr/bin/env python
+
+from optparse import OptionParser
+import os
 import re
+import sys
 from xml.etree.ElementTree import ElementTree
+from xml.parsers.expat import ExpatError
+
+import semcutil
 
 VALID_CODE_REVIEW = ["-2", "-1", "0"]
 VALID_VERIFY = ["-1", "0"]
+DEFAULT_CONFIG_FILE = 'etc/dms_policy.xml'
 
 
 class BranchPolicyError(Exception):
@@ -157,3 +166,41 @@ class BranchPolicies():
             # If the branch doesn't have a policy, default to being
             # permissive.
             return True
+
+
+def _main(argv):
+
+    usage = "usage: %prog [options] BRANCH"
+    parser = OptionParser(usage=usage)
+    parser.add_option("--print_tags", dest="print_tags",
+                      action="store_true", default=True,
+                      help="Print the tags for the branch, `BRANCH` from " + \
+                           "the specified policy file.")
+    parser.add_option("--allow_empty_tags", dest="allow_empty_tags",
+                      action="store_true", default=False,
+                      help="If set to `True` prints an empty string even " + \
+                           "if no tags are found for the branch else " + \
+                           "fails with fatal error.")
+    parser.add_option("-p", "--policy_file", dest="policy_file",
+                      default=DEFAULT_CONFIG_FILE,
+                      help="Path to the branch policy file.")
+    (options, args) = parser.parse_args()
+    if len(args) != 1:
+        parser.print_help()
+        parser.error("Incorrect number of arguments")
+    if options.print_tags:
+        branch = args[0]
+        try:
+            config = BranchPolicies(options.policy_file)
+        except (ExpatError, BranchPolicyError), err:
+            semcutil.fatal(1, "Error parsing %s: %s" % \
+                           (options.policy_file, err))
+
+        tags = config.get_branch_tagnames(branch)
+        if tags or options.allow_empty_tags:
+            print ','.join(tags)
+        else:
+            semcutil.fatal(1, "No tags found for branch: %s" % (branch))
+
+if __name__ == "__main__":
+    _main(sys.argv)
