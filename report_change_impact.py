@@ -528,7 +528,7 @@ def _main():
             # script to run.
             # Only attempt to include code review and verify scores if
             # the change is still open and the patch set is still current.
-            is_open, current_patchset = g.change_is_open(str(options.change_nr))
+            is_open, current_patchset = g.change_is_open(options.change_nr)
             if not is_open:
                 logging.info("Change %d is closed: adding review message " \
                              "without code review or verify scores" % \
