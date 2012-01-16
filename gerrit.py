@@ -179,7 +179,7 @@ class GerritSshConnection():
         query raises more than one result, or the gerrit query fails for
         some other reason.
         """
-        results = self.query(change)
+        results = self.query(str(change))
         if not len(results):
             raise GerritQueryError("Change not found")
         elif len(results) > 1:
