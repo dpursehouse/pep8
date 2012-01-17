@@ -173,14 +173,14 @@ class GerritSshConnection():
 
     def change_is_open(self, change):
         """ Checks if the change specified by `change` is open.  `change` is
-        assumed to be a valid gerrit query string.
+        assumed to be a valid Gerrit query string.
         Returns True or False, and the current patch set.
         Raises GerritQueryError if the change was not found, the Gerrit
-        query raises more than one result, or the gerrit query fails for
+        query returns more than one result, or the gerrit query fails for
         some other reason.
         """
         results = self.query(str(change))
-        if not len(results):
+        if not results:
             raise GerritQueryError("Change not found")
         elif len(results) > 1:
             raise GerritQueryError("Too many results")
@@ -192,6 +192,40 @@ class GerritSshConnection():
         is_open = (result["status"] == "NEW")
         current_patchset = int(result["currentPatchSet"]["number"])
         return is_open, current_patchset
+
+    def get_review_information(self, change, exclude_jenkins=True,
+                               include_owner=False):
+        """ Gets review information related to the change specified by
+        `change`, which is assumed to be a valid Gerrit query string.
+        Returns a list of reviewers' email addresses, and the review URL.
+        If `exclude_jenkins` is True, email addresses belonging to Jenkins
+        will be excluded from the list of reviewer emails.  If `include_owner`
+        is True, the email address of the change owner will be included in the
+        list.
+        Raises GerritQueryError if the change was not found, the Gerrit
+        query returns more than one result, or the gerrit query fails for
+        some other reason.
+        """
+        results = self.query(str(change))
+        if not results:
+            raise GerritQueryError("Change not found")
+        elif len(results) > 1:
+            raise GerritQueryError("Too many results")
+        result = results[0]
+        approvers = filter(lambda a: "email" in a["by"],
+                           result["currentPatchSet"]
+                           ["approvals"])
+        emails = list(set([a["by"]["email"] for a in approvers]))
+        if exclude_jenkins:
+            for email in emails:
+                if re.match("^(hudson|jenkins)@", email):
+                    emails.remove(email)
+        if include_owner:
+            owner_email = result['owner']['email']
+            if owner_email not in emails:
+                emails.append(owner_email)
+        url = result['url'].strip()
+        return emails, url
 
     def review_patchset(self, commit_sha1=None, change_nr=None,
                         patchset=None, message=None, codereview=None,

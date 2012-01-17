@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.34'
+__version__ = '0.3.35'
 
 REPO = 'repo'
 GIT = 'git'
@@ -253,25 +253,11 @@ class Gerrit():
         Return list of email addresses and review url.
         Raise GerritError if anything goes wrong.
         '''
-        query = 'status:merged limit:1 commit:%s' % commit
-
         try:
-            results = self.gerrit.query(query)
-            if len(results) != 1:
-                raise GerritError("Unexpected Gerrit query result")
-            result = results[0]
-            approvals_email = filter(lambda a: "email" in a["by"],
-                                     result["currentPatchSet"]
-                                     ["approvals"])
-            emails = list(set([a["by"]["email"] for a in approvals_email]))
-            for email in emails:
-                if re.match("^(hudson|jenkins)@", email):
-                    emails.remove(email)
-            url = result['url'].strip()
-            owner_email = result['owner']['email']
-            logging.info("Change owner: %s" % owner_email)
-            if owner_email not in emails:
-                emails.append(owner_email)
+            emails, url = \
+                self.gerrit.get_review_information(commit,
+                                                   exclude_jenkins=True,
+                                                   include_owner=True)
             logging.info("Emails: %s" % ",".join(emails))
             return emails, url
         except GerritQueryError, e:
@@ -312,6 +298,8 @@ class Gerrit():
             self.gerrit.review_patchset(change_nr=int(change_id),
                                         patchset=1,
                                         codereview=2)
+        except GerritQueryError, e:
+            raise GerritError("Gerrit query error: %s", e)
         except ChildExecutionError, e:
             raise GerritError("Error setting code review for change %s: %s" % \
                               (change_id, e))
