@@ -10,6 +10,7 @@ import commit_message
 import gerrit
 from git import CachedGitWorkspace
 import processes
+from retry import retry
 from semcutil import enum, fatal
 
 
@@ -227,6 +228,7 @@ def format_results(results):
     return output, errors, warnings
 
 
+@retry(processes.ChildExecutionError, tries=3, backoff=2, delay=60)
 def get_commit_message(options):
     ''' Get the commit message from the change.
     '''
