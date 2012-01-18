@@ -1,4 +1,4 @@
-from xml.dom.minidom import parseString
+from xml.dom.minidom import parse, parseString
 from xml.parsers.expat import ExpatError
 
 
@@ -16,7 +16,8 @@ class ManifestParseError(Exception):
 class RepoXmlManifest():
     """Returns an object with the info from a repo manifest.
 
-    Takes the path to a manifest as input. The object returned contains:
+    Takes the a readable object or a manifest as XML string as input. The
+    object returned contains:
 
     projects: a dict with project name as key and another dict
     with info for each project. This dict always contains the keys "path",
@@ -24,8 +25,9 @@ class RepoXmlManifest():
     default_rev: the default revision as specified in the manifest.
     Throws ManifestParseError on all kinds of errors.
     """
-    def __init__(self, manifestdata):
-        self.manifestdata = manifestdata
+
+    def __init__(self, manifest):
+        self.manifest = manifest
         self.projects = {}
         self.default_rev = None
 
@@ -33,7 +35,12 @@ class RepoXmlManifest():
 
     def _parse_manifest(self):
         try:
-            domtree = parseString(self.manifestdata)
+            if hasattr(self.manifest, "read") and callable(self.manifest.read):
+                # self.manifest seems to be a file object
+                domtree = parse(self.manifest)
+            else:
+                # self.manifest seems to be a xml string
+                domtree = parseString(self.manifest)
         except ExpatError, e:
             raise ManifestParseError(str(e))
 
