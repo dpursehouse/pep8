@@ -39,9 +39,19 @@ def retry(exception, tries, delay=3, backoff=2):
                     return f(*args, **kwargs)
 
                 except exception, e:
-                    mtries -= 1         # consume an attempt
-                    time.sleep(mdelay)  # wait...
-                    mdelay *= backoff   # make future wait longer
+                    # Consume an attempt
+                    mtries -= 1
+
+                    # Only need to wait when more tries are remaining,
+                    # otherwise we just delay raising the exception.
+                    if mtries > 0:
+                        time.sleep(mdelay)
+
+                        # Increment delay
+                        mdelay *= backoff
+
+                    # Last caught exception will be raised to the caller
+                    # when there are no more tries remaining
                     last_exception = e
 
             raise last_exception
