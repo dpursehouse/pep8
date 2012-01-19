@@ -6,7 +6,7 @@ if [ -z "$GERRIT_USER" ]; then
 fi
 
 # Remove the output directory if it already exists, and create it again
-OUTDIR="out"
+OUTDIR=$PWD"/out"
 if [ -d $OUTDIR ] ; then
     rm -rf $OUTDIR
 fi
@@ -18,16 +18,7 @@ if [ $(grep -c $GERRIT_PROJECT $OUTDIR/pld-gits.txt) -eq 1 ]; then
     exit 0
 fi
 
-# If the cm_tools folder exists, make sure it's up to date.  If it
-# does not exist yet, create it.
-if [ -d cm_tools ] ; then
-    cd cm_tools
-    git fetch
-    git checkout origin/master
-else
-    git clone git://review.sonyericsson.net/semctools/cm_tools -b master
-    cd cm_tools
-fi
+cd cm_tools
 
 # Invoke the commit message checker
 python commit_message_check.py \
