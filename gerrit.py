@@ -3,6 +3,7 @@ the Gerrit Code Review software.
 """
 
 import json
+import re
 import sys
 import urllib
 
