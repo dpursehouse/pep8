@@ -18,6 +18,14 @@ if [ $(grep -c $GERRIT_PROJECT $OUTDIR/pld-gits.txt) -eq 1 ]; then
     exit 0
 fi
 
+EXTRA_PARAMS=""
+if [ ! -z "$EXCLUDED_GITS" ]; then
+    arr=$(echo $EXCLUDED_GITS | tr -s "," "\n")
+    for git in $arr; do
+        EXTRA_PARAMS="$EXTRA_PARAMS --exclude-git $git"
+    done
+fi
+
 cd cm_tools
 
 # Invoke the commit message checker
@@ -27,4 +35,4 @@ python commit_message_check.py \
     --change $GERRIT_CHANGE_NUMBER \
     --project $GERRIT_PROJECT \
     --patchset $GERRIT_PATCHSET_NUMBER \
-    --gerrit-user $GERRIT_USER
+    --gerrit-user $GERRIT_USER $EXTRA_PARAMS

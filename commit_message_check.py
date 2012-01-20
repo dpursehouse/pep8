@@ -9,6 +9,7 @@ import sys
 import commit_message
 import gerrit
 from git import CachedGitWorkspace
+from include_exclude_matcher import IncludeExcludeMatcher
 import processes
 from retry import retry
 from semcutil import enum, fatal
@@ -280,6 +281,14 @@ def main():
     options.add_option("", "--project", dest="affected_git",
                        help="The name of the project on which the " \
                             "change is uploaded.")
+    options.add_option("", "--exclude-git", dest="git_ex",
+                       action="append", metavar="REGEXP",
+                       help="A regular expression that will be matched " \
+                            "against the name of the git to which the " \
+                            "change has been uploaded.  Gits that match " \
+                            "the pattern will be excluded from the check.  " \
+                            "This option can be used multiple times to add " \
+                            "more expressions. (default: <empty>).")
     (options, args) = options.parse_args()
 
     if options.verbose:
@@ -293,6 +302,14 @@ def main():
         fatal(1, "Patchset nr. missing. Use --patchset option.")
     if not options.affected_git:
         fatal(1, "Project name missing. Use --project option.")
+
+    # By default we include all gits, and then exclude any that are
+    # specified by the user with the --exclude-git option.
+    git_matcher = IncludeExcludeMatcher([r"^"], options.git_ex)
+    if not git_matcher.match(options.affected_git):
+        logging.info("git %s is excluded from commit message check" % \
+                     options.affected_git)
+        exit(0)
 
     try:
         message = get_commit_message(options)
