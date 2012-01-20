@@ -14,7 +14,8 @@ def retry(exception, tries, delay=3, backoff=2):
     `delay` sets the initial delay in seconds. Must be greater than 0.
     `backoff` sets the factor by which the `delay` should lengthen after each
     failure. Must be greater than 1, or else it isn't really a backoff.
-    `tries` sets the number of reties to attempt. Must be at least 0.
+    `tries` sets the number of times to attempt calling the function. Must be
+    at least 1, but ideally should be at least 2.
     """
 
     if not exception:
@@ -24,8 +25,8 @@ def retry(exception, tries, delay=3, backoff=2):
         raise ValueError("backoff must be greater than 1")
 
     tries = math.floor(tries)
-    if tries < 0:
-        raise ValueError("tries must be 0 or greater")
+    if tries < 1:
+        raise ValueError("tries must be at least 1")
 
     if delay <= 0:
         raise ValueError("delay must be greater than 0")

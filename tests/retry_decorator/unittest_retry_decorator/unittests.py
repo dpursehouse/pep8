@@ -64,7 +64,7 @@ class TestRetryDecorator(unittest.TestCase):
         try:
             @retry.retry(Exception, tries=_TRIES, delay=-1)
             def decorated():
-                self.assertTrue(False)
+                self.fail("retry decorator did not raise exception")
         except ValueError:
             pass
 
@@ -75,7 +75,14 @@ class TestRetryDecorator(unittest.TestCase):
         try:
             @retry.retry(Exception, tries=-1)
             def decorated():
-                self.assertTrue(False)
+                self.fail("retry decorator did not raise exception")
+        except ValueError:
+            pass
+
+        try:
+            @retry.retry(Exception, tries=0)
+            def decorated():
+                self.fail("retry decorator did not raise exception")
         except ValueError:
             pass
 
@@ -93,7 +100,7 @@ class TestRetryDecorator(unittest.TestCase):
             def decorated():
                 # If it reaches this point, something went wrong.
                 # Force a test failure.
-                self.assertTrue(False)
+                self.fail("retry decorator did not raise exception")
         except ValueError:
             # Expected result, continue to the next test.
             pass
@@ -101,14 +108,14 @@ class TestRetryDecorator(unittest.TestCase):
         try:
             @retry.retry(Exception, tries=_TRIES, backoff=0)
             def decorated():
-                self.assertTrue(False)
+                self.fail("retry decorator did not raise exception")
         except ValueError:
             pass
 
         try:
             @retry.retry(Exception, tries=_TRIES, backoff=1)
             def decorated():
-                self.assertTrue(False)
+                self.fail("retry decorator did not raise exception")
         except ValueError:
             pass
 
