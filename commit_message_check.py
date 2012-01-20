@@ -234,25 +234,20 @@ def get_commit_message(options):
     '''
     patchset_ref = gerrit.get_patchset_refspec(options.change_nr,
                                                options.patchset_nr)
-    try:
-        logging.info("Fetching patch set %s" % patchset_ref)
-        git = CachedGitWorkspace(
-            os.path.join("git://", options.gerrit_url, options.affected_git),
-            options.cache_path)
-        git.fetch(patchset_ref)
 
-        # Extract the commit message and find any DMS issues in it.
-        errcode, msg, err = processes.run_cmd("git",
-                                              "cat-file",
-                                              "-p",
-                                              "FETCH_HEAD",
-                                              path=git.git_path)
-        return commit_message.CommitMessage(msg)
-    except processes.ChildExecutionError, err:
-        fatal(2, err)
-    except EnvironmentError, err:
-        fatal(2, "Error extracting commit message: %s: %s" % \
-                 (err.strerror, err.filename))
+    logging.info("Fetching patch set %s" % patchset_ref)
+    git = CachedGitWorkspace(
+        os.path.join("git://", options.gerrit_url, options.affected_git),
+        options.cache_path)
+    git.fetch(patchset_ref)
+
+    # Extract the commit message and find any DMS issues in it.
+    errcode, msg, err = processes.run_cmd("git",
+                                          "cat-file",
+                                          "-p",
+                                          "FETCH_HEAD",
+                                          path=git.git_path)
+    return commit_message.CommitMessage(msg)
 
 
 def main():
@@ -301,6 +296,12 @@ def main():
 
     try:
         message = get_commit_message(options)
+    except processes.ChildExecutionError, err:
+        fatal(1, err)
+    except EnvironmentError, err:
+        fatal(1, "Error extracting commit message: %s: %s" % \
+                 (err.strerror, err.filename))
+    try:
         checker = CommitMessageChecker(message)
         results = checker.check()
         output, errors, warnings = format_results(results)
@@ -335,14 +336,14 @@ def main():
     except gerrit.GerritSshConfigError, e:
         fatal(1, "Error getting Gerrit ssh config: %s" % err)
     except processes.ChildExecutionError, err:
-        fatal(2, "Error submitting review to Gerrit: %s" % err)
+        fatal(1, "Error submitting review to Gerrit: %s" % err)
     except gerrit.GerritQueryError, err:
-        fatal(3, "Error submitting review to Gerrit: %s" % err)
+        fatal(1, "Error submitting review to Gerrit: %s" % err)
     except commit_message.CommitMessageError, e:
-        fatal(4, "Commit message error: %s" % e)
+        fatal(1, "Commit message error: %s" % e)
 
 if __name__ == '__main__':
     try:
         sys.exit(main())
     except KeyboardInterrupt:
-        semcutil.fatal(5, "Interrupted by user")
+        fatal(1, "Interrupted by user")
