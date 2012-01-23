@@ -12,10 +12,19 @@ if [ -d $OUTDIR ] ; then
 fi
 mkdir $OUTDIR
 
-# Ignore uploaded changes on PLD gits
-curl http://android-ci-platform.sonyericsson.net/job/pld-gits/lastSuccessfulBuild/artifact/pld-gits.txt > $OUTDIR/pld-gits.txt
-if [ $(grep -c $GERRIT_PROJECT $OUTDIR/pld-gits.txt) -eq 1 ]; then
-    exit 0
+# Get list of PLD gits
+PLD_GITS=$(cat <<EOF
+http://android-ci-platform.sonyericsson.net/job/pld-gits/lastSuccessfulBuild/\
+artifact/pld-gits.txt
+EOF
+)
+curl $PLD_GITS | tee $OUTDIR/pld-gits.txt > /dev/null
+CURL_STATUS=${PIPESTATUS[0]}
+if [ 0 -eq "$CURL_STATUS" ]; then
+    # Ignore uploaded changes on PLD gits
+    if [ $(grep -c ^$GERRIT_PROJECT$ $OUTDIR/pld-gits.txt) -eq 1 ]; then
+        exit 0
+    fi
 fi
 
 EXTRA_PARAMS=""
