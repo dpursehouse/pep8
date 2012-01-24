@@ -1,15 +1,15 @@
 #!/usr/bin/python
 
-#----------------------------------------------------
+#------------------------------------------------
 # jenkins_project_status.py
 #
-# The purpose of this script is to be able to keep
-# track of build status for several Jenkins projects
-# on a single wikipage.
+# The purpose of this script is to create wiki
+# formatted build history status from a Jenkins
+# project.
 #
-# Input: Line break separated Jenkins project URLs.
-# Output: Wiki formated text.
-#----------------------------------------------------
+# Input: URL to a Jenkins project.
+# Output: Wiki table formatted text.
+#------------------------------------------------
 
 import datetime
 import optparse
@@ -111,8 +111,13 @@ def get_result(uri, host):
 
 def produce_wiki_table(host, prj, rows):
     uri = "/view/CM/job/" + prj + "/api/xml"
-    response = make_request(host, 80, uri)
-    domtree = trim_xml(response)
+    try:
+        response = make_request(host, 80, uri)
+        domtree = trim_xml(response)
+    except socket.error:
+        semcutil.fatal(1, "Error connecting to URL")
+    except:
+        semcutil.fatal(1, "Incorrect URL or unparseable response")
 
     print "=" + prj + "="
     print "{| class='wikitable' border='1'"
@@ -121,7 +126,17 @@ def produce_wiki_table(host, prj, rows):
 
     for url in get_job_urls(domtree, rows):
         uri = url.replace("http://" + host, "") + "/api/xml"
-        res = get_result(uri, host)
+        try:
+            res = get_result(uri, host)
+            timestamp = datetime.datetime.fromtimestamp(
+            float(res["timestamp"]) / 1000)
+        except socket.error:
+            break
+        except ValueError:
+            break
+        except IndexError:
+            break
+
         color = "<span style=\"color:#DD0000\">"
         if(res["result"] == "SUCCESS"):
             color = "<span style=\"color:#00DD00\">"
@@ -132,11 +147,7 @@ def produce_wiki_table(host, prj, rows):
             res["result"] = "-"
         print "|-"
 
-        sys.stdout.write("|[http://%s/view/CM/job/" % host)
-        sys.stdout.write("%s/%s/ #%s]\n" % (prj, res["number"], res["number"]))
-
-        timestamp = datetime.datetime.fromtimestamp(
-        float(res["timestamp"]) / 1000)
+        print("|[" + url + " #" + res["number"] + "]")
 
         print "|" + timestamp.ctime()
         print "|" + res["description"]
@@ -146,14 +157,17 @@ def produce_wiki_table(host, prj, rows):
 
 
 def main():
-    usage = "usage: %prog [options] < INPUTFILE\n\n" + \
-            "Pipe Jenkins project URLs, separated by line breaks, " + \
-            "to this script."
+    usage = "usage: %prog [options]"
     parser = optparse.OptionParser(usage=usage)
-    parser.add_option("-n", dest="numrows",
-            default=ROW_DEFAULT, help="Number of rows to return " \
-                "for each project. Range " + str(ROW_MIN) + " - " + \
-                str(ROW_MAX) + ". [default: %default]")
+    parser.add_option("-n",
+                      dest="numrows",
+                      default=ROW_DEFAULT,
+                      help="number of rows to return " \
+                           "for project. Range " + str(ROW_MIN) + " - " + \
+                           str(ROW_MAX) + ". [default: %default]")
+    parser.add_option("-u",
+                      dest="url",
+                      default=None, help="HTTP URL to Jenkins build ")
     (options, args) = parser.parse_args()
 
     # Get user preferred number of rows.
@@ -169,17 +183,17 @@ def main():
         numrows = int(ROW_DEFAULT)
 
     try:
-        data = sys.stdin.read()
-        string = data.rstrip('\n')
-        lines = re.split('\n', string)
-        for url in lines:
-            host = url[url.find("//") + 2:url.find("/", url.find("//") + 2)]
-            project = url[url.rfind("job/") + 4:url.rfind("/")]
-            produce_wiki_table(host, project, numrows)
-    except socket.error as detail:
-        semcutil.fatal(1, "Socket error:" + detail)
-    except:
-        semcutil.fatal(1, "Unexpected error: " + str(sys.exc_info()[0]))
+        if (not options.url):
+            semcutil.fatal(1, "-u option is required")
+        url = options.url
+        if '\n' in url or ',' in url:
+            semcutil.fatal(1, "Only one URL at the same time")
+        host = url[url.index("//") + 2:url.index("/", url.index("//") + 2)]
+        project = url[url.rindex("job/") + 4:url.rindex("/")]
+    except ValueError:
+        semcutil.fatal(1, "Incorrect URL")
+
+    produce_wiki_table(host, project, numrows)
 
 
 if __name__ == "__main__":
