@@ -66,6 +66,7 @@ my @tags;
 my $list;
 my $update;
 my @sites;
+my $title;
 my $unverified_query;
 my $unlabeled_query;
 my $project;
@@ -266,6 +267,7 @@ if(scalar(@ARGV) == 0) {
                             "list"          => \$list,
                             "update"        => \$update,
                             "sites=s"       => \@sites,
+                            "title"         => \$title,
                             "remove_query"  => \$remove_query,
                             "unv=s"         => \$unverified_query,
                             "unl=s"         => \$unlabeled_query,
@@ -337,6 +339,7 @@ if(defined($query)) {
   $query_def = $session->OpenQueryDef($query);
   #If mastership is not in the query, add that.
   foreach my $field (MASTERSHIP_FIELD,
+                     TITLE_FIELD,
                      STATE_FIELD,
                      INTEGRATED_STATUS_FIELD,
                      VERIFIED_STATUS_FIELD,
@@ -386,12 +389,21 @@ if(!defined($result_set)) {
 
 #Parse the result set for the values needed for further processing and put them
 #in a hash in memory for fast queries
-my $issues_data = build_issue_hash($session,
+my $issues_data;
+if(defined($title) && defined($list)) {
+  $issues_data = build_issue_hash($session,
+                                   $result_set,
+                                   $query_def,
+                                   TITLE_FIELD,
+                                   ID_FIELD);
+} else {
+  $issues_data = build_issue_hash($session,
                                    $result_set,
                                    $query_def,
                                    MASTERSHIP_FIELD,
                                    RELEASE_LABEL_FIELD,
                                    STATE_FIELD,
+                                   TITLE_FIELD,
                                    INTEGRATED_STATUS_FIELD,
                                    VERIFIED_STATUS_FIELD,
                                    PROJ_ID,
@@ -403,6 +415,7 @@ my $issues_data = build_issue_hash($session,
                                    DELIVERY.".".DELIVERY_DECISION_STATUS,
                                    DELIVERY.".".FIX_FOR_FIELD,
                                    DELIVERY.".".DELIVERY_DELIVERED_IN);
+}
 
 if(defined($list)) {
   list($issues_data);
@@ -1090,6 +1103,7 @@ sub placeholder_issues {
                                        MASTERSHIP_FIELD,
                                        RELEASE_LABEL_FIELD,
                                        STATE_FIELD,
+                                       TITLE_FIELD,
                                        INTEGRATED_STATUS_FIELD,
                                        VERIFIED_STATUS_FIELD,
                                        PROJ_ID,
