@@ -10,7 +10,7 @@ The purpose of this server is following:
 This script is using run_query.pl script to collect data from CQ.
 '''
 
-import datetime
+from datetime import datetime
 import httplib
 import netrc
 import optparse
@@ -240,41 +240,28 @@ def process_req(working_dir, channel, address, user, password):
         data = channel.recv(dmsutil.BUFFER_LEN)
 
     data_list = request.split('|')
-    # Error handling for insufficient data in the stream
-    if len(data_list) < 3:
-        error_str = "Insufficient data from %s. Data received was: %s\n" % \
-                     (address, request)
-        open(working_dir + "\\cqperl_log.txt", "ab").write(error_str)
-        channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
-        channel.close()
-        return
 
+    error_msg = ""
+    send_data = ""
     req_type = data_list[0]
-    tag_list = []
-    for tag in data_list[1].rstrip(',').split(','):
-        if tag.strip():
-            tag_list.append(tag.strip())
-    issues = data_list[2]
-
-    # Make it compatible with old cherry-pick script
-    deliver_to = ''
-    if len(data_list) > 3:
-        deliver_to = data_list[3]
-
     open(working_dir + "\\server_log.txt", "ab").write(
             'Connected by %s at %s for %s \n' % (address,
-            datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S"), req_type))
-    if req_type == dmsutil.SRV_DMS_STATUS:
-        send_data = issues
-        # If the tag list is empty no need to check the issues.  Just send back
-        # the issues.
-        if tag_list:
+            datetime.now().strftime("%Y-%m-%d-%H:%M:%S"), req_type))
+
+    if req_type == dmsutil.SRV_DMS_INFO:
+        # Error handling for insufficient data in the stream
+        if len(data_list) < 2:
+            error_msg = "Insufficient data from %s. Data received was: %s\n" % \
+                         (address, request)
+            send_data = dmsutil.SRV_ERROR + dmsutil.SRV_END
+        else:
+            issues = data_list[1]
             cmd = ['cqperl', working_dir + '\\run_query.pl', '-remove_query',
-                    '-user', user, '-pwd', password, '-issues', issues,
-                    '-log', 'cherry.log', '-list', '-site', 'JPTO']
+                   '-user', user, '-pwd', password, '-issues', issues,
+                   '-log', 'cherry.log', '-list', '-title', '-site', 'JPTO']
             try:
                 process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                       stderr=subprocess.PIPE)
+                                           stderr=subprocess.PIPE)
                 out, err = process.communicate()
                 if process.poll() != 0:
                     open(working_dir + "\\cqperl_log.txt", "ab").write(str(err))
@@ -282,7 +269,9 @@ def process_req(working_dir, channel, address, user, password):
                     channel.close()
                     return
             except Exception, exp:
-                open(working_dir + "\\cqperl_log.txt", "ab").write(str(exp))
+                open(working_dir + "\\cqperl_log.txt", "ab").write(
+                     "%s: %s\n" % (datetime.now().strftime(
+                     "%Y-%m-%d-%H:%M:%S"), str(exp)))
                 channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
                 channel.close()
                 return
@@ -292,56 +281,148 @@ def process_req(working_dir, channel, address, user, password):
                 # The output from the run_query.pl contains the field names
                 # in one line and its values in the following lines (one issue
                 # per line) separated by ':'.  Split the header line with
-                # ':' as delimiter and find the appropriate column index for
-                # the field names.  Later use this index to get the field
-                # values.
-                field_names = header.split(':')
-                fixfor_index = field_names.index(' fix_for ')
-                deliver_to_index = field_names.index(' Delivery.deliver_to ')
-                deliveryfixfor_index = field_names.index(' Delivery.fix_for ')
-                decision_index = field_names.index(' Delivery.decisionStatus ')
-                delivery_index = field_names.index(' Delivery ')
+                # ':' as delimiter and find the column index for title field.
+                # Later use this index to get the field values.
+                columns = header.split(':')
                 lines = out.splitlines()[3:]
+                title_index = columns.index(' title ')
                 dms_list = []
                 for line in lines:
-                    fields = line.split(':')
-                    delivery_in_qry = fields[delivery_index].strip()
-                    deliveryfixfor_in_qry = fields[deliveryfixfor_index].strip()
-                    decision_in_qry = fields[decision_index].strip()
-                    deliver_to_in_qry = fields[deliver_to_index].strip()
-                    fixfor_in_qry = fields[fixfor_index].strip()
-                    # Select the DMS issues that match one of the below
-                    # criteria:
-                    # 1. The new type of issues should have Delivery records and
-                    #    `Delivery.deliver_to` should match the `target_branch`
-                    #    and `Delivery.fix_for` should match one of the provided
-                    #    `tag_list`.
-                    # 2. The old type of issues should NOT have the Delivery
-                    #    records and the `fix_for` should match one of the
-                    #    provided `tag_list`
-                    if (delivery_in_qry != "" and \
-                            deliver_to_in_qry == deliver_to and \
-                            string.lower(decision_in_qry) == "accepted" and \
-                            deliveryfixfor_in_qry in tag_list) or \
-                            (delivery_in_qry == "" and \
-                            fixfor_in_qry in tag_list):
-                        dms_list.append(line.split(':')[0].strip())
+                    fields = line.split(':', 1)
+                    issue = fields[0].strip()
+                    title = fields[title_index].strip().rstrip(':')
+                    dms = "%s|%s" % (issue, title)
+                    if dms not in dms_list:
+                        dms_list.append(dms)
                 dms_list.sort()
-                send_data = ','.join(dms_list)
+                send_data = dmsutil.SRV_DELIMITER.join(dms_list)
             except Exception, exp:
                 open(working_dir + "\\cqperl_log.txt", "ab").write(str(exp))
                 channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
                 channel.close()
                 return
 
-        totalsent = 0
-        while totalsent != len(send_data):
-            totalsent += channel.send(
-                            send_data[totalsent:totalsent + dmsutil.BUFFER_LEN])
-        channel.send(dmsutil.SRV_END)
-        channel.close()
+            open(working_dir + "\\server_log.txt", "ab").write(
+                 'Sending result to %s\nData: %s\n' % (address, send_data))
+            totalsent = 0
+            while totalsent != len(send_data):
+                totalsent += channel.send(send_data[totalsent:totalsent +
+                                                    dmsutil.BUFFER_LEN])
+            channel.send(dmsutil.SRV_END)
+            channel.close()
+    elif req_type == dmsutil.SRV_DMS_STATUS:
+        # Error handling for insufficient data in the stream
+        if len(data_list) < 3:
+            error_msg = "Insufficient data from %s. Data received was: %s\n" % \
+                         (address, request)
+            send_data = dmsutil.SRV_ERROR + dmsutil.SRV_END
+        else:
+            tag_list = []
+            for tag in data_list[1].rstrip(',').split(','):
+                if tag.strip():
+                    tag_list.append(tag.strip())
+            issues = data_list[2]
+
+            # Make it compatible with old cherry-pick script
+            deliver_to = ''
+            if len(data_list) > 3:
+                deliver_to = data_list[3]
+
+            send_data = issues
+            # If the tag list is empty no need to check the issues.  Just send
+            # back the issues.
+            if tag_list:
+                cmd = ['cqperl', working_dir + '\\run_query.pl',
+                       '-remove_query', '-user', user, '-pwd', password,
+                       '-issues', issues, '-log', 'cherry.log', '-list',
+                       '-site', 'JPTO']
+                try:
+                    process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                               stderr=subprocess.PIPE)
+                    out, err = process.communicate()
+                    if process.poll() != 0:
+                        open(working_dir + "\\cqperl_log.txt", "ab"). \
+                             write("%s: %s\n" % (
+                                   datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
+                                   str(err)))
+                        channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
+                        channel.close()
+                        return
+                except Exception, exp:
+                    open(working_dir + "\\cqperl_log.txt", "ab"). \
+                         write("%s: %s\n" % (
+                               datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
+                               str(exp)))
+                    channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
+                    channel.close()
+                    return
+
+                try:
+                    header = out.splitlines()[2]
+                    # The output from the run_query.pl contains the field names
+                    # in one line and its values in the following lines (one
+                    # issue per line) separated by ':'.  Split the header line
+                    # with ':' as delimiter and find the appropriate column
+                    # index for the field names.  Later use this index to get
+                    # the field values.
+                    columns = header.split(':')
+                    fixfor_index = columns.index(' fix_for ')
+                    deliver_to_index = columns.index(' Delivery.deliver_to ')
+                    deliverytag_index = columns.index(' Delivery.fix_for ')
+                    decision_index = columns.index(' Delivery.decisionStatus ')
+                    delivery_index = columns.index(' Delivery ')
+                    lines = out.splitlines()[3:]
+                    dms_list = []
+                    for line in lines:
+                        fields = line.split(':')
+                        delivery_in_qry = fields[delivery_index].strip()
+                        deliverytag_in_qry = fields[deliverytag_index].strip()
+                        decision_in_qry = fields[decision_index].strip()
+                        deliver_to_in_qry = fields[deliver_to_index].strip()
+                        fixfor_in_qry = fields[fixfor_index].strip()
+                        # Select the DMS issues that match one of the below
+                        # criteria:
+                        # 1. The new type of issues should have Delivery records
+                        #    and `Delivery.deliver_to` should match the
+                        #    `target_branch` and `Delivery.fix_for` should match
+                        #    one of the provided `tag_list`.
+                        # 2. The old type of issues should NOT have the Delivery
+                        #    records and the `fix_for` should match one of the
+                        #    provided `tag_list`
+                        if (delivery_in_qry != "" and
+                                deliver_to_in_qry == deliver_to and
+                                string.lower(decision_in_qry) == "accepted" and
+                                deliverytag_in_qry in tag_list) or \
+                                (delivery_in_qry == "" and
+                                fixfor_in_qry in tag_list):
+                            dms_list.append(line.split(':')[0].strip())
+                    dms_list.sort()
+                    send_data = ','.join(dms_list)
+                except Exception, exp:
+                    open(working_dir + "\\cqperl_log.txt", "ab"). \
+                         write("%s: %s\n" % (
+                               datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
+                               str(exp)))
+                    channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
+                    channel.close()
+                    return
+
+            open(working_dir + "\\server_log.txt", "ab").write(
+                'Sending result to %s\nData: %s\n' % (address, send_data))
+            totalsent = 0
+            while totalsent != len(send_data):
+                totalsent += channel.send(send_data[totalsent:totalsent +
+                                                    dmsutil.BUFFER_LEN])
+            channel.send(dmsutil.SRV_END)
+            channel.close()
     else:
-        channel.send('Unknown request' + dmsutil.SRV_END)
+        error_msg = 'Unknown request received from %s. ' + \
+                    'Data received was: %s\n' % (address, request)
+        send_data = 'Unknown request' + dmsutil.SRV_END
+
+    if error_msg:
+        open(working_dir + "\\cqperl_log.txt", "ab").write(error_msg)
+        channel.send(send_data)
         channel.close()
 
 
