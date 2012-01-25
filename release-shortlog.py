@@ -1,10 +1,9 @@
 #! /usr/bin/env python
 
-import glob
 from optparse import OptionParser
+import glob
 import os
 import processes
-import re
 import shutil
 import subprocess
 import sys
@@ -12,9 +11,11 @@ import tempfile
 import urllib
 import xml.dom.minidom
 
-
 import debrevision
 import deltapi
+import dmsutil
+
+DMS_TAG_SERVER = 'android-cm-web.sonyericsson.net'
 
 # Handle the case that external_package_gits is not available since that
 # is a scenario likely to occur on older branches
@@ -52,7 +53,16 @@ def main(argv):
                       help="One or more refs (comma separated list) to exclude")
     parser.add_option("--no-count", action="store_false",
                       dest="count", default=True)
-    parser.add_option("--qry", dest="queryFile", default="DMSquery.qry")
+    parser.add_option("--no-dw", action="store_true",
+                      dest="no_dw", default=False,
+                      help="Don't use delivery web server for generating " \
+                           "query file, use the DMS Tag Server instead")
+    parser.add_option("-l", "--log", dest="logfile",
+                      help="Save the list of integrated DMS issues in the " \
+                           "`logfile` file")
+    parser.add_option("--server", dest="server",
+                      default=DMS_TAG_SERVER,
+                      help="Name of the DMS Tag Server [default: %default]")
     parser.add_option("--git-cmd", dest="gitCommand",
                       default="git shortlog --no-merges",
                       help="Add arbitrary git command [default: %default]")
@@ -122,15 +132,20 @@ def main(argv):
         print >> sys.stderr, "Could not find old manifest"
         sys.exit(1)
 
-    dg = DiffGenerator(count=options.count, query=options.queryFile,
-                       gitcmd=options.gitCommand)
+    dg = DiffGenerator(count=options.count,
+                       gitcmd=options.gitCommand,
+                       tag_server=options.server,
+                       no_dw=options.no_dw)
 
     dg.generateDiff(oldManifestUrl, newManifestUrl, notFilter)
     if "external_package_gits" in sys.modules:
         dg.diffDecoupledApps(oldManifestUrl, newManifestUrl, notFilter)
     dg.printRevertLog()
     dg.printCommitCount()
-    dg.dmsqueryQry()
+    if options.logfile:
+        dg.saveDMSList(options.logfile)
+    if not options.no_dw:
+        dg.dmsqueryQry()
 
 
 class GitError(Exception):
@@ -139,15 +154,18 @@ class GitError(Exception):
 
 class DiffGenerator(object):
 
-    def __init__(self, count=True, query="DMSQuery.qry",
-                 gitcmd="git shortlog --no-merges"):
+    def __init__(self, count=True, gitcmd="git shortlog --no-merges",
+                 tag_server=DMS_TAG_SERVER, no_dw=True):
+        self.all_issues = []
         self.count = count
-        self.query = query
+        self.query = 'DMSquery.qry'
+        self.no_dw = no_dw
         self.gitcmd = gitcmd
         self.concatLog = ""
         self.commitCountFiltered = 0
         self.commitCount = 0
         self.revert_logs = ""
+        self.tag_server = dmsutil.DMSTagServer(tag_server)
 
     def generateDiff(self, oldManifestUri, newManifestUri, notFilter=None):
         print "Old manifest: %s" % oldManifestUri
@@ -156,7 +174,7 @@ class DiffGenerator(object):
         newManifest = miniparse(newManifestUri)
 
         newgits = []
-        dmslist = []
+        self.dmslist = []
 
         for newProject in newManifest.getElementsByTagName("project"):
             matchFound = False
@@ -193,7 +211,7 @@ class DiffGenerator(object):
                                            newrev,
                                            oldrev))
 
-                    dmslist.extend(self.dmsqueryShow(log))
+                    self.dmslist.extend(self.dmsqueryShow(log))
 
                     self.revert_logs += self.get_revert_info(newProjPath,
                                                              newrev,
@@ -252,9 +270,16 @@ class DiffGenerator(object):
             print "Removed gits:"
             print "\n".join(removed)
 
-        print "DMS issues found:"
-        for issue in dmslist:
-            print issue
+        if self.dmslist:
+            print "DMS issues found:"
+            if self.no_dw:
+                dmstitle = self.dmsqueryShowTitle(self.dmslist)
+                for issue in dmstitle:
+                    print issue
+            else:
+                # Already in the required format with title, just print it
+                for issue in self.dmslist:
+                    print issue
 
     def getPathAndRev(self, manifest, projectName):
         """Search for a project tag with name=projectName in the manifest
@@ -489,9 +514,17 @@ class DiffGenerator(object):
                         # Make the printout
                         print "\n** %s **" % packName
                         print shortLog
-                        print "DMS issues found:"
-                        for issue in dmsList:
-                            print issue
+                        if dmsList:
+                            print "DMS issues found:"
+                            if self.no_dw:
+                                dmsTitle = self.dmsqueryShowTitle(dmsList)
+                                for issue in dmsTitle:
+                                    print issue
+                            else:
+                                # Already in the required format with title,
+                                # just print it
+                                for issue in dmsList:
+                                    print issue
                         self.commitCount += len(logList)
                         self.commitCountFiltered += len(logList)
                 except KeyError:
@@ -614,7 +647,12 @@ class DiffGenerator(object):
             print "\nShowing the commits that revert " \
                   "other commits:\n%s" % self.revert_logs
             if self.revert_dms:
-                print "\nReverted DMS:\n%s" % '\n'.join(self.revert_dms)
+                if self.no_dw:
+                    dms_with_title = self.dmsqueryShowTitle(self.revert_dms)
+                    print "\nReverted DMS:\n%s" % '\n'.join(dms_with_title)
+                else:
+                    # Already in the required format with title, just print it
+                    print "\nReverted DMS:\n%s" % '\n'.join(self.revert_dms)
 
     def dmsqueryQry(self):
         cmd = "dmsquery -qry %s" % self.query
@@ -626,12 +664,44 @@ class DiffGenerator(object):
         dmsquery.stdin.close()
 
     def dmsqueryShow(self, gitlog):
-        cmd = "dmsquery --show-t"
+        """Extracts the list of DMS issue IDs from the git log output."""
+        if self.no_dw:
+            cmd = "dmsquery --show"
+        else:
+            cmd = "dmsquery --show-t"
+
         dmsquery = subprocess.Popen(cmd, shell=True, stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE)
-        dmslist = dmsquery.communicate(input=gitlog)[0]
-        return dmslist.splitlines()
+        output = dmsquery.communicate(input=gitlog)[0]
+        dmslist = []
+        for line in output.splitlines():
+            dmslist.append(line.strip())
+        return dmslist
+
+    def dmsqueryShowTitle(self, dmslist):
+        """Contacts the DMS Tag Server and gets the title for a given list
+        of DMS IDs.
+        Returns a list of lines with the DMS IDs followed by the title."""
+        dmstitle = []
+        if dmslist:
+            try:
+                dmstitle = self.tag_server.dms_with_title(','.join(dmslist))
+            except:
+                # If we can't retrieve the title information, just print error
+                # and return the `dmslist` back.
+                print >> sys.stderr, "Error retrieving DMS title."
+        return dmstitle if dmstitle else dmslist
+
+    def saveDMSList(self, filename):
+        """Saves the list of DMS issues in a text file, `filename`."""
+        if self.dmslist:
+            try:
+                open(filename, 'wb').write('\n'.join(self.dmslist))
+            except (OSError, IOError), err:
+                print >> sys.stderr, "Could not write dmslist to %s\n%s" % \
+                                     (filename, err)
+                sys.exit(2)
 
 
 def isRef(candidate, gitpath=None):
