@@ -1,7 +1,9 @@
 import socket
 
 #Server communication tags
+SRV_DELIMITER = ':EoL:'
 SRV_DMS_STATUS = 'DMS_STATUS'
+SRV_DMS_INFO = 'DMS_INFO'
 SRV_ERROR = 'SRV_ERROR'
 SRV_END = '|END'
 
@@ -31,8 +33,21 @@ class DMSTagServer():
         Connect to tag server and collect dmss tagged with one of the
         `dms_tags`, specific to the `target_branch`
         """
-        return self.query_srv('%s|%s|%s|%s' % (SRV_DMS_STATUS, dms_tags,
-                              dmss, target_branch))
+        msg = self.query_srv('%s|%s|%s|%s' % (SRV_DMS_STATUS, dms_tags,
+                             dmss, target_branch))
+        return msg.split('|')[0]
+
+    def dms_with_title(self, dmss):
+        """
+        Connect to tag server and get the title for the list of dmss
+        Returns a list of line with issue ID followed by title
+        """
+        issue_list = []
+        msg = self.query_srv('%s|%s' % (SRV_DMS_INFO, dmss))
+        for line in msg.split(SRV_DELIMITER):
+            (issue, title) = line.split('|', 1)
+            issue_list.append('%s %s' % (issue, title))
+        return issue_list
 
     def query_srv(self, query):
         '''Send the query to server and collect the data
@@ -56,7 +71,9 @@ class DMSTagServer():
             sock.close()
             if SRV_ERROR in msg:
                 raise DMSTagServerError('Server side error: ' + msg)
-            return msg.split('|')[0]
+            # Strip the 'SRV_END' part from the result
+            msg = msg.rstrip(SRV_END)
+            return msg
         except socket.timeout, err:
             raise DMSTagServerError('Server timeout')
         except socket.error, err:
