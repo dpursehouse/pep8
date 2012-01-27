@@ -1,3 +1,6 @@
+""" Classes for handling git commit messages.
+"""
+
 import os
 import re
 
@@ -8,7 +11,20 @@ import processes
 _QUERY_SCRIPT = "dmsquery"
 
 # This file's location
-_mydir = os.path.abspath(os.path.dirname(__file__))
+_MY_DIR = os.path.abspath(os.path.dirname(__file__))
+
+
+def _find_query_script():
+    '''Attempt to find the script that will be used to parse the commit
+    message for fixed issues.
+    Return the absolute path to the script.
+    Raise CommitMessageError if the script could not be found.
+    '''
+    query_file = os.path.join(_MY_DIR, _QUERY_SCRIPT)
+    if os.path.exists(query_file):
+        return query_file
+
+    raise CommitMessageError("Could not find %s" % _QUERY_SCRIPT)
 
 
 class CommitMessageError(Exception):
@@ -30,11 +46,11 @@ class CommitMessageAuthor:
         match the expected pattern.
         '''
         pattern = "^(author|committer) (.*) <(.*@.*)> .*$"
-        m = re.match(pattern, data)
-        if m:
-            self.type = m.group(1)
-            self.name = m.group(2)
-            self.email = m.group(3)
+        match = re.match(pattern, data)
+        if match:
+            self.type = match.group(1)
+            self.name = match.group(2)
+            self.email = match.group(3)
         else:
             raise CommitMessageError("Invalid author or committer header")
 
@@ -44,37 +60,23 @@ class CommitMessage:
     the "git cat-file -p <object>" command.
     '''
 
-    def _find_query_script(self):
-        '''Attempt to find the script that will be used to parse the commit
-        message for fixed issues.
-        Return the absolute path to the script.
-        Raise CommitMessageError if the script could not be found.
-        '''
-        file = os.path.join(_mydir, _QUERY_SCRIPT)
-        if os.path.exists(file):
-            return file
-
-        raise CommitMessageError("Could not find %s" % _QUERY_SCRIPT)
-
     def get_fixed_issues(self):
         '''Get the fixed issues that are listed in the commit message.
         Return a list of issues, or an empty list if no issues were found.
         Raise CommitMessageError if any error occurs.
         '''
         try:
-            errcode, rawlist, err = processes.run_cmd(
-                                        self._find_query_script(),
-                                        "--show",
-                                        "--quiet",
-                                        input=self.message)
+            result = processes.run_cmd(_find_query_script(),
+                                       "--show",
+                                       "--quiet",
+                                       input=self.message)
+            rawlist = str(result[1])
 
             # The output is one issue per line, but there may be
             # leading and trailing whitespace. Clean this up.
             return [s.strip() for s in rawlist.splitlines()]
-        except CommitMessageError, e:
-            raise e
-        except Exception:
-            raise CommitMessageError("Error extracting issue information")
+        except processes.ChildExecutionError, err:
+            raise CommitMessageError("Error extracting issues: %s" % err)
 
     def __init__(self, data):
         '''Initialize the class with the commit message in `data`.
