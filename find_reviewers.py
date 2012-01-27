@@ -1,7 +1,17 @@
 #! /usr/bin/env python
 
+""" Find reviewers for a change.  Reviewers can be found for a given change
+ID, or for a given project, based on approvals on previously merged changes.
+
+When finding reviewers for a project, it is possible to limit the search to
+previously merged changes on a specific branch.  It is also possible to set
+the number of previous changes to search, and the number of reviewers to
+find.
+
+Specific reviewers can be excluded from the results.
+"""
+
 from collections import defaultdict
-import json
 import optparse
 
 import gerrit
@@ -14,6 +24,9 @@ DEFAULT_LIMIT = 50
 
 # Default number of reviewers to find/add
 DEFAULT_COUNT = 3
+
+# URL of the Gerrit review server
+GERRIT_URL = "review.sonyericsson.net"
 
 
 class AddReviewersError(Exception):
@@ -36,15 +49,15 @@ class FindReviewers:
         '''Sets up the Gerrit connection.
         Raises GerritSshConfigError if Gerrit connection fails.
         '''
-        self.g = gerrit.GerritSshConnection("review.sonyericsson.net", user)
+        self.gerrit = gerrit.GerritSshConnection(GERRIT_URL, user)
 
-    def __find_project_and_owner(self, gerrit_connection, change):
+    def __find_project_and_owner(self, change):
         '''Finds the project name and email address of the owner for the
         change specified by `change`.
         Returns (project name, owner email address) or None if not found.
         Raises GerritQueryError if Gerrit query fails.
         '''
-        result = gerrit_connection.query(change)
+        result = self.gerrit.query(change)
         try:
             if len(result) == 1:
                 return result[0]["project"], result[0]["owner"]["email"]
@@ -63,13 +76,13 @@ class FindReviewers:
             for reviewer in reviewers:
                 add_cmd += ["--add", reviewer]
             try:
-                self.g.run_gerrit_command(add_cmd)
-            except ChildExecutionError, e:
+                self.gerrit.run_gerrit_command(add_cmd)
+            except ChildExecutionError, err:
                 raise AddReviewersError("Error adding reviewers to change "
-                                        "'%s': %s" % (str(change), e))
+                                        "'%s': %s" % (str(change), err))
 
     def find(self, change=None, project=None, branch=None,
-        limit=DEFAULT_LIMIT, exclude=[]):
+             limit=DEFAULT_LIMIT, exclude=[]):
         '''Finds reviewers for `change`, or for `project` and `branch`.
         `change` may be a SHA-1 or a change number.  Checks the last `limit`
         number of previously merged changes. `limit` must be 1 or more.
@@ -80,7 +93,8 @@ class FindReviewers:
         Raises FindReviewError if any error occurs when finding reviewers.
         Raises ValueError if invalid parameters are passed.
         '''
-        _exclude = exclude
+        _exclude = []
+        _exclude += exclude
         # Validate options
         if int(limit) < 1:
             raise ValueError("Parameter `limit` must be 1 or more")
@@ -92,26 +106,26 @@ class FindReviewers:
                              "project/branch")
 
         # Set up the query
-        self.query = ["status:merged",
-                      "limit:%s" % limit,
-                      "label:CodeReview>=2"]
+        query = ["status:merged",
+                 "limit:%s" % limit,
+                 "label:CodeReview>=2"]
         if change:
-            project, owner = self.__find_project_and_owner(self.g, change)
+            project, owner = self.__find_project_and_owner(change)
             if not project or not owner:
                 raise FindReviewersError("Couldn't find project and owner for "
                                          "change '%s'" % change)
             if owner not in _exclude:
-                _exclude.add(owner)
-            self.query.append("project:%s" % project)
+                _exclude.append(owner)
+            query.append("project:%s" % project)
         else:
-            self.query.append("project:%s" % project)
+            query.append("project:%s" % project)
             if branch:
-                self.query.append("branch:%s" % branch)
+                query.append("branch:%s" % branch)
 
         try:
             # Find the approvers of the changes
             approvers = defaultdict(int)
-            for result in self.g.query(" ".join(self.query)):
+            for result in self.gerrit.query(" ".join(query)):
                 for approval in result["currentPatchSet"]["approvals"]:
                     if approval["type"] == "CRVW" and \
                             approval["value"] == "2" and \
@@ -119,11 +133,12 @@ class FindReviewers:
                             approval["by"]["email"] not in _exclude:
                         approvers[approval["by"]["email"]] += 1
 
-        except KeyError, e:
-            raise FindReviewersError("Missing key '%s' in Gerrit response" % e)
+        except KeyError, err:
+            raise FindReviewersError("Missing key '%s' in Gerrit response" % \
+                                     err)
 
-        except Exception, e:
-            raise FindReviewersError("Unexpected error: %s" % e)
+        except Exception, err:
+            raise FindReviewersError("Unexpected error: %s" % err)
 
         # Sort the list of approvers by number of approvals made
         return sorted(approvers.iteritems(), reverse=True,
@@ -131,6 +146,8 @@ class FindReviewers:
 
 
 def main():
+    ''' Main function.
+    '''
     usage = "usage: %prog [-c <change>] [-p <project>] [-b <branch>] " \
         "[-u <username>] [-l <limit>] [-e <exclude>]"
     parser = optparse.OptionParser(usage=usage)
@@ -181,11 +198,11 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except FindReviewersError, e:
-        fatal(1, "Failed to find reviewers: %s" % e)
-    except AddReviewersError, e:
-        fatal(1, "Failed to add reviewers: %s" % e)
-    except ValueError, e:
-        fatal(1, "Error: %s" % e)
+    except FindReviewersError, err:
+        fatal(1, "Failed to find reviewers: %s" % err)
+    except AddReviewersError, err:
+        fatal(1, "Failed to add reviewers: %s" % err)
+    except ValueError, err:
+        fatal(1, "Error: %s" % err)
     except KeyboardInterrupt:
         fatal(1, "Terminated by user")
