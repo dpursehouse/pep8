@@ -427,9 +427,9 @@ def _main():
                     affected_manifests.append(prettybranch)
                     logging.info("- " + prettybranch)
         except processes.ChildExecutionError, err:
-            semcutil.fatal(2, err)
+            logging.error("Unable to get manifest branch info: %s" % err)
         except manifest.ManifestParseError, err:
-            logging.error("Skipping %s: %s" % (branch, err))
+            logging.error("Unable to parse manifest %s: %s" % (branch, err))
 
     message = ""
 
