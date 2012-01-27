@@ -153,8 +153,6 @@ def main():
     parser.add_option("-n", "--count", dest="count", type="int",
         default=DEFAULT_COUNT, help="number of reviewers to find/add" \
                                     " (default %default)")
-    parser.add_option("-v", "--verbose", dest="verbose", action="store_true",
-        default=False, help="verbose mode")
     (opts, args) = parser.parse_args()
 
     # Validate options
@@ -173,9 +171,8 @@ def main():
     reviewers = [approver for approver, count in approvers[0:opts.count]]
 
     # Print out the list of reviewers
-    if opts.verbose:
-        for reviewer in reviewers:
-            print "%s" % reviewer
+    for reviewer in reviewers:
+        print "%s" % reviewer
 
     # Add reviewers to the change
     if opts.add:
