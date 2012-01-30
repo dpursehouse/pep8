@@ -1,3 +1,6 @@
+""" Classes and helper methods for interacting with a git workspace.
+"""
+
 import os
 import shutil
 import urlparse
@@ -8,40 +11,40 @@ from processes import run_cmd
 SHA1_STR_LEN = 40
 
 
-def is_sha1(str):
-    """ Checks if `str` is a valid commit SHA1.
+def is_sha1(revision):
+    ''' Checks if `revision` is a valid commit SHA1.
     A character string is considered to be a commit SHA1 if it has exactly
     the expected length and is a base 16 represented integer.
     Returns True or False.
-    """
-    if (len(str) == SHA1_STR_LEN):
+    '''
+    if (len(revision) == SHA1_STR_LEN):
         try:
             # Convert from base 16 to base 10 to ensure it's a valid base 16
             # integer
-            sha10 = int(str, 16)
+            int(revision, 16)
             return True
-        except:
+        except ValueError:
             pass
     return False
 
 
-def is_tag(str):
-    """ Checks if `str` is a tag, i.e. is of the format "refs/tags/xxxx".
+def is_tag(revision):
+    ''' Checks if `revision` is a tag, i.e. is of the format "refs/tags/xxxx".
     Returns True or False.
-    """
-    return str.startswith("refs/tags/")
+    '''
+    return revision.startswith("refs/tags/")
 
 
-def is_sha1_or_tag(str):
-    """ Checks if `str` is a commit SHA1 or a tag.
+def is_sha1_or_tag(revision):
+    ''' Checks if `revision` is a commit SHA1 or a tag.
     Returns True or False.
-    """
-    return (is_sha1(str) or is_tag(str))
+    '''
+    return (is_sha1(revision) or is_tag(revision))
 
 
 class CachedGitWorkspace():
-    """ Encapsulation of a git workspace.
-    """
+    ''' Encapsulation of a git workspace.
+    '''
 
     def __init__(self, url, cache_root):
         self.url = url
@@ -65,6 +68,6 @@ class CachedGitWorkspace():
             raise err
 
     def fetch(self, refspec):
-        """ Fetch the `refspec`.
-        """
+        ''' Fetch the `refspec`.
+        '''
         run_cmd("git", "fetch", self.url, refspec, path=self.git_path)
