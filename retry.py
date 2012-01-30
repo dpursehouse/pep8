@@ -1,10 +1,12 @@
+""" Retry decorator with exponential backoff.
+"""
+
 import math
 import time
 
 
-# Retry decorator with exponential backoff
 def retry(exception, tries, delay=3, backoff=2):
-    """Calls a function which may throw an exception. On an exception, waits,
+    '''Calls a function which may throw an exception. On an exception, waits,
     and tries the function again. On repeated failures, waits longer between
     each successive attempt. If the number of attempts runs out, gives up and
     raises the last exception that was given by the decorated function.
@@ -16,7 +18,7 @@ def retry(exception, tries, delay=3, backoff=2):
     failure. Must be greater than 1, or else it isn't really a backoff.
     `tries` sets the number of times to attempt calling the function. Must be
     at least 1, but ideally should be at least 2.
-    """
+    '''
 
     if not exception:
         raise ValueError("exception must be specified")
@@ -31,15 +33,19 @@ def retry(exception, tries, delay=3, backoff=2):
     if delay <= 0:
         raise ValueError("delay must be greater than 0")
 
-    def deco_retry(f):
+    def deco_retry(method):
+        '''  @retry(arg[, ...]) -> true decorator
+        '''
         def f_retry(*args, **kwargs):
+            ''' true decorator -> decorated function
+            '''
             mtries, mdelay = tries, delay  # make mutable
 
             while mtries > 0:
                 try:
-                    return f(*args, **kwargs)
+                    return method(*args, **kwargs)
 
-                except exception, e:
+                except exception, last_exception:
                     # Consume an attempt
                     mtries -= 1
 
@@ -51,11 +57,9 @@ def retry(exception, tries, delay=3, backoff=2):
                         # Increment delay
                         mdelay *= backoff
 
-                    # Last caught exception will be raised to the caller
-                    # when there are no more tries remaining
-                    last_exception = e
-
+            # Last caught exception will be raised to the caller
+            # when there are no more tries remaining
             raise last_exception
 
-        return f_retry  # true decorator -> decorated function
-    return deco_retry  # @retry(arg[, ...]) -> true decorator
+        return f_retry
+    return deco_retry
