@@ -53,11 +53,20 @@ def get_manifests(refname, manifestpath):
 
     # Ask `git show-ref` to list all branches that match the ref
     # given in `refname`. That command returns two-column lines
-    # containing (SHA-1, refname), where we only care about the
-    # refname.
+    # containing (SHA-1, refname).
     code, out, err = processes.run_cmd("git", "show-ref", refname,
                                        path=manifestpath)
-    for ref in [s.split()[1] for s in out.splitlines()]:
+    for sha1, ref in [s.split() for s in out.splitlines()]:
+        # For each (SHA-1, ref) pair, get a list of files
+        # and check if default.xml is included.
+        code, out, err = processes.run_cmd("git", "ls-tree", sha1,
+                                           path=manifestpath)
+
+        # If default.xml is not found, we can skip this ref.
+        if "default.xml" not in out:
+            continue
+
+        # Get the manifest data
         code, out, err = processes.run_cmd("git", "show",
                                            "%s:default.xml" % (ref),
                                            path=manifestpath)
