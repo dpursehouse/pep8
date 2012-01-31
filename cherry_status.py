@@ -1,3 +1,6 @@
+""" Classes to access the cherry pick status server.
+"""
+
 import httplib
 import urllib
 

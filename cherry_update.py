@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+
+""" Update the status of cherry picks for given branch, or all target
+branches.
+"""
+
 import logging
 import optparse
 import re
@@ -27,6 +33,8 @@ class CherrypickStatus:
         self.sha1 = data[3]
         self.dms = data[4]
         self.pick_status = None
+        self.change_nr = None
+        self.error = None
         self.set_pick_status(data[5])
         self.review = data[6]
         self.verify = data[7]
@@ -191,26 +199,26 @@ def _update_cherrypicks(status_server, target, dry_run):
                     cherry = _update_status_from_gerrit(gerrit, cherry)
 
                 if cherry.is_dirty():
-                    logging.info("Updating: %s,%s,%s,%s,%s,%s" % \
-                                 (cherry.project, cherry.sha1,
-                                  cherry.pick_status, cherry.review,
-                                  cherry.verify, cherry.status))
+                    logging.info("Updating: %s,%s,%s,%s,%s,%s",
+                                 cherry.project, cherry.sha1,
+                                 cherry.pick_status, cherry.review,
+                                 cherry.verify, cherry.status)
                     if not dry_run:
                         status_server.update_status(target, "%s" % cherry)
                     updated += 1
                 else:
-                    logging.info("Skipping: %s,%s" % \
-                                 (cherry.project, cherry.sha1))
+                    logging.info("Skipping: %s,%s",
+                                 cherry.project, cherry.sha1)
                     skipped += 1
             except CherrypickStatusError, e:
                 errors += 1
-                logging.error("Cherry pick status error: %s" % e)
+                logging.error("Cherry pick status error: %s", e)
             except GerritQueryError, e:
                 errors += 1
-                logging.error("Gerrit query error: %s" % e)
+                logging.error("Gerrit query error: %s", e)
             except ChildExecutionError, e:
                 errors += 1
-                logging.error("Gerrit query execution error: %s" % e)
+                logging.error("Gerrit query execution error: %s", e)
 
     return total, skipped, updated, errors
 
@@ -227,7 +235,7 @@ def _main():
     options.add_option("", "--status-server", dest="status_server",
                        help="IP address or name of the status server.",
                        action="store", default=DEFAULT_STATUS_SERVER)
-    (options, args) = options.parse_args()
+    (options, _args) = options.parse_args()
 
     logging.basicConfig(format='%(message)s', level=logging.INFO)
 
@@ -240,16 +248,16 @@ def _main():
 
         error_count = 0
         for target in targets:
-            logging.info("Updating status for %s" % target)
+            logging.info("Updating status for %s", target)
 
             total, skipped, updated, errors = _update_cherrypicks(
                                                 status_server, target,
                                                 options.dry_run)
             error_count += errors
-            logging.info("\nProcessed %d cherry picks\n" % total +
-                         "Updated: %d\n" % updated +
-                         "Skipped: %d\n" % skipped +
-                         "Errors: %d\n" % errors)
+            logging.info("\nProcessed %d cherry picks\n" +
+                         "Updated: %d\n" +
+                         "Skipped: %d\n" +
+                         "Errors: %d\n", total, updated, skipped, errors)
         return error_count
     except CherrypickStatusError, e:
         fatal(1, "Cherry pick status error: %s" % e)
