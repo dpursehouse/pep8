@@ -319,8 +319,8 @@ site_exists($site);
 
 my $session = get_session($site);
 if($session == -1) {
-  print "Error with site $site";
-  logg(ERROR, "Could not get a session for site $site");
+  print "Error with site $site ...ABORTING\n";
+  logg(ERROR, "Could not get a session for site $site.  ABORTING");
   die;
 }
 
@@ -369,23 +369,29 @@ $query_def->Save($query_path);
 $query_def = undef;
 $query_def = $session->OpenQueryDef($query_path);
 
-my $result_set = $session->BuildResultSet($query_def);
-$result_set->EnableRecordCount();
-$result_set->Execute();
-
 if ($remove_query) {
     unlink($query_path);
 }
 
-if (Win32::OLE->LastError != 0) {
-  print "Problem with DMS Query\n";
+my $result_set = $session->BuildResultSet($query_def);
+if(!defined($result_set)) {
+  print "Could not build result set for site $site\n";
+  logg(ERROR, "Could not build result set for site $site");
   $session->SignOff();
+  exit(1);
 }
 
-if(!defined($result_set)) {
-  logg(ERROR, "Could not get query result for site $site");
+$result_set->EnableRecordCount();
+$result_set->Execute();
+
+if (Win32::OLE->LastError != 0) {
+  my $msg = "Problem executing DMS Query:\n" . Win32::OLE->LastError;
+  print $msg;
+  logg(ERROR, $msg);
   $session->SignOff();
+  exit(1);
 }
+
 
 #Parse the result set for the values needed for further processing and put them
 #in a hash in memory for fast queries
@@ -483,6 +489,19 @@ sub get_session {
   logg(OK, "New session for site $site started");
   print create_time_stamp(), " Logged on site $site!\n";
   $current_site = $site;
+
+  # Workaround to check if the session is valid before we proceed with any
+  # operation with this session.  Try to fetch a known record to validate the
+  # session object.
+  my $issue = eval {
+    $CQSession->GetEntity("Project", "eDream");
+  };
+  if (Win32::OLE->LastError != 0) {
+    print "Got an invalid session\n";
+    logg(ERROR, "Got an invalid session");
+    $CQSession->SignOff();
+    return -1;
+  }
   return $CQSession;
 }
 
