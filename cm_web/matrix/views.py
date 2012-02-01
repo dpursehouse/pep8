@@ -26,13 +26,12 @@ def index(request):
 def result(request):
     """Show matrix as result"""
     sys_branches = []
-    for sys_branch in request.POST.values():
+    for sys_branch in request.GET.keys():
         sys_branches += manifestbranches.get_manifests(
-                        sys_branch, settings.PATH_MANIFEST)
-
+            sys_branch, settings.PATH_MANIFEST_GIT)
     pattern_matcher = include_exclude_matcher.IncludeExcludeMatcher(
-                      [r"^"], None)
+        [r"^"], None)
     data = manifestbranches.get_branches_html(
-           sys_branches, pattern_matcher.match)
+        sys_branches, pattern_matcher.match)
 
     return HttpResponse(data)

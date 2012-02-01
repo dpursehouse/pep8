@@ -1,4 +1,6 @@
-# Django settings for cm_web project.
+# Default Django settings for cm_web project.
+# Don't modify this file for specific settings of your instance.
+# Put them in my_settings.py instead. (See bottom of this file.)
 
 import os
 import sys
@@ -11,8 +13,15 @@ if os.path.join(PATH_CM_TOOLS, 'semcwikitools') not in sys.path:
 if PATH_CM_TOOLS not in sys.path:
     sys.path.insert(0, PATH_CM_TOOLS)
 
-PATH_GITS = os.path.join(os.path.dirname(PATH_CM_TOOLS), 'gits')
-PATH_MANIFEST = os.path.join(PATH_GITS, 'platform/manifest')
+PATH_GIT_SERVER = 'git://review.sonyericsson.net/'
+# A local directory as mirror of gits on Git server.
+PATH_GIT_LOCAL = os.path.join(os.path.dirname(PATH_CM_TOOLS), 'gits')
+# The manifest git for platform.
+MANIFEST_GIT = 'platform/manifest'
+PATH_MANIFEST_GIT = os.path.join(PATH_GIT_LOCAL, MANIFEST_GIT)
+# The git which contains decoupled applications composition information.
+APPS_GIT = 'platform/vendor/semc/build/decoupled-apps'
+PATH_APPS_GIT = os.path.join(PATH_GIT_LOCAL, APPS_GIT)
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
@@ -23,12 +32,9 @@ ADMINS = (
 
 MANAGERS = ADMINS
 
-# use PostgreSQL in prod env. Use SQLite in dev env.
-if __file__.find('/home/') != 0:
-    DATABASE_ENGINE = 'postgresql_psycopg2'
-else:
-    DATABASE_ENGINE = 'sqlite3'
-
+# 'postgresql_psycopg2', 'postgresql', 'mysql', 'sqlite3' or 'oracle'.
+DATABASE_ENGINE = 'postgresql_psycopg2'
+# Database name. Or absolute path to database file if using sqlite3.
 DATABASE_NAME = 'cm_web_db'
 DATABASE_USER = ''
 DATABASE_PASSWORD = ''
@@ -101,3 +107,8 @@ INSTALLED_APPS = (
     'django.contrib.admin',
     'cm_web.matrix'
 )
+
+try:
+    from my_settings import *
+except ImportError:
+    pass
