@@ -40,4 +40,9 @@
     <allowed-dms-tag name="CAF"/>
     <code-review>-1</code-review>
   </branch>
+  <branch pattern="^edream6\.0-fuji-docomo-plus-release$">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="CAF"/>
+    <code-review>-1</code-review>
+  </branch>
 </branches>
