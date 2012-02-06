@@ -65,6 +65,7 @@ my @issues;
 my @tags;
 my $list;
 my $update;
+my $save;
 my @sites;
 my $title;
 my $unverified_query;
@@ -184,6 +185,27 @@ if(scalar(@ARGV) == 0) {
       if($done =~ /^no?/) {$remove_query = 0;}
     }
 
+    $done = "";
+    if ($remove_query == 0) {
+      # Query user if the generated query file should be saved.
+      while(!($done =~ /^y(es)?/ || $done =~ /^no?/)) {
+        print "Do you want to save the query file? (y[es]/n[o]): ";
+        $done = <STDIN>;
+        chomp $done;
+        if($done =~ /^y(es)?/) {
+          print "Enter name of the query file:\n";
+          my $save = <STDIN>;
+          chomp $save;
+          if($save eq "") {
+            print "Please enter a non-empty string";
+            undef $save;
+            $done = "";
+          }
+        }
+        if($done =~ /^no?/) {undef $save;}
+      }
+    }
+
     # Project (Technical name) refers to the name of project that the label should exist in.
     # Necessary if a label should be created.
     $choice = 0;
@@ -266,6 +288,7 @@ if(scalar(@ARGV) == 0) {
                             "user=s"        => \$user,
                             "list"          => \$list,
                             "update"        => \$update,
+                            "save=s"        => \$save,
                             "sites=s"       => \@sites,
                             "title"         => \$title,
                             "remove_query"  => \$remove_query,
@@ -294,6 +317,9 @@ if(scalar(@ARGV) == 0) {
     die usage();
   }
   if(defined($update) && !defined($deliver_to)) {
+    die usage();
+  }
+  if(defined($save) && defined($remove_query)) {
     die usage();
   }
   if(defined($project) && !defined($label)) {
@@ -369,8 +395,10 @@ $query_def->Save($query_path);
 $query_def = undef;
 $query_def = $session->OpenQueryDef($query_path);
 
-if ($remove_query) {
-    unlink($query_path);
+if (defined($save)) {
+  rename $query_path, $save . ".qry";
+} elsif ($remove_query) {
+  unlink($query_path);
 }
 
 my $result_set = $session->BuildResultSet($query_def);
@@ -770,7 +798,12 @@ sub update {
     generate_partial_query(\@unverified, "");
   }
   if (@tags) {
-    my $query_file_name = $label ."_" . create_time_stamp() . ".qry";
+    my $query_file_name = "";
+    if (defined($save)) {
+      $query_file_name = $save . ".qry";
+    } else {
+      $query_file_name = $label ."_" . create_time_stamp() . ".qry";
+    }
     my $invalid_count = scalar(@untagged_issues);
     logg(OK, "Found $invalid_count untagged issues");
     if($invalid_count > 0) {
@@ -1097,7 +1130,12 @@ sub placeholder_issues {
   if (@placeholder_issues) {
     print "\n\nFound placeholder issue\\s. Updating issue list...\n";
     my $query_def = get_query_for_ids($session, \@placeholder_issues);
-    my $query_path = "$site" . "_generated_placeholder_" . create_time_stamp() . ".qry";
+    my $query_path = "";
+    if (defined($save)) {
+      $query_path = "placeholder_" . $save . ".qry";
+    } else {
+      $query_path = "$site" . "_generated_placeholder_" . create_time_stamp() . ".qry";
+    }
     $query_def->Save($query_path);
     $query_def = undef;
     $query_def = $session->OpenQueryDef($query_path);
