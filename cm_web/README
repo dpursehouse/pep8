@@ -299,8 +299,22 @@ likely this step will change.)
 Step 3: Configure settings
 --------------------------
 
-Settings are in ``cm_tools/cm_web/settings.py``.
-Normally you needn't modify anything. The paths are set automatically.
+Default settings are in ``cm_tools/cm_web/settings.py``.
+Your specific settings (if any), should be in
+``cm_tools/cm_web/my_settings.py`` which does not exist yet.
+
+To use SQLite instead of PostgreSQL::
+
+::
+
+ > cd ~/cm_tools/cm_web
+ > gedit my_settings.py
+
+Then write (for example)::
+
+ DATABASE_ENGINE = 'sqlite3'
+ DATABASE_NAME = '/home/CORPUSERS/28848460/cm_tools/cm_web/cm_web_db'
+
 
 Step 4: Generate database tables
 --------------------------------
@@ -312,7 +326,12 @@ Step 4: Generate database tables
 
 By this step, a SQLite database storage file named cm_web_db (set in
 settings.py) is created under ~/cm_tools/cm_web, with proper
-structure.
+structure, as well as superuser account.
+
+Note: if you prefer to use PostgreSQL instead of SQLite,
+You need to run following command at the beginning of this step::
+
+ > sudo -u postgres createdb cm_web_db
 
 Step 5: Start backend program
 -----------------------------
@@ -396,7 +415,6 @@ Step 3: Configure settings
 
 Normally you needn't modify any settings in ``cm_tools/cm_web/settings.py``
 and ``cm_tools/cm_web/apache/django.wsgi``. The paths are set automatically.
-The DATABASE_ENGINE now points to PostgreSQL instead of SQLite.
 But you need to config ``httpd.conf``.
 
 ::
@@ -430,7 +448,7 @@ Step 4: Generate database tables
  > sudo python manage.py syncdb
 
 By this step, a PostgreSQL database named cm_web_db (set in
-settings.py) is created, with proper structure.
+settings.py) is created, with proper structure, as well as superuser account.
 
 Step 5: Start backend program
 -----------------------------
@@ -474,6 +492,7 @@ gerrit to review... However, some special things to take care:
 * Never submit local specific settings in settings.py and django.wsgi.
 * Never submit following files: cm_web_db which is a database file;
   README.html which can be generated from README easily;
+  my_settings.py which is about your specific settings;
   \*.log file(s). (These files are in .gitignore now.)
 
 How to upgrade CM Web

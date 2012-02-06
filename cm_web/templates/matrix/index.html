@@ -2,19 +2,20 @@
 
 <h1>System Branch Composition Matrix</h1>
 
-<b>Please select manifest branches you want to look into: </b>
+<p><b>Description:</b> This application is to show the composition of different system branches.</p>
+
+<p><b>Note:</b> Currently it focuses on platform part without decoupled applications.</p>
+
+<h2>Please select system branches you want to look into:</h2>
 
 {% if error_message %}<p><strong>{{ error_message }}</strong></p>{% endif %}
 
-<form action="/matrix/result" method="post">
-{% for sys_branch in sys_branches %}
-    <input type="checkbox" name="br{{ sys_branch.id }}" id="br{{ forloop.counter }}" value="{{ sys_branch.name }}" />
+<form action="/matrix/result" method="get">
+  {% for sys_branch in sys_branches %}
+    <input type="checkbox" name="{{ sys_branch.name }}" id="br{{ forloop.counter }}" value="true" />
     <label for="br{{ forloop.counter }}">{{ sys_branch.name }}</label><br />
-{% endfor %}
-<input type="submit" value="Query" />
+  {% endfor %}
+  <input type="submit" value="Go!" />
 </form>
 
-<p>
-  For miracles, unclears and suggestions please mail to
-  <a href = "mailto:SG-WW-Android-CM-Web-G@sonyericsson.com">SG-WW-Android-CM-Web-G</a>.
-</p>
+<p><i>Contact us: <a href = "mailto:SG-WW-Android-CM-Web-G@sonyericsson.com">SG-WW-Android-CM-Web-G</a></i></p>

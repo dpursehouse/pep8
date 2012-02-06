@@ -33,7 +33,7 @@ while(1):
     logging.debug('Fetch start.')
     try:
         code, out, err = processes.run_cmd("git", "fetch",
-                                           path=settings.PATH_MANIFEST)
+                                           path=settings.PATH_MANIFEST_GIT)
         logging.debug(out)
     except Exception as error:
         logging.error(error)
