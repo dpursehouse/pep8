@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.35'
+__version__ = '0.3.36'
 
 REPO = 'repo'
 GIT = 'git'
@@ -178,13 +178,13 @@ Cherry pick status page:
 TAG_SERVER_FAILED_NOTIFICATION_MAIL = \
 """Hello,
 
-Automated cherry-pick failed.  Unable to verify DMS status.
+Automated cherry-pick failed.  The DMS tag server, '%s', returned error.
+%s
+Check the server name or rectify the server error and rerun.
 
-The DMS tag server, '%s', returned error.
+Unable to verify DMS status for target branch %s, for the following commit(s).
 
 %s
-
-Rectify the server error and rerun.
 
 Thanks,
 Cherry-picker.
@@ -342,6 +342,11 @@ class Commit:
             #and target
             return True
         return False
+
+    def get_commit_info(self):
+        """Returns the original commit's git name, SHA1 ID and associated
+        DMS."""
+        return "%s %s %s" % (self.name, self.commit, self.dms)
 
     def __str__(self):
         return "%s,%s,%s,%s,%s" % (self.target, self.path,
@@ -1002,13 +1007,19 @@ def dms_get_fix_for(commit_list):
     commit_tag_list = []
     progress = 0
     total = len(commit_list)
+    dmss = ""
+    if total:
+        dmss = ','.join([x.dms for x in commit_list])
+        logging.info("About to send request to %s", OPT.dms_tag_server)
+        logging.info("for %d issue(s):\n%s", total, dmss)
+    else:
+        return commit_tag_list
 
     try:
         if OPT.dms_tag_server:
-            server = DMSTagServer(OPT.dms_tag_server)
-            tags_dmss = server.dms_for_tags(
-                            ','.join([x.dms for x in commit_list]),
-                            OPT.dms_tags, OPT.target_branch)
+            server = DMSTagServer(OPT.dms_tag_server, timeout=120)
+            tags_dmss = server.dms_for_tags(dmss, OPT.dms_tags,
+                                            OPT.target_branch)
             if tags_dmss != None:
                 for cmt in commit_list:
                     dms = cmt.dms
@@ -1019,9 +1030,11 @@ def dms_get_fix_for(commit_list):
         logging.error('DMS tag server error: %s' % e)
         if not OPT.use_web_interface:
             # No fallback option specified.  Report the error and quit.
+            cherry_info = '\n'.join([x.get_commit_info() for x in commit_list])
             recipient = []
             subject = '[Cherrypick] DMS tag server error'
-            body = TAG_SERVER_FAILED_NOTIFICATION_MAIL % (OPT.dms_tag_server, e)
+            body = TAG_SERVER_FAILED_NOTIFICATION_MAIL % \
+                    (OPT.dms_tag_server, e, OPT.target_branch, cherry_info)
             email(subject, body, recipient)
             cherry_pick_exit(STATUS_DMS_SRV,
                              'Fallback to web interface is disabled.  ' \
