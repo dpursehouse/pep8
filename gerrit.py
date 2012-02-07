@@ -4,7 +4,6 @@ the Gerrit Code Review software.
 
 import json
 import re
-import sys
 import urllib
 
 import processes
@@ -53,8 +52,8 @@ def get_patchset_refspec(change_nr, patchset):
     """Returns a string representing the patchset refspec for
     the change identified by `change_nr` and `patchset`.
     """
-    infix = change_nr % 100
-    return "refs/changes/%02d/%d/%d" % (infix, change_nr, patchset)
+    infix = int(change_nr) % 100
+    return "refs/changes/%02d/%d/%d" % (infix, int(change_nr), int(patchset))
 
 
 class GerritQueryError(Exception):
@@ -102,13 +101,13 @@ class GerritSshConnection():
         self.username = username
         if not self.username:
             try:
-                exitcode, out, err = processes.run_cmd("git", "config",
-                                                       "user.email")
+                _exitcode, out, _err = processes.run_cmd("git", "config",
+                                                         "user.email")
                 # Extract localpart and domain from the first line of the
                 # stdout stream. This will fail if the stream is empty or
                 # isn't a reasonably-looking email address. "git config"
                 # will strip leading and trailing whitespace for us.
-                localpart, domain = out.splitlines()[0].split("@")
+                localpart, _domain = str(out).splitlines()[0].split("@")
                 if len(localpart):
                     self.username = localpart
             except (processes.ChildExecutionError, IndexError, ValueError):
@@ -129,12 +128,12 @@ class GerritSshConnection():
                                            "status code %d." %
                                            (config_url,
                                             sshinfo_response.getcode()))
-        except IOError, err:
+        except IOError, e:
             raise GerritSshConfigError("Error occured when fetching '%s' "
                                        "to determine the Gerrit "
                                        "configuration: %s" %
-                                       (config_url, err.strerror))
-        except ValueError, err:
+                                       (config_url, e.strerror))
+        except ValueError:
             raise GerritSshConfigError("Gerrit's configuration URL '%s' "
                                        "contained unexpected data." %
                                        config_url)
@@ -152,11 +151,11 @@ class GerritSshConnection():
         args = ["query", "--current-patch-set", "--all-approvals",
                 "--format", "JSON",
                 escape_string(querystring)]
-        response, err = self.run_gerrit_command(args)
+        response, _err = self.run_gerrit_command(args)
 
         result = []
         json_decoder = json.JSONDecoder()
-        for line in response.splitlines():
+        for line in str(response).splitlines():
             # Gerrit's response to the query command contains one or more
             # lines of JSON-encoded strings.  The last one is a status
             # dictionary containing the key "type" whose value indicates
@@ -293,5 +292,5 @@ class GerritSshConnection():
             command += ["-l", self.username]
         command += [self.ssh_hostname, "gerrit"]
         command += args
-        exitcode, out, err = processes.run_cmd(command)
+        _exitcode, out, err = processes.run_cmd(command)
         return out, err

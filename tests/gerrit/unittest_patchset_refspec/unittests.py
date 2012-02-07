@@ -17,6 +17,8 @@ class TestGetPatchsetRefspec(unittest.TestCase):
                           get_patchset_refspec(12345, 10))
         self.assertEquals("refs/changes/01/12301/1",
                           get_patchset_refspec(12301, 1))
+        self.assertEquals("refs/changes/01/12301/1",
+                          get_patchset_refspec("12301", "1"))
 
 if __name__ == '__main__':
     unittest.main()
