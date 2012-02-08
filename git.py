@@ -51,7 +51,7 @@ class CachedGitWorkspace():
     ''' Encapsulation of a git workspace.
     '''
 
-    def __init__(self, working_dir, url=None):
+    def __init__(self, working_dir, url=None, clone=False):
         ''' Initilialize the git referred to by `url`, using `working_dir`
         as the root folder in which the git is locally cached.
 
@@ -69,14 +69,25 @@ class CachedGitWorkspace():
         "working_dir/.git".
 
         In both cases, `working_dir` will be converted to an absolute path.
-        '''
-        self.url = url
 
+        If the git does not exist in the `working_dir`, and `clone` is
+        False, an empty git will be intialized.  If `clone` is True, the git
+        will be cloned from the repository specified in `url`.
+
+        Raises GitError if `clone` is True but `url` is not specified.
+        '''
+        if clone and not url:
+            raise GitError("Cannot clone git without URL")
+
+        self.url = url
         if self.url:
             # The path part of the URL will for sure contain a leading
             # slash. It might also contain a trailing slash.
             # Normalize the git name by removing both.
+            # pylint: disable-msg=E1101
+            # (disable "'ParseResult' has no 'path' member" error)
             self.git_name = urlparse.urlparse(self.url).path.strip("/")
+            # pylint: enable-msg=E1101
 
             # Append the git name onto the working directory name, to get
             # the absolute path of the git in the local filesystem.
@@ -90,17 +101,21 @@ class CachedGitWorkspace():
         # the directory.
         self.git_path = os.path.join(self.working_dir, ".git")
 
-        # If the .git folder does not exist, initialize a new git
+        # If the .git folder does not exist, initialize or clone it
         if not os.path.exists(self.git_path):
             try:
-                os.makedirs(self.git_path)
-                processes.run_cmd(["git", "init"], path=self.working_dir)
-            except Exception, err:
+                cmd = ["git"]
+                if clone:
+                    cmd += ["clone", self.url, self.working_dir]
+                else:
+                    cmd += ["init", self.working_dir]
+                processes.run_cmd(cmd)
+            except Exception:
                 # We must take care to remove all traces of the directory
-                # if anything fails. Otherwise we risk leaving an only
+                # if anything fails, otherwise we risk leaving an only
                 # partially initialized git directory in the cache.
                 shutil.rmtree(self.git_path, ignore_errors=True)
-                raise err
+                raise
 
         self.gitstart = ["git", "--git-dir=" + self.git_path,
                          "--work-tree=" + self.working_dir]
@@ -109,7 +124,7 @@ class CachedGitWorkspace():
         '''Run the git command specified in `args`. The "git" command
         is not required as it is already set in the member `gitstart`.
         Return a tuple with status, output from stdout, output from stderr.
-        Raise GitError if any error occurs.
+        Raise some form of ChildExecutionError if any error occurs.
         '''
         if isinstance(args, list):
             cmd = self.gitstart + args
@@ -120,7 +135,7 @@ class CachedGitWorkspace():
     def fetch(self, url=None, refspec=None):
         ''' Fetch the `refspec` from `url`.
         Return a tuple with status, output from stdout, output from stderr.
-        Raise GitError if any error occurs.
+        Raise some form of ChildExecutionError if any error occurs.
         '''
         cmd = ["fetch"]
         if url:
