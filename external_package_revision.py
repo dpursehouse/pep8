@@ -34,40 +34,52 @@ def get_external_package_info(xml_file):
     for node in root.childNodes:
         if node.nodeType == node.ELEMENT_NODE:
             if node.nodeName == 'package-group':
+                if node.hasAttribute('name'):
+                    package_group = node.getAttribute('name')
+                else:
+                    raise XmlParseError('Missing "name" attribute in '
+                                        'package-group.')
                 if node.hasAttribute('revision'):
                     revision = node.getAttribute('revision')
                 else:
                     raise XmlParseError('Missing "revision" attribute in '
-                                        'package-group.')
+                                        'package-group, %s.' % package_group)
                 for sub_node in node.childNodes:
                     if (sub_node.nodeType == node.ELEMENT_NODE and
                         sub_node.nodeName == 'package'):
                         if sub_node.hasAttribute('name'):
                             package = sub_node.getAttribute('name')
                         else:
-                            raise XmlParseError('Missing "name" attribute in '
-                                                'package.')
-                        if package not in pkg_revision_map:
-                            if sub_node.hasAttribute('revision'):
-                                pkg_revision_map[package] = \
-                                    sub_node.getAttribute('revision')
-                            else:
-                                pkg_revision_map[package] = revision
+                            raise XmlParseError('Missing "name" attribute for '
+                                                'a package in package-group, '
+                                                '%s.' % package_group)
+                        if sub_node.hasAttribute('revision'):
+                            local_rev = sub_node.getAttribute('revision')
                         else:
-                            raise XmlParseError('Duplicate package "%s".'
-                                                % package)
+                            local_rev = revision
+
+                        if package in pkg_revision_map:
+                            if local_rev != pkg_revision_map[package]:
+                                raise XmlParseError('Duplicate package "%s" '
+                                                    'with different revisions.'
+                                                    % package)
+                        else:
+                            pkg_revision_map[package] = local_rev
             elif node.nodeName == 'package':
                 if node.hasAttribute('name'):
                     package = node.getAttribute('name')
                 else:
                     raise XmlParseError('Missing "name" attribute in package.')
                 if node.hasAttribute('revision'):
-                    if package not in pkg_revision_map:
-                        pkg_revision_map[package] = \
-                            node.getAttribute('revision')
+                    local_rev = node.getAttribute('revision')
+                    if package in pkg_revision_map:
+                        if local_rev != pkg_revision_map[package]:
+                            raise XmlParseError('Duplicate package "%s" '
+                                                'with different revisions.'
+                                                % package)
                     else:
-                        raise XmlParseError('Duplicate package "%s".' % package)
+                        pkg_revision_map[package] = local_rev
                 else:
                     raise XmlParseError('Missing "revision" attribute in '
-                                        'package.')
+                                        'package, %s.' % package)
     return pkg_revision_map
