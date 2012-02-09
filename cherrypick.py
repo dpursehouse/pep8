@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.37'
+__version__ = '0.3.38'
 
 REPO = 'repo'
 GIT = 'git'
@@ -1030,20 +1030,21 @@ def dms_get_fix_for(commit_list):
     """
     commit_tag_list = []
     progress = 0
-    total = len(commit_list)
-    dmss = ""
-    if total:
-        dmss = ','.join([x.dms for x in commit_list])
-        logging.info("DMS tag request (%s) for %d issue(s): %s",
-                     OPT.dms_tag_server, total, dmss)
-    else:
+    if not commit_list:
+        return commit_tag_list
+
+    # Remove duplicates from the list
+    dmss = list(set([x.dms for x in commit_list]))
+    if not dmss:
         return commit_tag_list
 
     try:
         if OPT.dms_tag_server:
+            logging.info("DMS tag request (%s) for %d issue(s): %s",
+                         OPT.dms_tag_server, len(dmss), ','.join(dmss))
             server = DMSTagServer(OPT.dms_tag_server, timeout=120)
-            tags_dmss = server.dms_for_tags(dmss, OPT.dms_tags,
-                                            OPT.target_branch)
+            tags = OPT.dms_tags.split(',')
+            tags_dmss = server.dms_for_tags(dmss, tags, OPT.target_branch)
             if tags_dmss != None:
                 for cmt in commit_list:
                     dms = cmt.dms

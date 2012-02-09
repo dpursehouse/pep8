@@ -28,13 +28,22 @@ class DMSTagServer():
         self.port = port
         self.timeout = timeout
 
-    def dms_for_tags(self, dmss, dms_tags, target_branch):
+    def dms_for_tags(self, dmss, tags, target_branch):
         """
         Connect to tag server and collect dmss tagged with one of the
-        `dms_tags`, specific to the `target_branch`
+        `tags`, specific to the `target_branch`
         """
-        msg = self.query_srv('%s|%s|%s|%s' % (SRV_DMS_STATUS, dms_tags,
-                             dmss, target_branch))
+        # Remove duplicates from the list
+        unique_dmss = list(set(dmss))
+
+        # If there are no DMS in the list, return immediately
+        if not unique_dmss:
+            return None
+
+        msg = self.query_srv('%s|%s|%s|%s' % (SRV_DMS_STATUS,
+                                              ','.join(tags),
+                                              ','.join(unique_dmss),
+                                              target_branch))
         return msg.split('|')[0]
 
     def dms_with_title(self, dmss):

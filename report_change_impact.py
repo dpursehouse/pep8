@@ -172,9 +172,7 @@ def _get_tagged_issues(issues, tags, target_branch):
 
     # Get the list of tagged issues from the tag server.
     server_conn = DMSTagServer(DMS_TAG_SERVER_HOSTNAME)
-    return server_conn.dms_for_tags(",".join(issues),
-                                    ",".join(tags),
-                                    target_branch)
+    return server_conn.dms_for_tags(issues, tags, target_branch)
 
 
 @retry(processes.ChildExecutionError, tries=2, backoff=2, delay=30)
