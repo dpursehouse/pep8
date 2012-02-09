@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.36'
+__version__ = '0.3.37'
 
 REPO = 'repo'
 GIT = 'git'
@@ -668,6 +668,17 @@ def get_dms_list(target_branch):
     target_log = open(target_branch + '_commit.log', 'wb')
     base_commit_list, target_commit_list = [], []
 
+    old_cherries = None
+    status_server = None
+    if OPT.status_server:
+        try:
+            status_server = CherrypickStatusServer(OPT.status_server)
+            old_cherries = status_server.get_old_cherrypicks(target_branch)
+            if not len(old_cherries):
+                logging.info("No old cherries found")
+        except CherrypickStatusError, e:
+            logging.error("Status Server Error: %s " % e)
+
     for name, rev_path in base_proj_rev.iteritems():
         target_revision = None
         target_is_sha1 = False
@@ -740,8 +751,21 @@ def get_dms_list(target_branch):
         else:
             rev_path = t_revision + ',' + path
         #read merge base to base branch log
-        b_commit_list = collect_fix_dms('origin/' + base_rev, mergebase,
-                                   rev_path + ',' + name, base_log)
+        b_commit_list_full = collect_fix_dms('origin/' + base_rev, mergebase,
+                                             rev_path + ',' + name, base_log)
+        b_commit_list = []
+
+        # Exclude any commits that have already been processed and are
+        # registered on the status server.
+        if old_cherries:
+            all_cherries = "\n".join(old_cherries)
+            for cmt in b_commit_list_full:
+                if cmt.commit in all_cherries:
+                    logging.info("%s: commit %s already processed once",
+                                 cmt.name, cmt.commit)
+                else:
+                    b_commit_list.append(cmt)
+
         #read merge base to target branch log
         t_commit_list = collect_fix_dms(target_revision, mergebase,
                                    rev_path + ',' + name, target_log)
@@ -1010,8 +1034,8 @@ def dms_get_fix_for(commit_list):
     dmss = ""
     if total:
         dmss = ','.join([x.dms for x in commit_list])
-        logging.info("About to send request to %s", OPT.dms_tag_server)
-        logging.info("for %d issue(s):\n%s", total, dmss)
+        logging.info("DMS tag request (%s) for %d issue(s): %s",
+                     OPT.dms_tag_server, total, dmss)
     else:
         return commit_tag_list
 
@@ -1129,15 +1153,10 @@ def cherry_pick(unique_commit_list, target_branch):
     #keep the result here
     cherrypick_result = []
 
-    #check cherry pick history
-    old_cherries = None
     status_server = None
     if OPT.status_server:
         try:
             status_server = CherrypickStatusServer(OPT.status_server)
-            old_cherries = status_server.get_old_cherrypicks(target_branch)
-            if not len(old_cherries):
-                logging.info("No old cherries found")
         except CherrypickStatusError, e:
             logging.error("Status Server Error: %s " % e)
 
@@ -1149,39 +1168,30 @@ def cherry_pick(unique_commit_list, target_branch):
         cherry_pick_exit(STATUS_GERRIT_ERR, "Gerrit error: %s" % e)
 
     for cmt in unique_commit_list:
-        # Check if the commit is in the list of commits returned
-        # from the status server.
+        # Check if the commit has already been uploaded to Gerrit
+        # but was not registered in the status server.
         found = False
-        if old_cherries:
-            for cherry in old_cherries:
-                if cmt.commit in cherry:
-                    found = True
-                    break
+        try:
+            url, date, status = gerrit.is_commit_available(cmt.commit,
+                                                           cmt.target,
+                                                           cmt.name)
+            if url and date and status:
+                # It was found.  Update it in the status server.
+                found = True
+                logging.info('%s: commit %s already in Gerrit: %s,%s,%s',
+                             cmt.name, cmt.commit, url, status,
+                             time.ctime(date))
+                if status_server and not OPT.dry_run:
+                    try:
+                        status_server.update_status(target_branch,
+                            str(cmt) + ',' + url)
+                    except CherrypickStatusError, e:
+                        logging.error("Status Server Error: %s" % e)
+        except GerritError, e:
+            logging.error("Gerrit error: %s" % e)
 
-        # If we didn't find the commit in the status server, check if
-        # it is already uploaded in Gerrit.
-        if not found:
-            try:
-                url, date, status = gerrit.is_commit_available(cmt.commit,
-                                                               cmt.target,
-                                                               cmt.name)
-                if url and date and status:
-                    # It was found.  Update it in the status server.
-                    found = True
-                    logging.info('%s is %s in Gerrit (%s) last updated: %s' %
-                                 (cmt, status, url, time.ctime(date)))
-                    if status_server and not OPT.dry_run:
-                        try:
-                            status_server.update_status(target_branch,
-                                str(cmt) + ',' + url)
-                        except CherrypickStatusError, e:
-                            logging.error("Status Server Error: %s" % e)
-            except GerritError, e:
-                logging.error("Gerrit error: %s" % e)
         # If we've found this commit, no need to cherry pick it
         if found:
-            logging.info('Already processed once %s,%s' % \
-                         (cmt.name, cmt.commit))
             continue
 
         # Start the cherry pick
