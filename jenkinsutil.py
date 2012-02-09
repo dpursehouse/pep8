@@ -24,7 +24,7 @@ def get_apixml_dict(job, job_id=None, server=DEFAULT_SERVER):
 
     path = os.path.join('job', job)
     if job_id:
-        path = os.path.join(path, job_id)
+        path = os.path.join(path, str(job_id))
 
     job_url = urlunparse([NET_SCHEME, server.strip('/'), path.strip('/'),
                           None, None, None])
@@ -108,6 +108,22 @@ class JenkinsBuild:
                 self.timestamp = datetime(t.tm_year, t.tm_mon, t.tm_mday)
         return self.timestamp
 
+    def is_triggered_by_user(self):
+        '''Returns True if the build was triggered by user else False'''
+        actions = self.data.get('actions')
+        if actions:
+            for action in actions:
+                if 'causes' in action.keys():
+                    causes = action.get('causes')
+                    for cause in causes:
+                        if 'userName' in cause.keys():
+                            # If the build was triggered by user, causes will
+                            # have 2 entries: `shortDescription` & `userName`.
+                            # If it was triggered by timer, causes will have
+                            # only the `shortDescription`.
+                            return True
+        return False
+
     def is_time_lapsed(self, duration=30, check_epoch=False):
         '''Checks the difference between current time and its build timestamp
         in minutes.  If `check_epoch` is set to True, checks the difference
@@ -137,4 +153,11 @@ class JenkinsJob:
         last_successful_build = self.data.get(DEFAULT_JOB_ID)
         if last_successful_build:
             return last_successful_build.get('url')
+        return None
+
+    def get_lastbuild_number(self):
+        '''Returns the last build number (running/completed) in this job.'''
+        last_build = self.data.get('lastBuild')
+        if last_build:
+            return last_build.get('number')
         return None
