@@ -19,7 +19,6 @@ import pythoncom
 import servicemanager
 import socket
 import string
-import subprocess
 import sys
 import thread
 import urllib
@@ -29,6 +28,7 @@ import win32serviceutil
 from _winreg import *
 
 import dmsutil
+from processes import run_cmd, ChildExecutionError
 import semcutil
 
 HOST = ''
@@ -244,9 +244,6 @@ def process_req(working_dir, channel, address, user, password):
     error_msg = ""
     send_data = ""
     req_type = data_list[0]
-    open(working_dir + "\\server_log.txt", "ab").write(
-            'Connected by %s at %s for %s \n' % (address,
-            datetime.now().strftime("%Y-%m-%d-%H:%M:%S"), req_type))
 
     if req_type == dmsutil.SRV_DMS_INFO:
         # Error handling for insufficient data in the stream
@@ -256,22 +253,19 @@ def process_req(working_dir, channel, address, user, password):
             send_data = dmsutil.SRV_ERROR + dmsutil.SRV_END
         else:
             issues = data_list[1]
+            open(working_dir + "\\server_log.txt", "ab").write(
+                    'Connected by %s at %s for %s \nIssues: %s\n' % (address,
+                    datetime.now().strftime("%Y-%m-%d-%H:%M:%S"), req_type,
+                    issues))
             cmd = ['cqperl', working_dir + '\\run_query.pl', '-remove_query',
                    '-user', user, '-pwd', password, '-issues', issues,
                    '-log', 'cherry.log', '-list', '-title', '-site', 'JPTO']
             try:
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                           stderr=subprocess.PIPE)
-                out, err = process.communicate()
-                if process.poll() != 0:
-                    open(working_dir + "\\cqperl_log.txt", "ab").write(str(err))
-                    channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
-                    channel.close()
-                    return
-            except Exception, exp:
+                ret, out, err = run_cmd(cmd)
+            except ChildExecutionError, exp:
                 open(working_dir + "\\cqperl_log.txt", "ab").write(
-                     "%s: %s\n" % (datetime.now().strftime(
-                     "%Y-%m-%d-%H:%M:%S"), str(exp)))
+                     "%s: %s\n" % (datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
+                                   str(exp)))
                 channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
                 channel.close()
                 return
@@ -328,6 +322,11 @@ def process_req(working_dir, channel, address, user, password):
             if len(data_list) > 3:
                 deliver_to = data_list[3]
 
+            open(working_dir + "\\server_log.txt", "ab").write(
+                'Connected by %s at %s for %s \nData:\nTag: %s\nBranch: ' \
+                '%s\nIssues: %s\n' % (address,
+                datetime.now().strftime("%Y-%m-%d-%H:%M:%S"), req_type,
+                tag_list, deliver_to, issues))
             send_data = issues
             # If the tag list is empty no need to check the issues.  Just send
             # back the issues.
@@ -337,18 +336,8 @@ def process_req(working_dir, channel, address, user, password):
                        '-issues', issues, '-log', 'cherry.log', '-list',
                        '-site', 'JPTO']
                 try:
-                    process = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                               stderr=subprocess.PIPE)
-                    out, err = process.communicate()
-                    if process.poll() != 0:
-                        open(working_dir + "\\cqperl_log.txt", "ab"). \
-                             write("%s: %s\n" % (
-                                   datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
-                                   str(err)))
-                        channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
-                        channel.close()
-                        return
-                except Exception, exp:
+                    ret, out, err = run_cmd(cmd)
+                except ChildExecutionError, exp:
                     open(working_dir + "\\cqperl_log.txt", "ab"). \
                          write("%s: %s\n" % (
                                datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
