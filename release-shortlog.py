@@ -686,7 +686,7 @@ class DiffGenerator(object):
         dmstitle = []
         if dmslist:
             try:
-                dmstitle = self.tag_server.dms_with_title(','.join(dmslist))
+                dmstitle = self.tag_server.dms_with_title(dmslist)
             except:
                 # If we can't retrieve the title information, just print error
                 # and return the `dmslist` back.

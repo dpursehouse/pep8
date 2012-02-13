@@ -1,3 +1,5 @@
+""" Interface to the DMS tag server. """
+
 import socket
 
 #Server communication tags
@@ -8,6 +10,20 @@ SRV_ERROR = 'SRV_ERROR'
 SRV_END = '|END'
 
 BUFFER_LEN = 1024
+
+# Maximum number of DMS sent to the server per request
+MAX_DMS_PER_REQUEST = 100
+
+
+def split_to_block(dmss):
+    ''' Generator function to split the list of `dmss` into blocks of
+    maximum `MAX_DMS_PER_REQUEST` items.
+    '''
+    index = 0
+    total = len(dmss)
+    while index < total:
+        yield dmss[index:index + MAX_DMS_PER_REQUEST]
+        index += MAX_DMS_PER_REQUEST
 
 
 class DMSTagServerError(Exception):
@@ -30,9 +46,10 @@ class DMSTagServer():
 
     def dms_for_tags(self, dmss, tags, target_branch):
         """
-        Connect to tag server and collect dmss tagged with one of the
-        `tags`, specific to the `target_branch`
+        Connect to tag server and collect `dmss` tagged with one of the
+        `tags`, specific to the `target_branch`.
         """
+
         # Remove duplicates from the list
         unique_dmss = list(set(dmss))
 
@@ -40,22 +57,44 @@ class DMSTagServer():
         if not unique_dmss:
             return None
 
-        msg = self.query_srv('%s|%s|%s|%s' % (SRV_DMS_STATUS,
-                                              ','.join(tags),
-                                              ','.join(unique_dmss),
-                                              target_branch))
-        return msg.split('|')[0]
+        # Send to the tag server in multiple batches.
+        result_dms = []
+        for dms_block in split_to_block(unique_dmss):
+            # Get the list of tagged DMS from the tag server. The result is
+            # a comma-separated list of DMS.
+            msg = self.query_srv('%s|%s|%s|%s' % (SRV_DMS_STATUS,
+                                                  ','.join(tags),
+                                                  ','.join(dms_block),
+                                                  target_branch))
+            dms_list = msg.split('|')[0]
+            if dms_list:
+                result_dms += dms_list.split(',')
+
+        return ','.join(result_dms)
 
     def dms_with_title(self, dmss):
         """
-        Connect to tag server and get the title for the list of dmss
-        Returns a list of line with issue ID followed by title
+        Connect to tag server and get the title for the list of `dmss`.
+        Returns a list of strings in the format "IssueID Title".
         """
+
         issue_list = []
-        msg = self.query_srv('%s|%s' % (SRV_DMS_INFO, dmss))
-        for line in msg.split(SRV_DELIMITER):
-            (issue, title) = line.split('|', 1)
-            issue_list.append('%s %s' % (issue, title))
+
+        # Remove duplicates from the list
+        unique_dmss = list(set(dmss))
+
+        # If there are no DMS in the list, return immediately
+        if not unique_dmss:
+            return issue_list
+
+        # Send to the tag server in multiple batches.
+        for dms_block in split_to_block(unique_dmss):
+            msg = self.query_srv('%s|%s' % (SRV_DMS_INFO, ','.join(dms_block)))
+
+            for line in msg.split(SRV_DELIMITER):
+                (issue, title) = line.split('|', 1)
+                issue_list.append('%s %s' % (issue, title))
+
         return issue_list
 
     def query_srv(self, query):
