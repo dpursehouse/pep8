@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.38'
+__version__ = '0.3.39'
 
 REPO = 'repo'
 GIT = 'git'
@@ -164,6 +164,7 @@ done.
 
 Thanks,
 Cherry-picker.
+Version: %s
 
 
 Useful links:
@@ -188,6 +189,7 @@ Unable to verify DMS status for target branch %s, for the following commit(s).
 
 Thanks,
 Cherry-picker.
+Version: %s
 """
 
 
@@ -899,15 +901,13 @@ def update_manifest(branch, skip_review):
     elif skip_review:
         email('[Cherrypick] [%s] Manifest updated' % branch,
               'Hello,\n\nThe manifest file of %s was updated and merged. '
-              'Updated project(s):\n%s\n\nCherry-picker' %
-              (branch, proj_list),
-              recipient)
+              'Updated project(s):\n%s\n\nCherry-picker\nVersion: %s' %
+              (branch, proj_list, __version__), recipient)
     else:
         email('[Cherrypick] [%s] Manifest updated' % branch,
               'Hello,\n\nThe manifest file of %s was updated and uploaded '
-              'for review. Updated project(s):\n%s\n\nCherry-picker' %
-              (branch, proj_list),
-              recipient)
+              'for review. Updated project(s):\n%s\n\nCherry-picker' \
+              '\nVersion: %s' % (branch, proj_list, __version__), recipient)
     return STATUS_OK
 
 
@@ -1057,9 +1057,11 @@ def dms_get_fix_for(commit_list):
             # No fallback option specified.  Report the error and quit.
             cherry_info = '\n'.join([x.get_commit_info() for x in commit_list])
             recipient = []
-            subject = '[Cherrypick] DMS tag server error'
+            subject = '[Cherrypick] DMS tag server error [%s]' % \
+                      OPT.target_branch
             body = TAG_SERVER_FAILED_NOTIFICATION_MAIL % \
-                    (OPT.dms_tag_server, e, OPT.target_branch, cherry_info)
+                    (OPT.dms_tag_server, e, OPT.target_branch,
+                    cherry_info, __version__)
             email(subject, body, recipient)
             cherry_pick_exit(STATUS_DMS_SRV,
                              'Fallback to web interface is disabled.  ' \
@@ -1417,7 +1419,7 @@ def create_branch_mail(branch, name, sha1, recipient):
     body = ('Hello,\n\nBranch %s has been created on %s.' % (branch, name) +
             '\nBranch point: %s' % sha1 +
             '\nThe manifest for %s will be updated.' % branch +
-            '\n\nRegards,\nCherry-picker')
+            '\n\nRegards,\nCherry-picker.\nVersion: %s' % __version__)
     email(subject, body, recipient)
 
 
@@ -1431,7 +1433,7 @@ def update_manifest_mail(branch, name, recipient):
             'can\'t be updated for the following project(s):\n%s\n\n' % name +
             'Please update the manifest file ' +
             'and reply to this mail with the Gerrit link.' +
-            '\n\nThanks,\nCherry-picker')
+            '\n\nThanks,\nCherry-picker.\nVersion: %s' % __version__)
     email(subject, body, recipient)
 
 
@@ -1442,7 +1444,7 @@ def conflict_mail(branch, url, change_id, recipient, result):
     subject = ('[Cherrypick] [%s] cherry-pick of change %s has failed.' %
                (branch, change_id))
     body = CHERRY_PICK_FAILED_NOTIFICATION_MAIL % \
-           (url, branch, result, branch, '\n'.join(recipient))
+           (url, branch, result, branch, '\n'.join(recipient),  __version__)
     email(subject, body, recipient)
 
 

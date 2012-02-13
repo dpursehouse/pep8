@@ -347,7 +347,7 @@ my $session = get_session($site);
 if($session == -1) {
   print "Error with site $site ...ABORTING\n";
   logg(ERROR, "Could not get a session for site $site.  ABORTING");
-  die;
+  die "Unable to establish session with site $site\n";
 }
 
 #Create SW label only on site $site, label should be synchronised to other

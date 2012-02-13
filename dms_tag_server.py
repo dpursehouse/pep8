@@ -28,7 +28,7 @@ import win32serviceutil
 from _winreg import *
 
 import dmsutil
-from processes import run_cmd, ChildExecutionError
+from processes import *
 import semcutil
 
 HOST = ''
@@ -250,7 +250,8 @@ def process_req(working_dir, channel, address, user, password):
         if len(data_list) < 2:
             error_msg = "Insufficient data from %s. Data received was: %s\n" % \
                          (address, request)
-            send_data = dmsutil.SRV_ERROR + dmsutil.SRV_END
+            send_data = '%s: %s %s' % (dmsutil.SRV_ERROR, error_msg,
+                                       dmsutil.SRV_END)
         else:
             issues = data_list[1]
             open(working_dir + "\\server_log.txt", "ab").write(
@@ -263,10 +264,19 @@ def process_req(working_dir, channel, address, user, password):
             try:
                 ret, out, err = run_cmd(cmd)
             except ChildExecutionError, exp:
+                # Can't pass the exception as such as it will expose the
+                # password from the command, hence handle the exceptions
+                # differently.
+                if isinstance(exp, ChildRuntimeError):
+                    err_msg = 'run_query.pl failed with status: %d\nError: %s' \
+                              % (exp.result[0],  exp.result[2])
+                else:
+                    err_msg = str(exp)
                 open(working_dir + "\\cqperl_log.txt", "ab").write(
                      "%s: %s\n" % (datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
                                    str(exp)))
-                channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
+                channel.send('%s: %s %s' % (dmsutil.SRV_ERROR, err_msg,
+                                            dmsutil.SRV_END))
                 channel.close()
                 return
 
@@ -292,7 +302,8 @@ def process_req(working_dir, channel, address, user, password):
                 send_data = dmsutil.SRV_DELIMITER.join(dms_list)
             except Exception, exp:
                 open(working_dir + "\\cqperl_log.txt", "ab").write(str(exp))
-                channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
+                channel.send('%s: %s %s' % (dmsutil.SRV_ERROR, str(exp),
+                                            dmsutil.SRV_END))
                 channel.close()
                 return
 
@@ -309,7 +320,8 @@ def process_req(working_dir, channel, address, user, password):
         if len(data_list) < 3:
             error_msg = "Insufficient data from %s. Data received was: %s\n" % \
                          (address, request)
-            send_data = dmsutil.SRV_ERROR + dmsutil.SRV_END
+            send_data = '%s: %s %s' % (dmsutil.SRV_ERROR, error_msg,
+                                       dmsutil.SRV_END)
         else:
             tag_list = []
             for tag in data_list[1].rstrip(',').split(','):
@@ -338,11 +350,20 @@ def process_req(working_dir, channel, address, user, password):
                 try:
                     ret, out, err = run_cmd(cmd)
                 except ChildExecutionError, exp:
-                    open(working_dir + "\\cqperl_log.txt", "ab"). \
-                         write("%s: %s\n" % (
-                               datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
-                               str(exp)))
-                    channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
+                    # Can't pass the exception as such as it will expose the
+                    # password from the command, hence handle the exceptions
+                    # differently.
+                    if isinstance(exp, ChildRuntimeError):
+                        err_msg = \
+                            'run_query.pl failed with status: %d\nError: %s' % \
+                            (exp.result[0],  exp.result[2])
+                    else:
+                        err_msg = str(exp)
+                    open(working_dir + "\\cqperl_log.txt", "ab").write(
+                         "%s: %s\n" % (datetime.now().strftime(
+                                       "%Y-%m-%d-%H:%M:%S"), str(exp)))
+                    channel.send('%s: %s %s' % (dmsutil.SRV_ERROR, err_msg,
+                                                dmsutil.SRV_END))
                     channel.close()
                     return
 
@@ -392,7 +413,8 @@ def process_req(working_dir, channel, address, user, password):
                          write("%s: %s\n" % (
                                datetime.now().strftime("%Y-%m-%d-%H:%M:%S"),
                                str(exp)))
-                    channel.send(dmsutil.SRV_ERROR + dmsutil.SRV_END)
+                    channel.send('%s: %s %s' % (dmsutil.SRV_ERROR, str(exp),
+                                                dmsutil.SRV_END))
                     channel.close()
                     return
 

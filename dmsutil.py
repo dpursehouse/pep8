@@ -78,10 +78,11 @@ class DMSTagServer():
                     break
                 data = sock.recv(BUFFER_LEN)
             sock.close()
-            if SRV_ERROR in msg:
-                raise DMSTagServerError('Server side error: ' + msg)
             # Strip the 'SRV_END' part from the result
             msg = msg.rstrip(SRV_END)
+            if SRV_ERROR in msg:
+                msg = msg.strip(SRV_ERROR)
+                raise DMSTagServerError('Server side error' + msg)
             return msg
         except socket.timeout, err:
             raise DMSTagServerError('Server timeout')
