@@ -1436,8 +1436,8 @@ sub label_is_valid {
         logg(CQERROR, "$@\n");
         return 0;
       } else {
-        return $technical_name;
         logg(OK, "Retrieved technical_name $technical_name from label $label");
+        return $technical_name;
       }
     } else {
       logg(WARN, "Label $label doesn't exist");
