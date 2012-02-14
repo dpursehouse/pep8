@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.39'
+__version__ = '0.3.40'
 
 REPO = 'repo'
 GIT = 'git'
@@ -1045,12 +1045,11 @@ def dms_get_fix_for(commit_list):
             server = DMSTagServer(OPT.dms_tag_server, timeout=120)
             tags = OPT.dms_tags.split(',')
             tags_dmss = server.dms_for_tags(dmss, tags, OPT.target_branch)
-            if tags_dmss != None:
+            if tags_dmss:
                 for cmt in commit_list:
-                    dms = cmt.dms
-                    if dms in tags_dmss:
+                    if cmt.dms in tags_dmss:
                         commit_tag_list.append(cmt)
-                return commit_tag_list
+            return commit_tag_list
     except DMSTagServerError, e:
         logging.error('DMS tag server error: %s' % e)
         if not OPT.use_web_interface:
