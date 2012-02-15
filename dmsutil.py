@@ -113,7 +113,7 @@ class DMSTagServer():
             msg = ''
             while 1:
                 msg = msg + data
-                if SRV_END in str(data):
+                if msg.endswith(SRV_END):
                     break
                 data = sock.recv(BUFFER_LEN)
             sock.close()
