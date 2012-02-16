@@ -1,4 +1,4 @@
-""" Classes and helper methods for interacting with a git workspace.
+""" Classes and helper methods for interacting with a git repository.
 """
 
 import os
@@ -47,8 +47,8 @@ class GitError(Exception):
     '''
 
 
-class CachedGitWorkspace():
-    ''' Encapsulation of a git workspace.
+class GitRepository():
+    ''' Encapsulation of a git repository.
     '''
 
     def __init__(self, working_dir, url=None, clone=False):

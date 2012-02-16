@@ -30,7 +30,7 @@ from branch_policies import BranchPolicies
 from commit_message import CommitMessage, CommitMessageError
 from dmsutil import DMSTagServer, DMSTagServerError
 import gerrit
-from git import CachedGitWorkspace
+from git import GitRepository
 from include_exclude_matcher import IncludeExcludeMatcher
 import manifest
 import manifestbranches
@@ -182,10 +182,9 @@ def _get_patchset_fixed_issues(options):
     patchset_ref = gerrit.get_patchset_refspec(options.change_nr,
                                                options.patchset_nr)
     logging.info("Fetching patch set %s" % patchset_ref)
-    git = CachedGitWorkspace(options.cache_path,
-                             os.path.join("git://",
-                                          options.gerrit_url,
-                                          options.affected_git))
+    git = GitRepository(options.cache_path, os.path.join("git://",
+                                                         options.gerrit_url,
+                                                         options.affected_git))
     git.fetch(refspec=patchset_ref)
 
     # Extract the commit message and find any DMS issues in it.

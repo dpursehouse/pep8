@@ -8,7 +8,7 @@ import sys
 
 import commit_message
 import gerrit
-from git import CachedGitWorkspace
+from git import GitRepository
 from include_exclude_matcher import IncludeExcludeMatcher
 import processes
 from retry import retry
@@ -237,10 +237,9 @@ def get_commit_message(options):
                                                options.patchset_nr)
 
     logging.info("Fetching patch set %s" % patchset_ref)
-    git = CachedGitWorkspace(options.cache_path,
-                             os.path.join("git://",
-                                          options.gerrit_url,
-                                          options.affected_git))
+    git = GitRepository(options.cache_path, os.path.join("git://",
+                                                         options.gerrit_url,
+                                                         options.affected_git))
     git.fetch(refspec=patchset_ref)
 
     # Extract the commit message and find any DMS issues in it.
