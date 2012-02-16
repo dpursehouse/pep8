@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+""" Script to check that commit messages are according to the guideline. """
+
 import logging
 import optparse
 import os
@@ -75,8 +77,40 @@ Please check the commit message guideline:
 https://wiki.sonyericsson.net/androiki/Commit_messages
 """
 
+EXCLUDED_SUBJECTS = ["Merge ",
+                     "Revert ",
+                     "DO NOT MERGE",
+                     "DO NOT SUBMIT",
+                     "DON\'T SUBMIT"]
+
+
+def is_excluded_subject(subject):
+    '''
+    Check if `subject` should be excluded.
+    '''
+    for text in EXCLUDED_SUBJECTS:
+        if subject.startswith(text):
+            return True
+    return False
+
+
+def is_utf8_string(string):
+    '''
+    Check if `string` is UTF8.
+    '''
+
+    try:
+        string.decode('utf_8')
+    except UnicodeError:
+        return False
+    else:
+        return True
+
 
 class CommitMessageChecker:
+    """ Commit message checker class.  Checks that commit messages
+    are according to the guideline.
+    """
 
     def __init__(self, commit=None):
         self.commit = commit
@@ -98,33 +132,6 @@ class CommitMessageChecker:
         '''
         self.errors = []
 
-    def is_excluded_subject(self, subject):
-        '''
-        Check if a given subject should be excluded.
-        '''
-
-        excludedSubjects = ["Merge ",
-                            "Revert ",
-                            "DO NOT MERGE",
-                            "DO NOT SUBMIT",
-                            "DON\'T SUBMIT"]
-        for index in excludedSubjects:
-            if subject.startswith(index):
-                return True
-        return False
-
-    def is_utf8_string(self, s):
-        '''
-        Check if a string is UTF8.
-        '''
-
-        try:
-            s.decode('utf_8')
-        except:
-            return False
-        else:
-            return True
-
     def check_subject(self, subject):
         '''
         Check the content of the commit message subject.
@@ -143,7 +150,7 @@ class CommitMessageChecker:
             self.error(ERROR_CODE.SUBJECT_TOO_LONG)
 
         # Check for non-UTF8 characters
-        if not self.is_utf8_string(subject):
+        if not is_utf8_string(subject):
             self.error(ERROR_CODE.NON_UTF8_CHARS)
 
     def check_line(self, line, line_no):
@@ -172,7 +179,7 @@ class CommitMessageChecker:
             self.error(ERROR_CODE.LINE_TOO_LONG, line_no)
 
         # Check for non-UTF8 characters
-        if not self.is_utf8_string(line):
+        if not is_utf8_string(line):
             self.error(ERROR_CODE.NON_UTF8_CHARS, line_no)
 
     def check(self):
@@ -189,14 +196,14 @@ class CommitMessageChecker:
         self.reset()
 
         # Only run the check if the subject line is not excluded
-        if not self.is_excluded_subject(self.commit.subject):
+        if not is_excluded_subject(self.commit.subject):
             # Check the subject
             self.check_subject(self.commit.subject)
 
             # Check the message body
-            commitLines = self.commit.message.split('\n')
+            commit_lines = self.commit.message.split('\n')
             line_no = 0
-            for line in commitLines:
+            for line in commit_lines:
                 line_no += 1
                 line = line.rstrip()
                 self.check_line(line, line_no)
@@ -221,8 +228,8 @@ def format_results(results):
             output += "Line %d: " % line
         output += message + "\n"
 
-    errors = [ERRORS[c][0] for l, c in results].count(ERROR_SEVERITY.ERROR)
-    warnings = [ERRORS[c][0] for l, c in results].count(ERROR_SEVERITY.WARNING)
+    errors = [ERRORS[c][0] for _l, c in results].count(ERROR_SEVERITY.ERROR)
+    warnings = [ERRORS[c][0] for _l, c in results].count(ERROR_SEVERITY.WARNING)
 
     output += "\nErrors: %d Warnings: %d" % (errors, warnings)
 
@@ -236,22 +243,22 @@ def get_commit_message(options):
     patchset_ref = gerrit.get_patchset_refspec(options.change_nr,
                                                options.patchset_nr)
 
-    logging.info("Fetching patch set %s" % patchset_ref)
+    logging.info("Fetching patch set %s", patchset_ref)
     git = GitRepository(options.cache_path, os.path.join("git://",
                                                          options.gerrit_url,
                                                          options.affected_git))
     git.fetch(refspec=patchset_ref)
 
     # Extract the commit message and find any DMS issues in it.
-    errcode, msg, err = processes.run_cmd("git",
-                                          "cat-file",
-                                          "-p",
-                                          "FETCH_HEAD",
-                                          path=git.git_path)
+    _errcode, msg, _err = processes.run_cmd("git",
+                                            "cat-file",
+                                            "-p",
+                                            "FETCH_HEAD",
+                                            path=git.git_path)
     return commit_message.CommitMessage(msg)
 
 
-def main():
+def _main():
     usage = "usage: %prog [options]"
     options = optparse.OptionParser(usage=usage)
     options.add_option("", "--gerrit-url", dest="gerrit_url",
@@ -289,7 +296,7 @@ def main():
                             "the pattern will be excluded from the check.  " \
                             "This option can be used multiple times to add " \
                             "more expressions. (default: <empty>).")
-    (options, args) = options.parse_args()
+    (options, _args) = options.parse_args()
 
     if options.verbose:
         logging.basicConfig(format='%(message)s', level=logging.INFO)
@@ -307,7 +314,7 @@ def main():
     # specified by the user with the --exclude-git option.
     git_matcher = IncludeExcludeMatcher([r"^"], options.git_ex)
     if not git_matcher.match(options.affected_git):
-        logging.info("git %s is excluded from commit message check" % \
+        logging.info("git %s is excluded from commit message check",
                      options.affected_git)
         exit(0)
 
@@ -338,11 +345,11 @@ def main():
                     g.change_is_open(options.change_nr)
                 if not is_open:
                     logging.info("Change %d is closed.  Not adding code review "
-                                 "score." % options.change_nr)
+                                 "score.", options.change_nr)
                 elif options.patchset_nr != current_patchset:
                     logging.info("Patchset %d has been replaced by patchset " \
-                                 "%d.  Not adding code review score." % \
-                                 (options.patchset_nr, current_patchset))
+                                 "%d.  Not adding code review score.",
+                                 options.patchset_nr, current_patchset)
                 else:
                     code_review = -1
             if not options.dry_run:
@@ -361,6 +368,6 @@ def main():
 
 if __name__ == '__main__':
     try:
-        sys.exit(main())
+        sys.exit(_main())
     except KeyboardInterrupt:
         fatal(1, "Interrupted by user")

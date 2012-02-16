@@ -5,7 +5,7 @@ import os
 import sys
 import unittest
 
-from commit_message_check import CommitMessageChecker
+from commit_message_check import is_excluded_subject
 
 
 class TestIsExcludedSubject(unittest.TestCase):
@@ -21,9 +21,8 @@ class TestIsExcludedSubject(unittest.TestCase):
                     "DO NOT MERGE: this should not be merged",
                     "DO NOT SUBMIT: this should not be submitted",
                     "DON\'T SUBMIT: this should not be submitted"]
-        c = CommitMessageChecker()
         for subject in subjects:
-            self.assertTrue(c.is_excluded_subject(subject))
+            self.assertTrue(is_excluded_subject(subject))
 
     def test_non_excluded_subjects(self):
         """Tests that the method behaves correctly for subjects that
@@ -34,9 +33,8 @@ class TestIsExcludedSubject(unittest.TestCase):
                     "Wenn ist das Nunstück git und Slotermeyer?",
                     "Ja! Beiherhund das Oder die Flipperwaldt gersput!",
                     "DON\'T MERGE: this should not be merged"]
-        c = CommitMessageChecker()
         for subject in subjects:
-            self.assertFalse(c.is_excluded_subject(subject))
+            self.assertFalse(is_excluded_subject(subject))
 
 
 if __name__ == '__main__':
