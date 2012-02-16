@@ -22,12 +22,11 @@ changes being inspected. """
 import logging
 import optparse
 import os
-import re
 import sys
 from xml.parsers.expat import ExpatError
 
 from branch_policies import BranchPolicies
-from commit_message import CommitMessage, CommitMessageError
+from commit_message import CommitMessage
 from dmsutil import DMSTagServer, DMSTagServerError
 import gerrit
 from git import GitRepository
@@ -150,9 +149,9 @@ def _find_commit_size_script():
     Return the absolute path to the script.
     Raise an Exception if it could not be found.
     '''
-    file = os.path.join(_mydir, _COMMIT_SIZE_SCRIPT)
-    if os.path.exists(file):
-        return file
+    script_file = os.path.join(_mydir, _COMMIT_SIZE_SCRIPT)
+    if os.path.exists(script_file):
+        return script_file
     raise Exception("Could not find %s" % _COMMIT_SIZE_SCRIPT)
 
 
@@ -181,18 +180,18 @@ def _get_patchset_fixed_issues(options):
     """
     patchset_ref = gerrit.get_patchset_refspec(options.change_nr,
                                                options.patchset_nr)
-    logging.info("Fetching patch set %s" % patchset_ref)
+    logging.info("Fetching patch set %s", patchset_ref)
     git = GitRepository(options.cache_path, os.path.join("git://",
                                                          options.gerrit_url,
                                                          options.affected_git))
     git.fetch(refspec=patchset_ref)
 
     # Extract the commit message and find any DMS issues in it.
-    errcode, msg, err = processes.run_cmd("git",
-                                          "cat-file",
-                                          "-p",
-                                          "FETCH_HEAD",
-                                          path=git.git_path)
+    _errcode, msg, _err = processes.run_cmd("git",
+                                            "cat-file",
+                                            "-p",
+                                            "FETCH_HEAD",
+                                            path=git.git_path)
     commit_message = CommitMessage(msg)
     return commit_message.get_fixed_issues()
 
@@ -348,7 +347,7 @@ def _main():
                             "(default %d).  Setting 0 disables this " \
                             "warning." % DEFAULT_MAX_COMMIT_SIZE,
                        type="int", default=DEFAULT_MAX_COMMIT_SIZE)
-    (options, args) = options.parse_args()
+    (options, _args) = options.parse_args()
 
     if not options.manifest_path:
         semcutil.fatal(1, "Path to manifest git missing. " \
@@ -380,7 +379,7 @@ def _main():
     # to continue.
     git_matcher = IncludeExcludeMatcher(options.git_in, options.git_ex)
     if not git_matcher.match(options.affected_git):
-        logging.info("No match for git %s" % options.affected_git)
+        logging.info("No match for git %s", options.affected_git)
         return 0
 
     # If the git branch does not match our patterns there's no reason
@@ -388,7 +387,7 @@ def _main():
     branch_matcher = IncludeExcludeMatcher(options.git_branch_in,
                                            options.git_branch_ex)
     if not branch_matcher.match(options.affected_branch):
-        logging.info("No match for git branch %s" % options.affected_branch)
+        logging.info("No match for git branch %s", options.affected_branch)
         return 0
 
     # Find all available manifest branches. Let `branches`
@@ -396,10 +395,10 @@ def _main():
     try:
         manifest_matcher = IncludeExcludeMatcher(options.manifest_ref_in,
                                                  options.manifest_ref_ex)
-        errcode, out, err = processes.run_cmd("git", "for-each-ref",
-                                              "--format=%(refname)",
-                                              path=options.manifest_path)
-        branches = filter(manifest_matcher.match, out.splitlines())
+        _ret, out, _err = processes.run_cmd("git", "for-each-ref",
+                                            "--format=%(refname)",
+                                            path=options.manifest_path)
+        branches = filter(manifest_matcher.match, str(out).splitlines())
     except processes.ChildExecutionError, err:
         semcutil.fatal(2, "Error finding manifest branches: %s" % err)
 
@@ -418,16 +417,16 @@ def _main():
         try:
             manifests = manifestbranches.get_manifests(branch,
                                                        options.manifest_path)
-            for ref, prettybranch, mfest in manifests:
+            for _ref, prettybranch, mfest in manifests:
                 if options.affected_git in mfest and \
                         options.affected_branch == \
                             mfest[options.affected_git]["revision"]:
                     affected_manifests.append(prettybranch)
-                    logging.info("- " + prettybranch)
+                    logging.info("- %s", prettybranch)
         except processes.ChildExecutionError, err:
-            logging.error("Unable to get manifest branch info: %s" % err)
+            logging.error("Unable to get manifest branch info: %s", err)
         except manifest.ManifestParseError, err:
-            logging.error("Unable to parse manifest %s: %s" % (branch, err))
+            logging.error("Unable to parse manifest %s: %s", branch, err)
 
     message = ""
 
@@ -467,7 +466,7 @@ def _main():
                 if not len(dmslist):
                     logging.info("No DMS found in commit message")
                 else:
-                    logging.info("Found DMS: " + ", ".join(dmslist))
+                    logging.info("Found DMS: %s", ", ".join(dmslist))
             except processes.ChildExecutionError, err:
                 semcutil.fatal(2, err)
             except EnvironmentError, err:
@@ -500,22 +499,22 @@ def _main():
     if options.commit_size > 0:
         try:
             script = _find_commit_size_script()
-            ret, out, err = processes.run_cmd([script])
+            _ret, out, err = processes.run_cmd([script])
             commit_size = int(out)
-            logging.info("Commit size: %d" % commit_size)
+            logging.info("Commit size: %d", commit_size)
             if commit_size > options.commit_size:
                 if not message:
                     message = MESSAGE_GREETING
                 message += MESSAGE_COMMIT_TOO_LARGE % commit_size
-        except Exception, e:
-            logging.error("Failed to check commit size: %s" % e)
+        except (ValueError, processes.ChildExecutionError), e:
+            logging.error("Failed to check commit size: %s", e)
 
     # If any message has been generated, post it as a note to the change
     # along with code review and verify scores.
     if message:
-        logging.info("\nReview message: \n====\n%s\n====" % message)
-        logging.info("\nCode review: %s" % code_review)
-        logging.info("Verify: %s" % verify)
+        logging.info("\nReview message: \n====\n%s\n====", message)
+        logging.info("\nCode review: %s", code_review)
+        logging.info("Verify: %s", verify)
 
         try:
             g = gerrit.GerritSshConnection(options.gerrit_url,
@@ -529,15 +528,15 @@ def _main():
             is_open, current_patchset = g.change_is_open(options.change_nr)
             if not is_open:
                 logging.info("Change %d is closed: adding review message " \
-                             "without code review or verify scores" % \
+                             "without code review or verify scores",
                              options.change_nr)
                 code_review = None
                 verify = None
             elif options.patchset_nr != current_patchset:
                 logging.info("Patchset %d has been replaced by patchset " \
                              "%d: adding review message without code " \
-                             "review or verify scores" % \
-                             (options.patchset_nr, current_patchset))
+                             "review or verify scores",
+                             options.patchset_nr, current_patchset)
                 code_review = None
                 verify = None
             if not options.dry_run:
