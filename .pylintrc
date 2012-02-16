@@ -53,7 +53,7 @@ load-plugins=
 #enable-msg=
 
 # Disable the message(s) with the given id(s).
-disable-msg=R0903,R0912,R0913,R0914,W0141
+disable-msg=R0903,R0912,R0913,R0914,R0915,W0141
 
 
 [REPORTS]
@@ -99,7 +99,7 @@ disable-report=R0001,R0003,R0101,R0002,R0401,R0701,R0801
 #
 [VARIABLES]
 
-# Tells wether we should check for unused import in __init__ files.
+# Tells whether we should check for unused import in __init__ files.
 init-import=no
 
 # A regular expression matching names used for dummy variables (i.e. not used).
@@ -114,7 +114,7 @@ additional-builtins=
 #
 [TYPECHECK]
 
-# Tells wether missing members accessed in mixin class should be ignored. A
+# Tells whether missing members accessed in mixin class should be ignored. A
 # mixin class is detected if its name ends with "mixin" (case insensitive).
 ignore-mixin-members=yes
 
