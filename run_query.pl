@@ -169,8 +169,8 @@ if(scalar(@ARGV) == 0) {
     }
 
     # A list of sites to run on. Necessary if update is selected and there are
-    # issues mastered on other sited.
-    print "Enter site(s) (comma speparated list):\n";
+    # issues mastered on other sites.
+    print "Enter site(s) (comma separated list):\n";
     my $sites_list = <STDIN>;
     chomp $sites_list;
     @sites = split(/,/, $sites_list);
@@ -226,7 +226,7 @@ if(scalar(@ARGV) == 0) {
       } elsif ($choice == 2) {
         ;
       } else {
-        print "Enter 1 Create SW label or 2 to skip creation of SW label:\n";
+        print "Enter 1 to create SW label or 2 to skip creation of SW label:\n";
       }
     }
 
@@ -345,9 +345,9 @@ site_exists($site);
 
 my $session = get_session($site);
 if($session == -1) {
-  print "Error with site $site ...ABORTING\n";
-  logg(ERROR, "Could not get a session for site $site.  ABORTING");
-  die "Unable to establish session with site $site\n";
+  my $msg = "Unable to establish session with site $site";
+  logg(ERROR, $msg);
+  die $msg;
 }
 
 #Create SW label only on site $site, label should be synchronised to other
@@ -403,8 +403,8 @@ if (defined($save)) {
 
 my $result_set = $session->BuildResultSet($query_def);
 if(!defined($result_set)) {
-  print "Could not build result set for site $site\n";
-  logg(ERROR, "Could not build result set for site $site");
+  print STDERR "Could not build result set from query at site $site\n";
+  logg(ERROR, "Could not build result set from query at site $site");
   $session->SignOff();
   exit(1);
 }
@@ -414,7 +414,7 @@ $result_set->Execute();
 
 if (Win32::OLE->LastError != 0) {
   my $msg = "Problem executing DMS Query:\n" . Win32::OLE->LastError;
-  print $msg;
+  print STDERR $msg;
   logg(ERROR, $msg);
   $session->SignOff();
   exit(1);
@@ -587,7 +587,6 @@ sub build_issue_hash {
         my $field_value = $result_set->GetColumnValue($columns{$field});
         if(!defined($field_value)) {
           $field_value = "";
-          logg(WARN, "Could not get value in field $field for issue $issue_id");
         }
           $hash{$issue_hash_key}->{$field} = $field_value;
       }
@@ -1228,7 +1227,6 @@ sub get_unverified {
   foreach my $issue (keys(%{$issues_data})) {
     my $state = $issues_data->{$issue}->{'State'};
     if( $state ne "Verified") {
-      #print "Unverified issue $issue with state $state found.\n";
       push(@unverified, $issue);
     }
   }
@@ -1250,7 +1248,6 @@ sub get_unlabeled {
   foreach my $issue (keys(%{$issues_data})) {
     my $label = $issues_data->{$issue}->{'sw_official_release'};
     if( $label eq "") {
-      #print "Unlabeled issue $issue found.\n";
       push(@unlabeled, $issue);
     }
   }
