@@ -50,15 +50,18 @@ class Repo:
             raise RepoError("Specify the manifest branch name")
 
         rev_path = "git://%s/%s" % (GERRIT_URL, project)
+        command = ["repo", "init", "-u", rev_path, "-b", branch]
+
+        if os.getenv("REPO_MIRROR"):
+            command += ["--reference=$REPO_MIRROR"]
+
         try:
-            processes.run_cmd("repo", "init", "-u",
-                              rev_path, "-b", branch,
-                              path=path)
+            processes.run_cmd(command, path=path)
         except processes.ChildExecutionError, err:
             raise RepoError("Failed to initialize repository for branch "
                             "%s: %s" % (branch, err))
 
-    def sync(self, project=None, jobs=None, path=None):
+    def sync(self, project=None, jobs=None):
         """Sync the project.
 
         Repo sync,
@@ -74,17 +77,15 @@ class Repo:
             Failed to sync project.
 
         """
-        if not path:
-            path = self.workspace
         command = ["repo", "sync"]
-        if isinstance(project, str):
-            command += [project]
-        elif isinstance(project, list):
+        if isinstance(project, list):
             command += project
+        elif project:
+            command += [project]
         if jobs:
             command += ["-j%d" % jobs]
-        print command
+
         try:
-            processes.run_cmd(command, path=path)
+            processes.run_cmd(command, path=self.workspace)
         except processes.ChildExecutionError, err:
             raise RepoError("Failed to sync project %s: %s" % (project, err))
