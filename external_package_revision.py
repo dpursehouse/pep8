@@ -34,16 +34,11 @@ def get_external_package_info(xml_file):
     for node in root.childNodes:
         if node.nodeType == node.ELEMENT_NODE:
             if node.nodeName == 'package-group':
-                if node.hasAttribute('name'):
-                    package_group = node.getAttribute('name')
-                else:
-                    raise XmlParseError('Missing "name" attribute in '
-                                        'package-group.')
                 if node.hasAttribute('revision'):
                     revision = node.getAttribute('revision')
                 else:
                     raise XmlParseError('Missing "revision" attribute in '
-                                        'package-group, %s.' % package_group)
+                                        'package-group.')
                 for sub_node in node.childNodes:
                     if (sub_node.nodeType == node.ELEMENT_NODE and
                         sub_node.nodeName == 'package'):
@@ -51,8 +46,8 @@ def get_external_package_info(xml_file):
                             package = sub_node.getAttribute('name')
                         else:
                             raise XmlParseError('Missing "name" attribute for '
-                                                'a package in package-group, '
-                                                '%s.' % package_group)
+                                                'a package in package-group.')
+
                         if sub_node.hasAttribute('revision'):
                             local_rev = sub_node.getAttribute('revision')
                         else:
