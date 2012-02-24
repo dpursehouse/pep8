@@ -8,6 +8,7 @@ from mutable import *
 
 STR_NAME = "name"
 STR_PATH = "path"
+STR_PROJECT = "project"
 STR_REVISION = "revision"
 
 
@@ -123,7 +124,8 @@ class RepoXmlManifest(Immutable):
                 # as end of category for the previous.
                 elif end_pattern.match(comment):
                     category = "Uncategorized"
-            elif node.nodeType is xml.dom.Node.ELEMENT_NODE:
+            elif node.nodeType is xml.dom.Node.ELEMENT_NODE and \
+                    node.nodeName == STR_PROJECT:
                 project = node.attributes[STR_NAME].value
                 self.projects[project] = {}
                 project_dict = self.projects[project]
