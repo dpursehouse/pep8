@@ -203,6 +203,10 @@ def _main():
     if not options.page:
         parser.error("You have to supply a name for the wikipage.")
 
+    options.manifestpath = os.path.abspath(options.manifestpath)
+    if not os.path.isdir(options.manifestpath):
+        parser.error("Manifest path %s does not exist" % options.manifestpath)
+
     if not options.include_git:
         options.include_git = [r"^"]
 
@@ -210,9 +214,19 @@ def _main():
                                             options.exclude_git)
 
     branches = []
+    errors = []
     for branch in branchnames:
-        branches += get_manifests(branch, options.manifestpath)
-    data = get_branches_html(branches, pattern_matcher.match)
+        try:
+            branches += get_manifests(branch, options.manifestpath)
+        except (processes.ChildExecutionError, manifest.ManifestParseError), e:
+            error = "Error getting data for branch %s" % (branch)
+            errors.append(error)
+            print >> sys.stderr, "%s: %s" % (error, e)
+
+    data = ""
+    for error in errors:
+        data += "<strong>%s</strong><br />" % error
+    data += get_branches_html(branches, pattern_matcher.match)
 
     w = semcwikitools.get_wiki(options.wiki)
     semcwikitools.write_page(w, options.page, data)
