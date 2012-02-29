@@ -26,11 +26,14 @@ while IFS= read FILENAME;
 do
     # Run PEP-8 check on Python files
     if grep -q "\.py$" <<<$FILENAME ; then
-        python cm_tools/pep8.py -v -r --show-source --show-pep8 \
-            $PROJNAME/$FILENAME | tee -a $WORKSPACE/out/pep8_log.txt
-        STATUS=${PIPESTATUS[0]}
-        if [ "$STATUS" -ne 0 ]; then
-            EXIT_STATUS=`expr $EXIT_STATUS + 1`
+        # Exclude external modules
+        if grep -v "/external/" <<<$FILENAME ; then
+            python cm_tools/pep8.py -v -r --show-source --show-pep8 \
+                $PROJNAME/$FILENAME | tee -a $WORKSPACE/out/pep8_log.txt
+            STATUS=${PIPESTATUS[0]}
+            if [ "$STATUS" -ne 0 ]; then
+                EXIT_STATUS=`expr $EXIT_STATUS + 1`
+            fi
         fi
     fi
 done< <($GIT_COMMAND diff --name-only --diff-filter=AM HEAD~1..)
