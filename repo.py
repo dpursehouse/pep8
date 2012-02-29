@@ -2,12 +2,14 @@
 repository.
 """
 import os
+from shutil import copy
 
 import processes
 
 #Gerrit server URL
 GERRIT_URL = "review.sonyericsson.net"
 ASW_MANIFEST = "platform/manifest"
+MANIFEST_PATH = ".repo/manifests"
 
 
 class RepoError(Exception):
@@ -16,7 +18,8 @@ class RepoError(Exception):
 
 class Repo:
     """Repo class to support 'repo init' and 'repo sync'"""
-    def __init__(self, branch=None, project=ASW_MANIFEST, path="."):
+    def __init__(self, branch=None, project=ASW_MANIFEST, path=".",
+                 static_manifest=None):
         """Initialize repository for the manifest branch specified.
 
         Initialize the 'project' for the specified `branch`.
@@ -31,17 +34,24 @@ class Repo:
             branch: name of manifest branch to be initialized.
             project: manifest git name.
             path: relative path where to initialize repository.
+            static_manifest: local path of static manifest file.
+                Static manifest will be copied to '.repo/manifests'
+                directory and repo will be initialized w.r.t the
+                static manifest.
 
         Exception raised: RepoError
         Exception cases:
             Specified `path` does not exists.
             If .repo doesn't exists and branch name not provided.
             Failed to initialize repository.
+            Invalid static manifest path.
+            Unable to copy static manifest to .repo/manifests directory.
 
         """
+        path = os.path.abspath(path)
         if not os.path.exists(path):
             raise RepoError("Specified path '%s' does not exist" % path)
-        self.workspace = os.path.abspath(path)
+        self.workspace = path
 
         if os.path.exists(os.path.join(self.workspace, ".repo")):
             return
@@ -60,6 +70,23 @@ class Repo:
         except processes.ChildExecutionError, err:
             raise RepoError("Failed to initialize repository for branch "
                             "%s: %s" % (branch, err))
+
+        if static_manifest:
+            static_manifest = os.path.abspath(static_manifest)
+            file_name = os.path.basename(static_manifest)
+            file_path = os.path.join(self.workspace, MANIFEST_PATH,
+                                     file_name)
+            try:
+                copy(static_manifest, file_path)
+            except IOError, err:
+                raise RepoError(err)
+
+            try:
+                processes.run_cmd("repo", "init", "-m", file_name,
+                                  path=path)
+            except processes.ChildExecutionError, err:
+                raise RepoError("Failed to initialize static manifest "
+                                "%s: %s" % (static_manifest, err))
 
     def sync(self, project=None, jobs=None):
         """Sync the project.
