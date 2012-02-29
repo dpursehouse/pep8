@@ -7,6 +7,13 @@
     <allowed-dms-tag name="ATT FFW"/>
     <code-review>-1</code-review>
   </branch>
+  <branch pattern="^edream6\.0-fuji-r2-row-release$">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="CA1"/>
+    <allowed-dms-tag name="Fix ASAP"/>
+    <allowed-dms-tag name="CAF"/>
+    <code-review>-1</code-review>
+  </branch>
   <branch pattern="^edream6\.0-fuji-r2-le-release$">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="Fix ASAP"/>
