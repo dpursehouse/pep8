@@ -1,0 +1,2 @@
+Tests modman.py without a list of projects, it should update
+all projects instead.

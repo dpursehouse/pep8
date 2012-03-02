@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?><manifest>
+  <remote fetch="git://review.sonyericsson.net/" name="origin" review="review.sonyericsson.net"/>
+  
+  <default remote="origin" revision="master"/>
+  
+  <project name="devworld/sdk-addon" path="tools/devworld/sdk-addon" revision="b63982ff1b7d63f1a35cc46581189268d5cdfa7f"/>
+  <project name="semctools/appbuild" path="tools/appbuild" revision="16b6808cc471314d164ad2f420c9b9123ab0da63"/>
+  <project name="semctools/appbuild-testdata" path="tools/appbuild-testdata" revision="ab39435908255cda7e8ad174c7abe8c35c317530"/>
+  <project name="semctools/automated-remote-control" path="tools/automated-remote-control" revision="3c99708e1cbcf094406ea78d671e34d99fa5c819"/>
+  <project name="semctools/autorebase" path="tools/autorebase" revision="ec0d1b9c661ba9948ba7d1e3d26d5332be4cc6fd"/>
+  <project name="semctools/c2d" path="tools/c2d" revision="4445f81bdfd05cdbb4f2cb2bc445d1184fc2d5e3"/>
+  <project name="semctools/c2d-extra" path="tools/c2d-extra" revision="2df028da246cac3143163d5c87189b8d2363ac2b"/>
+  <project name="semctools/c2d-jboss" path="tools/c2d-jboss" revision="dddba133c9b3e340937bbd0e5ba10f317eb410b5"/>
+  <project name="semctools/cbut-tools" path="tools/cbut-tools" revision="93839f4bbd627587693b42f972e3a96bef5c01d1"/>
+  <project name="semctools/cm-standard-ref" path="tools/cm-standard-ref" revision="56551859a5c0a4561f381ad9fb91fe108ff07e5f"/>
+  <project name="semctools/cm_tools" path="tools/cm_tools" revision="950c414e5cbaf7d0a31605bb9611ae50c47a073a"/>
+  <project name="semctools/semcsystem" path="tools/semcsystem" revision="a183f304ba9089393949b518fec43cb997706f1c"/>
+  <project name="semctools/seste" path="tools/seste" revision="12f31f6be1f85b7f6d2a5981dbd34ba3daa1d86c"/>
+  <project name="semctools/stacktrace" path="tools/stacktrace" revision="1bae22a7c504a7d2df445351807fed4e774b01ea"/>
+  <project name="semctools/swe-common" path="tools/swe-common" revision="8275fac4740fde450ce37d2bc5541948469c1410"/>
+  <project name="semctools/swe-utils" path="tools/swe-utils" revision="ee1702899faba86533cdebadf425a39ef0fbe7fe"/>
+  <project name="semctools/tagit" path="tools/tagit" revision="a3c028bc894055caf3cd6129a44596d9b3d29231"/>
+  <project name="semctools/test-tools" path="tools/test-tools" revision="f6ad10787310eefe7a6141a74c9b3168c6771ac5"/>
+  <project name="semctools/user-statistics-service" path="tools/user-statistics-service" revision="e78912085a8da4aa0e2054c21be6615a7c03e151"/>
+  <project name="semctools/viz-tool" path="tools/viz-tool" revision="f87cb00e8a0f0d41862c6137af022e98cacf67db"/>
+  <project name="semctools/web-tools" path="tools/web-tools" revision="a3f553b838fd95035e2f9d4af1d03b584d2fcb42"/>
+  <project name="tools/lauterbach" revision="5c128d7ab4e76463698b4afa1ae2fa069de32e3f"/>
+</manifest>
