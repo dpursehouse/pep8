@@ -67,11 +67,11 @@ createwikitext () {
             fi
             totaldiffs="$totaldiffs + $nrdiffs"
 
-            cat wiki/$newwikiname.txt | ../semcwikitools/write_page.py \
+            cat wiki/$newwikiname.txt | ../wiki/write_page.py \
                 "$wikipage/$newwikiname"
 
             newwikilayer=`./create_structure.py $d/nv/$xmlfilename`
-            cat wiki/$newwikilayer.layer.txt | ../semcwikitools/write_page.py \
+            cat wiki/$newwikilayer.layer.txt | ../wiki/write_page.py \
                 "$wikipage/$newwikiname/layer"
 
             echo ":[[$wikipage/$newwikiname|$newwikiname]]" \
@@ -127,6 +127,6 @@ echo "Found something new: $foundnew"
 echo $sumofdiffs > sumofdiffs.log
 echo $foundnew > foundnew.log
 
-cat wiki/index.wiki.txt | ../semcwikitools/write_page.py $wikipage
+cat wiki/index.wiki.txt | ../wiki/write_page.py $wikipage
 
 echo All done!

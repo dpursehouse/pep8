@@ -19,11 +19,6 @@ from xml.dom.minidom import parse, parseString
 import array
 import optparse
 
-cm_tools = os.path.dirname(os.path.abspath(os.path.join("..", sys.argv[0])))
-sys.path.append(os.path.join(cm_tools, "external-modules"))
-sys.path.append(os.path.join(cm_tools, "semcwikitools"))
-import wikitools
-import semcwikitools
 
 # ----------------------------------------------------------------------
 ##

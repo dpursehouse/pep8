@@ -4,12 +4,8 @@ import sys
 import os
 import optparse
 
-# Make sure that we can import wikitools before we load semcwikitools
-cm_tools = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
-sys.path.append(os.path.join(cm_tools, "external-modules"))
-import wikitools
-
 import semcwikitools
+
 
 def main():
     usage = "usage: %prog [options] PAGE ITEM"
@@ -40,4 +36,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

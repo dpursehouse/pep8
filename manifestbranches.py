@@ -5,14 +5,14 @@ import os
 import re
 import sys
 
-cm_tools = os.path.dirname(os.path.abspath(sys.argv[0]))
-sys.path.append(os.path.join(cm_tools, "external-modules"))
-sys.path.append(os.path.join(cm_tools, "semcwikitools"))
+cm_tools = os.path.dirname(os.path.abspath(__file__))
+if cm_tools not in sys.path:
+    sys.path.append(cm_tools)
+
 from include_exclude_matcher import IncludeExcludeMatcher
 import manifest
 import processes
-import semcwikitools
-import wikitools
+from wiki import semcwikitools
 
 
 def get_manifests(refname, manifestpath):

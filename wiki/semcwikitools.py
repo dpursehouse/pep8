@@ -2,9 +2,15 @@
 
 import os.path
 import os
-import wikitools
+import sys
 import urlparse
 import urllib
+
+cm_tools = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if cm_tools not in sys.path:
+    sys.path.append(cm_tools)
+
+from external import wikitools
 
 
 class SemcWikiError(Exception):
