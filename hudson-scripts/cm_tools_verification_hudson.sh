@@ -14,8 +14,8 @@ $GIT_COMMAND checkout FETCH_HEAD
 # Create PEP-8 log file
 echo -e "PEP-8 log:\n" > $WORKSPACE/out/pep8_log.txt
 
-# Check for whitespace errors
-$GIT_COMMAND diff HEAD^ HEAD --check | tee $WORKSPACE/out/whitespace_log.txt
+# Check for whitespace errors except in external folder
+$GIT_COMMAND diff --check HEAD~1.. !(external) | tee $WORKSPACE/out/whitespace_log.txt
 WHITESPACE_STATUS=${PIPESTATUS[0]}
 if [ "$WHITESPACE_STATUS" -ne 0 ]; then
     EXIT_STATUS=`expr $EXIT_STATUS + 1`
