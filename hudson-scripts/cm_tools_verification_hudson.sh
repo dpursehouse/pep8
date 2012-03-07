@@ -14,20 +14,21 @@ $GIT_COMMAND checkout FETCH_HEAD
 # Create PEP-8 log file
 echo -e "PEP-8 log:\n" > $WORKSPACE/out/pep8_log.txt
 
-# Check for whitespace errors
-$GIT_COMMAND diff HEAD^ HEAD --check | tee $WORKSPACE/out/whitespace_log.txt
-WHITESPACE_STATUS=${PIPESTATUS[0]}
-if [ "$WHITESPACE_STATUS" -ne 0 ]; then
-    EXIT_STATUS=`expr $EXIT_STATUS + 1`
-fi
-
 # Iterate over all files that have been changed
 while IFS= read FILENAME;
 do
-    # Run PEP-8 check on Python files
-    if grep -q "\.py$" <<<$FILENAME ; then
-        # Exclude external modules
-        if grep -v "^external/" <<<$FILENAME ; then
+    # Exclude external modules
+    if grep -v "^external/" <<<$FILENAME ; then
+        # Check for whitespace errors
+        $GIT_COMMAND diff --check HEAD~1.. -- $FILENAME \
+            | tee -a $WORKSPACE/out/whitespace_log.txt
+        WHITESPACE_STATUS=${PIPESTATUS[0]}
+        if [ "$WHITESPACE_STATUS" -ne 0 ]; then
+            EXIT_STATUS=`expr $EXIT_STATUS + 1`
+        fi
+
+        # Run PEP-8 check on Python files
+        if grep -q "\.py$" <<<$FILENAME ; then
             python cm_tools/pep8.py -v -r --show-source --show-pep8 \
                 $PROJNAME/$FILENAME | tee -a $WORKSPACE/out/pep8_log.txt
             STATUS=${PIPESTATUS[0]}
