@@ -1,6 +1,7 @@
 """ Classes and helper methods for interacting with a git repository.
 """
 
+from hashlib import sha224
 import os
 import shutil
 import urlparse
@@ -131,6 +132,45 @@ class GitRepository(object):
         else:
             cmd = self.gitstart + [args]
         return processes.run_cmd(cmd)
+
+    def diff_commits(self, from_rev, to_rev):
+        ''' Get the commits that are in `from_rev` but not `to_rev`.
+        Return the merge base and a dict of sha1: commit message.
+        '''
+        merge_base = ""
+        results = {}
+
+        # Unique hash is added in the log output so we can
+        # easily separate the commits later.
+        unique_hash = sha224(self.git_name + from_rev + to_rev).hexdigest()
+
+        # Find merge base between the target and source revisions
+        cmd = ["merge-base", from_rev, to_rev]
+        merge_base = self.run_cmd(cmd)[1].strip()
+
+        if merge_base:
+            cmd = ["log", "--no-merges",
+                   "--format=" + unique_hash + "%n%H%n%s%n%b",
+                   to_rev + '..' + from_rev]
+            log = self.run_cmd(cmd)[1].strip()
+            if log:
+                start = log.find(unique_hash)
+                commit_length = 0
+                done = False
+                while not done:
+                    # Get the commit
+                    start += commit_length + len(unique_hash)
+                    commit_length = log[start:].find(unique_hash)
+                    if commit_length == -1:
+                        done = True
+                        commit = log[start:]
+                    else:
+                        commit = log[start:start + commit_length]
+                    commit = commit.strip()
+                    sha1_and_commit = commit.split('\n', 1)
+                    results[sha1_and_commit[0]] = sha1_and_commit[1]
+
+        return merge_base, results
 
     def fetch(self, url=None, refspec=None):
         ''' Fetch the `refspec` from `url`.
