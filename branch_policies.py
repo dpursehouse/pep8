@@ -50,7 +50,7 @@ class BranchPolicyError(Exception):
     """
 
 
-class BranchPolicies():
+class BranchPolicies(object):
     """ Encapsulation of branch issue tag policies.
     """
 

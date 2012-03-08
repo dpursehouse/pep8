@@ -276,7 +276,7 @@ def blank_lines(logical_line, blank_lines, indent_level, line_number,
     Okay: def a():\n    pass\n\n\ndef b():\n    pass
     Okay: def a():\n    pass\n\n\n# Foo\n# Bar\n\ndef b():\n    pass
 
-    E301: class Foo:\n    b = 0\n    def bar():\n        pass
+    E301: class Foo(object):\n    b = 0\n    def bar():\n        pass
     E302: def a():\n    pass\n\ndef b(n):\n    pass
     E303: def a():\n    pass\n\n\n\ndef b(n):\n    pass
     E303: def a():\n\n\n\n    pass

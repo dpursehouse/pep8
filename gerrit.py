@@ -72,7 +72,7 @@ class GerritSshConfigError(Exception):
     """
 
 
-class GerritSshConnection():
+class GerritSshConnection(object):
     """The GerritSshConnection class gives access to the SSH interface
     of Gerrit Code Review, making it easy to e.g. review changes.
     """

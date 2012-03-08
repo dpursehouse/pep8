@@ -34,7 +34,7 @@ class CommitMessageError(Exception):
     '''
 
 
-class CommitMessageAuthor:
+class CommitMessageAuthor(object):
     '''Wrapper for the author/committer lines from the commit
     message header.
     '''
@@ -55,7 +55,7 @@ class CommitMessageAuthor:
             raise CommitMessageError("Invalid author or committer header")
 
 
-class CommitMessage:
+class CommitMessage(object):
     '''Wrapper for the commit message data that is output from
     the "git cat-file -p <object>" command.
     '''

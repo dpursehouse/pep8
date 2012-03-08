@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.40'
+__version__ = '0.3.41'
 
 REPO = 'repo'
 GIT = 'git'
@@ -193,7 +193,7 @@ Version: %s
 """
 
 
-class Httpdump:
+class Httpdump(object):
     """Http dump class"""
     def __init__(self, url):
         self.url = url
@@ -238,7 +238,7 @@ class GerritError(Exception):
     '''
 
 
-class Gerrit():
+class Gerrit(object):
     ''' Gerrit interface class to collect data from Gerrit
     '''
     def __init__(self, gerrit_user=None):
@@ -317,7 +317,7 @@ class Gerrit():
                               (change_id, e), echo=True)
 
 
-class Commit:
+class Commit(object):
     """Data structure for a single commit"""
     def __init__(self, target=None, target_origin=None, path=None, name=None,
                  author_date=None, commit=None, dms=None, title=None):
@@ -355,7 +355,7 @@ class Commit:
                    self.name, self.commit, self.dms)
 
 
-class ManifestData():
+class ManifestData(object):
     """Functionality for handling manifest XML data"""
     def __init__(self, xml_input_data, base_sha1):
         """Raises xml.parsers.expat.ExpatError if fails to parse data as valid

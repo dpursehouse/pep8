@@ -8,7 +8,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 
 
-class Snapshot:
+class Snapshot(object):
 
     def __init__(self, from_snapshot=None, from_file=None, name=None):
         self.packages = {}

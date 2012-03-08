@@ -78,7 +78,7 @@ class GitExecutionError(GitError):
         return consequence
 
 
-class GitWorkspace:
+class GitWorkspace(object):
     """Class to set up and perform git actions in a workspace
     self.giturl store url of server
     self.gitpath store git path on remote host (part of the url)

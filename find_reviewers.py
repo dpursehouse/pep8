@@ -41,7 +41,7 @@ class FindReviewersError(Exception):
     '''
 
 
-class FindReviewers:
+class FindReviewers(object):
     '''Class to find and add reviewers for a change or project.
     '''
 

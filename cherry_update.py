@@ -16,7 +16,7 @@ from processes import ChildExecutionError
 from semcutil import fatal
 
 
-class CherrypickStatus:
+class CherrypickStatus(object):
     ''' Encapsulation of cherry pick status.
     '''
 

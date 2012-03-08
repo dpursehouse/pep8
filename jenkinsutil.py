@@ -55,7 +55,7 @@ class JenkinsError(Exception):
     from Jenkins'''
 
 
-class JenkinsBuild:
+class JenkinsBuild(object):
     ''' Class to wrap the api/xml data of a Jenkins build '''
     def __init__(self, job, job_id=DEFAULT_JOB_ID, server=DEFAULT_SERVER):
         self.job = job
@@ -140,7 +140,7 @@ class JenkinsBuild:
         return False
 
 
-class JenkinsJob:
+class JenkinsJob(object):
     ''' Class to wrap the api/xml data of a Jenkins job '''
     def __init__(self, job, server=DEFAULT_SERVER):
         self.job = job

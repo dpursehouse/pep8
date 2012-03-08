@@ -107,7 +107,7 @@ def is_utf8_string(string):
         return True
 
 
-class CommitMessageChecker:
+class CommitMessageChecker(object):
     """ Commit message checker class.  Checks that commit messages
     are according to the guideline.
     """

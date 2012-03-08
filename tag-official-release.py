@@ -24,7 +24,7 @@ class DictList(dict):
         self[key].append(value)
 
 
-class CheckRunCmd():
+class CheckRunCmd(object):
     def __init__(self, f):
         self.f = f
 

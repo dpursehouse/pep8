@@ -23,7 +23,7 @@ class CherrypickStatusError(Exception):
     '''
 
 
-class CherrypickStatusServer:
+class CherrypickStatusServer(object):
     ''' Encapsulate access to the cherry pick status server for
     cherry pick status get/set operations.
     '''

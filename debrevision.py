@@ -32,7 +32,7 @@ class ParsePackageError(Exception):
         return consequence
 
 
-class DebControl:
+class DebControl(object):
     """Class to extract and parse debian control fields.
     From debian package or repository.
     Read debian control file or files from `source`.
@@ -116,7 +116,7 @@ class DebControl:
         return self.controlfile
 
 
-class TempStore():
+class TempStore(object):
     """Class to create a temporary directory and keep track of its name.
 
     Raise IOError if there is a problem creating or removing

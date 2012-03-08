@@ -16,7 +16,7 @@ class RepoError(Exception):
     """Class to handle exceptions in 'Repo' functionalities"""
 
 
-class Repo:
+class Repo(object):
     """Repo class to support 'repo init' and 'repo sync'"""
     def __init__(self, branch=None, project=ASW_MANIFEST, path=".",
                  static_manifest=None):

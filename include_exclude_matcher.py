@@ -1,7 +1,7 @@
 import re
 
 
-class IncludeExcludeMatcher():
+class IncludeExcludeMatcher(object):
     """Maintains two lists of regular expression patterns for matching
     strings against. Input strings are matched against all patterns in
     the list of inclusion patterns and thereafter all patterns in the

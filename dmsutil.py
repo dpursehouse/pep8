@@ -32,7 +32,7 @@ class DMSTagServerError(Exception):
     '''
 
 
-class DMSTagServer():
+class DMSTagServer(object):
     '''
     This is interface to send request to dms_tag_server.py to get dms for tags.
     '''

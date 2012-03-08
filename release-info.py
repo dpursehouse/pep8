@@ -164,7 +164,7 @@ def generate_delta_packages(oldBuildId, newBuildId, old_manifest_obj,
     output.close()
 
 
-class ManifestUrl:
+class ManifestUrl(object):
     '''
         Get the Manifest url according to given build_id
     '''
@@ -214,7 +214,7 @@ class ManifestUrl:
         return self.manifest_url
 
 
-class Manifest:
+class Manifest(object):
     '''
         Parse manifest and get the project related info.
     '''
@@ -251,7 +251,7 @@ class Manifest:
         return self.project_info[project][attribute]
 
 
-class CompareManifest:
+class CompareManifest(object):
     '''
         Compare two manifests, get the different info of the two manifests.
     '''
@@ -286,7 +286,7 @@ class CompareManifest:
         return self.new_manifest_obj
 
 
-class CompareRevisions:
+class CompareRevisions(object):
     '''
         Compare two given revisions. Get the commit info between the two
         revisions.
@@ -384,7 +384,7 @@ class CompareRevisions:
         return False
 
 
-class CompareVariantSpec:
+class CompareVariantSpec(object):
     def __init__(self, old_rev, new_rev, path="vendor/semc/build/semcsystem"):
         self.old_rev = old_rev
         self.new_rev = new_rev

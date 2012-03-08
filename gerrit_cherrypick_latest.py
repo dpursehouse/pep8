@@ -21,7 +21,7 @@ class CherrypickError(Exception):
     '''
 
 
-class GerritCherrypickLatest:
+class GerritCherrypickLatest(object):
     '''Class to cherry pick the latest patch set from a given
     change number.
     '''

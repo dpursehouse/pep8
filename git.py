@@ -47,7 +47,7 @@ class GitError(Exception):
     '''
 
 
-class GitRepository():
+class GitRepository(object):
     ''' Encapsulation of a git repository.
     '''
 
