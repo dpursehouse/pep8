@@ -253,101 +253,101 @@ def _get_dms_violations(config, dmslist, affected_manifests):
 
 def _main():
     usage = "usage: %prog [options]"
-    options = optparse.OptionParser(usage=usage)
-    options.add_option("", "--gerrit-url", dest="gerrit_url",
-                       default=DEFAULT_GERRIT_SERVER,
-                       help="The URL to the Gerrit server.")
-    options.add_option("-c", "--cache-path", dest="cache_path",
-                       default="cache",
-                       help="The path to the local directory where the " \
-                           "downloaded gits are cached to avoid cloning " \
-                           "them for each invocation of the script.")
-    options.add_option("-m", "--manifest-path", dest="manifest_path",
-                       default=None,
-                       help="The path to the local directory where the " \
-                           "manifest git that we should compare against " \
-                           "can be found.")
-    options.add_option("-p", "--policy", dest="policy_file",
-                       default=None,
-                       help="Name of a file containing the configuration " \
-                           "of DMS policies per branch.")
-    options.add_option("-u", "--gerrit-user", dest="gerrit_user",
-                       default=None,
-                       help="The username that should be used when logging " \
-                           "into the Gerrit server with SSH. If omitted, " \
-                           "the SSH client will decide the username based " \
-                           "on $LOGNAME and its own configuration file " \
-                           "(if present).")
-    options.add_option("-v", "--verbose", dest="verbose", default=False,
-                       action="store_true", help="Verbose mode.")
-    options.add_option("", "--dry-run", dest="dry_run", action="store_true",
-                       help="Do everything except actually add the note " \
-                           "to the affected change.")
-    options.add_option("", "--include-manifest-ref", dest="manifest_ref_in",
-                       action="append", metavar="REGEXP", default=[],
-                       help="A regular expression that will be matched " \
-                           "against the fully-qualified ref names of the " \
-                           "available manifest branches to include them " \
-                           "in the examination. This option can be used " \
-                           "multiple times to add more expressions. The " \
-                           "first use of this option will clear the default " \
-                           "value (%s) before appending the new expression." %
-                           ", ".join(DEFAULT_MANIFEST_REF_INCLUDES))
-    options.add_option("", "--exclude-manifest-ref", dest="manifest_ref_ex",
-                       action="append", metavar="REGEXP",
-                       help="Same as --include-manifest-ref but for " \
-                           "excluding refs from examination. Exclusion has " \
-                           "higher precedence than inclusion. This option " \
-                           "can also be used multiple times to add more " \
-                           "expressions (default: <empty>).")
-    options.add_option("", "--include-git", dest="git_in",
-                       action="append", metavar="REGEXP", default=[],
-                       help="A regular expression that will be matched " \
-                           "against the name of the git to which the " \
-                           "change has been uploaded. This option can be " \
-                           "used multiple times to add more expressions. " \
-                           "The first use of this option will clear the " \
-                           "default value (%s) before appending the new " \
-                           "expression." % ", ".join(DEFAULT_GIT_INCLUDES))
-    options.add_option("", "--exclude-git", dest="git_ex",
-                       action="append", metavar="REGEXP",
-                       help="Same as --include-git but for excluding " \
-                           "gits. This option can also be used " \
-                           "multiple times to add more expressions " \
-                           "(default: <empty>).")
-    options.add_option("", "--include-git-branch", dest="git_branch_in",
-                       action="append", metavar="REGEXP", default=[],
-                       help="A regular expression that will be matched " \
-                           "against the branches of the gits found in the " \
-                           "manifests to include them in the examination. " \
-                           "This option can be used multiple times to add " \
-                           "more expressions. The first use of this option " \
-                           "will clear the default value (%s) before " \
-                           "appending the new expression." % \
-                           ", ".join(DEFAULT_GIT_BRANCH_INCLUDES))
-    options.add_option("", "--exclude-git-branch", dest="git_branch_ex",
-                       action="append", metavar="REGEXP",
-                       help="Same as --include-git-branch but for " \
-                           "excluding branches on gits found in the " \
-                           "manifests. This option can also be used " \
-                           "multiple times to add more expressions " \
-                           "(default: <empty>).")
-    options.add_option("", "--change", dest="change_nr", type="int",
-                       help="The change number to check.")
-    options.add_option("", "--patchset", dest="patchset_nr", type="int",
-                       help="The patchset number.")
-    options.add_option("", "--project", dest="affected_git",
-                       help="The name of the project on which the " \
-                           "change is uploaded.")
-    options.add_option("", "--branch", dest="affected_branch",
-                       help="The name of the branch on which the " \
-                           "change is uploaded.")
-    options.add_option("", "--commit-size", dest="commit_size",
-                       help="Limit (kB) before warning about commit size " \
-                            "(default %d).  Setting 0 disables this " \
-                            "warning." % DEFAULT_MAX_COMMIT_SIZE,
-                       type="int", default=DEFAULT_MAX_COMMIT_SIZE)
-    (options, _args) = options.parse_args()
+    parser = optparse.OptionParser(usage=usage)
+    parser.add_option("", "--gerrit-url", dest="gerrit_url",
+                      default=DEFAULT_GERRIT_SERVER,
+                      help="The URL to the Gerrit server.")
+    parser.add_option("-c", "--cache-path", dest="cache_path",
+                      default="cache",
+                      help="The path to the local directory where the " \
+                          "downloaded gits are cached to avoid cloning " \
+                          "them for each invocation of the script.")
+    parser.add_option("-m", "--manifest-path", dest="manifest_path",
+                      default=None,
+                      help="The path to the local directory where the " \
+                          "manifest git that we should compare against " \
+                          "can be found.")
+    parser.add_option("-p", "--policy", dest="policy_file",
+                      default=None,
+                      help="Name of a file containing the configuration " \
+                          "of DMS policies per branch.")
+    parser.add_option("-u", "--gerrit-user", dest="gerrit_user",
+                      default=None,
+                      help="The username that should be used when logging " \
+                          "into the Gerrit server with SSH. If omitted, " \
+                          "the SSH client will decide the username based " \
+                          "on $LOGNAME and its own configuration file " \
+                          "(if present).")
+    parser.add_option("-v", "--verbose", dest="verbose", default=False,
+                      action="store_true", help="Verbose mode.")
+    parser.add_option("", "--dry-run", dest="dry_run", action="store_true",
+                      help="Do everything except actually add the note " \
+                          "to the affected change.")
+    parser.add_option("", "--include-manifest-ref", dest="manifest_ref_in",
+                      action="append", metavar="REGEXP", default=[],
+                      help="A regular expression that will be matched " \
+                          "against the fully-qualified ref names of the " \
+                          "available manifest branches to include them " \
+                          "in the examination. This option can be used " \
+                          "multiple times to add more expressions. The " \
+                          "first use of this option will clear the default " \
+                          "value (%s) before appending the new expression." %
+                          ", ".join(DEFAULT_MANIFEST_REF_INCLUDES))
+    parser.add_option("", "--exclude-manifest-ref", dest="manifest_ref_ex",
+                      action="append", metavar="REGEXP",
+                      help="Same as --include-manifest-ref but for " \
+                          "excluding refs from examination. Exclusion has " \
+                          "higher precedence than inclusion. This option " \
+                          "can also be used multiple times to add more " \
+                          "expressions (default: <empty>).")
+    parser.add_option("", "--include-git", dest="git_in",
+                      action="append", metavar="REGEXP", default=[],
+                      help="A regular expression that will be matched " \
+                          "against the name of the git to which the " \
+                          "change has been uploaded. This option can be " \
+                          "used multiple times to add more expressions. " \
+                          "The first use of this option will clear the " \
+                          "default value (%s) before appending the new " \
+                          "expression." % ", ".join(DEFAULT_GIT_INCLUDES))
+    parser.add_option("", "--exclude-git", dest="git_ex",
+                      action="append", metavar="REGEXP",
+                      help="Same as --include-git but for excluding " \
+                          "gits. This option can also be used " \
+                          "multiple times to add more expressions " \
+                          "(default: <empty>).")
+    parser.add_option("", "--include-git-branch", dest="git_branch_in",
+                      action="append", metavar="REGEXP", default=[],
+                      help="A regular expression that will be matched " \
+                          "against the branches of the gits found in the " \
+                          "manifests to include them in the examination. " \
+                          "This option can be used multiple times to add " \
+                          "more expressions. The first use of this option " \
+                          "will clear the default value (%s) before " \
+                          "appending the new expression." % \
+                          ", ".join(DEFAULT_GIT_BRANCH_INCLUDES))
+    parser.add_option("", "--exclude-git-branch", dest="git_branch_ex",
+                      action="append", metavar="REGEXP",
+                      help="Same as --include-git-branch but for " \
+                          "excluding branches on gits found in the " \
+                          "manifests. This option can also be used " \
+                          "multiple times to add more expressions " \
+                          "(default: <empty>).")
+    parser.add_option("", "--change", dest="change_nr", type="int",
+                      help="The change number to check.")
+    parser.add_option("", "--patchset", dest="patchset_nr", type="int",
+                      help="The patchset number.")
+    parser.add_option("", "--project", dest="affected_git",
+                      help="The name of the project on which the " \
+                          "change is uploaded.")
+    parser.add_option("", "--branch", dest="affected_branch",
+                      help="The name of the branch on which the " \
+                          "change is uploaded.")
+    parser.add_option("", "--commit-size", dest="commit_size",
+                      help="Limit (kB) before warning about commit size " \
+                           "(default %d).  Setting 0 disables this " \
+                           "warning." % DEFAULT_MAX_COMMIT_SIZE,
+                      type="int", default=DEFAULT_MAX_COMMIT_SIZE)
+    (options, _args) = parser.parse_args()
 
     if not options.manifest_path:
         semcutil.fatal(1, "Path to manifest git missing. " \

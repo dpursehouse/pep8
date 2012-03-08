@@ -260,43 +260,43 @@ def get_commit_message(options):
 
 def _main():
     usage = "usage: %prog [options]"
-    options = optparse.OptionParser(usage=usage)
-    options.add_option("", "--gerrit-url", dest="gerrit_url",
-                       default=DEFAULT_GERRIT_SERVER,
-                       help="The URL to the Gerrit server.")
-    options.add_option("-c", "--cache-path", dest="cache_path",
-                       default="cache",
-                       help="The path to the local directory where the " \
-                            "downloaded gits are cached to avoid cloning " \
-                            "them for each invocation of the script.")
-    options.add_option("-u", "--gerrit-user", dest="gerrit_user",
-                       default=None,
-                       help="The username that should be used when logging " \
-                            "into the Gerrit server with SSH. If omitted, " \
-                            "the SSH client will decide the username based " \
-                            "on $LOGNAME and its own configuration file " \
-                            "(if present).")
-    options.add_option("-v", "--verbose", dest="verbose", default=False,
-                       action="store_true", help="Verbose mode.")
-    options.add_option("", "--dry-run", dest="dry_run", action="store_true",
-                       help="Do everything except actually add the note " \
-                            "to the affected change.")
-    options.add_option("", "--change", dest="change_nr", type="int",
-                       help="The change number to check.")
-    options.add_option("", "--patchset", dest="patchset_nr", type="int",
-                       help="The patchset number.")
-    options.add_option("", "--project", dest="affected_git",
-                       help="The name of the project on which the " \
-                            "change is uploaded.")
-    options.add_option("", "--exclude-git", dest="git_ex",
-                       action="append", metavar="REGEXP",
-                       help="A regular expression that will be matched " \
-                            "against the name of the git to which the " \
-                            "change has been uploaded.  Gits that match " \
-                            "the pattern will be excluded from the check.  " \
-                            "This option can be used multiple times to add " \
-                            "more expressions. (default: <empty>).")
-    (options, _args) = options.parse_args()
+    parser = optparse.OptionParser(usage=usage)
+    parser.add_option("", "--gerrit-url", dest="gerrit_url",
+                      default=DEFAULT_GERRIT_SERVER,
+                      help="The URL to the Gerrit server.")
+    parser.add_option("-c", "--cache-path", dest="cache_path",
+                      default="cache",
+                      help="The path to the local directory where the " \
+                           "downloaded gits are cached to avoid cloning " \
+                           "them for each invocation of the script.")
+    parser.add_option("-u", "--gerrit-user", dest="gerrit_user",
+                      default=None,
+                      help="The username that should be used when logging " \
+                           "into the Gerrit server with SSH. If omitted, " \
+                           "the SSH client will decide the username based " \
+                           "on $LOGNAME and its own configuration file " \
+                           "(if present).")
+    parser.add_option("-v", "--verbose", dest="verbose", default=False,
+                      action="store_true", help="Verbose mode.")
+    parser.add_option("", "--dry-run", dest="dry_run", action="store_true",
+                      help="Do everything except actually add the note " \
+                           "to the affected change.")
+    parser.add_option("", "--change", dest="change_nr", type="int",
+                      help="The change number to check.")
+    parser.add_option("", "--patchset", dest="patchset_nr", type="int",
+                      help="The patchset number.")
+    parser.add_option("", "--project", dest="affected_git",
+                      help="The name of the project on which the " \
+                           "change is uploaded.")
+    parser.add_option("", "--exclude-git", dest="git_ex",
+                      action="append", metavar="REGEXP",
+                      help="A regular expression that will be matched " \
+                           "against the name of the git to which the " \
+                           "change has been uploaded.  Gits that match " \
+                           "the pattern will be excluded from the check.  " \
+                           "This option can be used multiple times to add " \
+                           "more expressions. (default: <empty>).")
+    (options, _args) = parser.parse_args()
 
     if options.verbose:
         logging.basicConfig(format='%(message)s', level=logging.INFO)

@@ -225,17 +225,17 @@ def _update_cherrypicks(status_server, target, dry_run):
 
 def _main():
     usage = "usage: %prog [options]"
-    options = optparse.OptionParser(usage=usage)
-    options.add_option("", "--target", action="store", default=None,
-                       dest="target", help="Target branch.  Update all " \
-                            "targets if not specified.")
-    options.add_option("", "--dry-run", dest="dry_run", action="store_true",
-                       help="Do everything except actually update the " \
-                           "status.")
-    options.add_option("", "--status-server", dest="status_server",
-                       help="IP address or name of the status server.",
-                       action="store", default=DEFAULT_STATUS_SERVER)
-    (options, _args) = options.parse_args()
+    parser = optparse.OptionParser(usage=usage)
+    parser.add_option("", "--target", action="store", default=None,
+                      dest="target", help="Target branch.  Update all " \
+                           "targets if not specified.")
+    parser.add_option("", "--dry-run", dest="dry_run", action="store_true",
+                      help="Do everything except actually update the " \
+                          "status.")
+    parser.add_option("", "--status-server", dest="status_server",
+                      help="IP address or name of the status server.",
+                      action="store", default=DEFAULT_STATUS_SERVER)
+    (options, _args) = parser.parse_args()
 
     logging.basicConfig(format='%(message)s', level=logging.INFO)
 
