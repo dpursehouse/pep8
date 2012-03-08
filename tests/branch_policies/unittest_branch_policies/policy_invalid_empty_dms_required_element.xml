@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<branches>
+  <branch pattern="branch-1">
+    <allowed-dms-tag name="TAG 2"/>
+    <dms-required />
+  </branch>
+</branches>

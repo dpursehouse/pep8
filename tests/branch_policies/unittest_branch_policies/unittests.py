@@ -177,11 +177,19 @@ class TestBranchPolicies(unittest.TestCase):
 
     def test_invalid_missing_dms_required_element(self):
         """ Test that the class constructor raises an exception
-        when instantiated with a config does not have a "dms-required"
+        when instantiated with a config that does not have a "dms-required"
         element.
         """
         self.assertRaises(BranchPolicyError, self._get_policy,
             "policy_invalid_missing_dms_required_element.xml")
+
+    def test_invalid_empty_dms_required_element(self):
+        """ Test that the class constructor raises an exception
+        when instantiated with a config that has an empty "dms-required"
+        element.
+        """
+        self.assertRaises(BranchPolicyError, self._get_policy,
+            "policy_invalid_empty_dms_required_element.xml")
 
 if __name__ == '__main__':
     unittest.main()

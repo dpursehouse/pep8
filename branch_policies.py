@@ -80,16 +80,18 @@ class BranchPolicies():
 
     def _get_element(self, node, element_name):
         """ Get `element_name` from `node` and return its text value
-        converted to lower case, or None if the element was not found.
+        converted to lower case.  Return None if the element was not found,
+        or the element had no text value.
         Raise BranchPolicyError if more than one element was found.
         """
         elements = node.findall(element_name)
-        if not elements:
-            return None
-        if len(elements) > 1:
-            raise BranchPolicyError("Cannot have more than one `%s` element "
-                                    "per branch" % element_name)
-        return elements[0].text.lower()
+        if elements:
+            if len(elements) > 1:
+                raise BranchPolicyError("Cannot have more than one `%s` "
+                                        "element per branch" % element_name)
+            if elements[0].text:
+                return elements[0].text.lower()
+        return None
 
     def _get_score(self, node, type, valid_scores):
         """ Get the score `type` from `node` and return it as an integer, or
