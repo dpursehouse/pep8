@@ -3,6 +3,7 @@
 
 from hashlib import sha224
 import os
+import re
 import shutil
 import urlparse
 
@@ -185,3 +186,25 @@ class GitRepository(object):
         if refspec:
             cmd += [refspec]
         return self.run_cmd(cmd)
+
+    def has_remote_branch(self, branch):
+        ''' Return True if the git has the remote branch `branch`, otherwise
+        return False.
+        Raise some form of ChildExecutionError if any error occurs.
+        '''
+        cmd = ["show-ref"]
+        pattern = re.compile('^.* refs/remotes/origin/(.*)$')
+        if branch.startswith("origin/"):
+            branch = branch[len("origin/"):]
+        try:
+            out = self.run_cmd(cmd)[1].strip()
+        except processes.ChildRuntimeError, _err:
+            # git show-ref returns non-zero if no refs exist
+            pass
+        else:
+            for line in out.splitlines():
+                match = pattern.match(line)
+                if match:
+                    if match.group(1) == branch:
+                        return True
+        return False
