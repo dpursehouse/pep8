@@ -1,9 +1,9 @@
 #! /usr/bin/env python
 
+""" Class for managing branch DMS policies. """
+
 from optparse import OptionParser
-import os
 import re
-import sys
 from xml.etree.ElementTree import ElementTree
 from xml.parsers.expat import ExpatError
 
@@ -12,6 +12,36 @@ import semcutil
 VALID_CODE_REVIEW = ["-2", "-1", "0"]
 VALID_VERIFY = ["-1", "0"]
 DEFAULT_CONFIG_FILE = 'etc/dms_policy.xml'
+
+
+def _get_element(node, element_name):
+    """ Get `element_name` from `node` and return its text value
+    converted to lower case.  Return None if the element was not found,
+    or the element had no text value.
+    Raise BranchPolicyError if more than one element was found.
+    """
+    elements = node.findall(element_name)
+    if elements:
+        if len(elements) > 1:
+            raise BranchPolicyError("Cannot have more than one `%s` "
+                                    "element per branch" % element_name)
+        if elements[0].text:
+            return elements[0].text.lower()
+    return None
+
+
+def _get_score(node, review_type, valid_scores):
+    """ Get the score `review_type` from `node` and return it as an
+    integer, or None if the score was not found in the node.
+    Raise BranchPolicyError if the score is not in `valid_scores`.
+    """
+    score = _get_element(node, review_type)
+    if score:
+        if score not in valid_scores:
+            raise BranchPolicyError("Invalid %s value: %s" % \
+                                    (review_type, score))
+        return int(score)
+    return None
 
 
 class BranchPolicyError(Exception):
@@ -44,7 +74,7 @@ class BranchPolicies():
                     tagnames = []
                     tagpatterns = []
                     dms_required = False
-                    codereview = None
+                    code_review = None
                     verify = None
                     for element in branch.findall("allowed-dms-tag"):
                         tagname = element.get("name")
@@ -58,17 +88,16 @@ class BranchPolicies():
                         elif tagpattern:
                             tagpatterns.append(tagpattern.strip())
 
-                    dms_required_element = self._get_element(branch,
-                                                             "dms-required")
+                    dms_required_element = _get_element(branch, "dms-required")
                     if not dms_required_element:
                         raise BranchPolicyError("`dms-required` value not "
                                                 "specified for branch %s" % \
                                                 pattern)
                     dms_required = dms_required_element == "true"
 
-                    code_review = self._get_score(branch, "code-review",
-                                                  VALID_CODE_REVIEW)
-                    verify = self._get_score(branch, "verify", VALID_VERIFY)
+                    code_review = _get_score(branch, "code-review",
+                                             VALID_CODE_REVIEW)
+                    verify = _get_score(branch, "verify", VALID_VERIFY)
 
                     if (code_review or verify) and not dms_required:
                         raise BranchPolicyError("Cannot specify score unless "
@@ -81,33 +110,6 @@ class BranchPolicies():
                                               "dms_required": dms_required,
                                               "code_review": code_review,
                                               "verify": verify})
-
-    def _get_element(self, node, element_name):
-        """ Get `element_name` from `node` and return its text value
-        converted to lower case.  Return None if the element was not found,
-        or the element had no text value.
-        Raise BranchPolicyError if more than one element was found.
-        """
-        elements = node.findall(element_name)
-        if elements:
-            if len(elements) > 1:
-                raise BranchPolicyError("Cannot have more than one `%s` "
-                                        "element per branch" % element_name)
-            if elements[0].text:
-                return elements[0].text.lower()
-        return None
-
-    def _get_score(self, node, type, valid_scores):
-        """ Get the score `type` from `node` and return it as an integer, or
-        None if the score was not found in the node.
-        Raise BranchPolicyError if the score is not in `valid_scores`.
-        """
-        score = self._get_element(node, type)
-        if score:
-            if score not in valid_scores:
-                raise BranchPolicyError("Invalid %s value: %s" % (type, score))
-            return int(score)
-        return None
 
     def branch_has_policy(self, dest_branch):
         """ Check if the `dest_branch` has a tag policy.
@@ -174,7 +176,7 @@ class BranchPolicies():
             return True
 
 
-def _main(argv):
+def _main():
 
     usage = "usage: %prog [options] BRANCH"
     parser = OptionParser(usage=usage)
@@ -209,4 +211,4 @@ def _main(argv):
             semcutil.fatal(1, "No tags found for branch: %s" % (branch))
 
 if __name__ == "__main__":
-    _main(sys.argv)
+    _main()
