@@ -68,17 +68,22 @@ class BranchPolicies(object):
             # of the <branches> root element, but this wasn't the
             # case.
             doc = ElementTree(file=config_file)
+            branches = []
             for branch in doc.findall("branch"):
-                pattern = branch.get("pattern")
-                if pattern:
+                name = branch.get("name")
+                if name:
+                    if name in branches:
+                        raise BranchPolicyError("Cannot specify branch " \
+                                                "more than once (%s)" % name)
+                    branches.append(name)
                     tagnames = []
                     tagpatterns = []
                     dms_required = False
                     code_review = None
                     verify = None
-                    for element in branch.findall("allowed-dms-tag"):
-                        tagname = element.get("name")
-                        tagpattern = element.get("pattern")
+                    for tag in branch.findall("allowed-dms-tag"):
+                        tagname = tag.get("name")
+                        tagpattern = tag.get("pattern")
                         if tagname and tagpattern:
                             raise BranchPolicyError("Cannot specify both "
                                                     "`name` and `pattern` for "
@@ -92,7 +97,7 @@ class BranchPolicies(object):
                     if not dms_required_element:
                         raise BranchPolicyError("`dms-required` value not "
                                                 "specified for branch %s" % \
-                                                pattern)
+                                                name)
                     dms_required = dms_required_element == "true"
 
                     code_review = _get_score(branch, "code-review",
@@ -104,7 +109,7 @@ class BranchPolicies(object):
                                                 "DMS is required")
 
                     if dms_required or tagnames or tagpatterns:
-                        self.branches.append({"pattern": pattern,
+                        self.branches.append({"name": name,
                                               "tagnames": tagnames,
                                               "tagpatterns": tagpatterns,
                                               "dms_required": dms_required,
@@ -154,7 +159,7 @@ class BranchPolicies(object):
         no policy.
         """
         for branchpolicy in self.branches:
-            if re.search(branchpolicy["pattern"], dest_branch):
+            if branchpolicy["name"] == dest_branch:
                 return branchpolicy
         return None
 

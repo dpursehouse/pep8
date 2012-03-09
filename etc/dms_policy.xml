@@ -1,53 +1,53 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <branches>
-  <branch pattern="^edream6\.0-fuji-r2-release$">
+  <branch name="edream6.0-fuji-r2-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="Fix ASAP"/>
     <allowed-dms-tag name="ATT IFW"/>
     <allowed-dms-tag name="ATT FFW"/>
     <code-review>-1</code-review>
   </branch>
-  <branch pattern="^edream6\.0-fuji-r2-row-release$">
+  <branch name="edream6.0-fuji-r2-row-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="CA1"/>
     <allowed-dms-tag name="Fix ASAP"/>
     <allowed-dms-tag name="CAF"/>
     <code-review>-1</code-review>
   </branch>
-  <branch pattern="^edream6\.0-fuji-r2-le-release$">
+  <branch name="edream6.0-fuji-r2-le-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="Fix ASAP"/>
     <code-review>-1</code-review>
   </branch>
-  <branch pattern="^edream6\.0-riogrande-ca-release$">
+  <branch name="edream6.0-riogrande-ca-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="CA1"/>
     <code-review>-1</code-review>
   </branch>
-  <branch pattern="^edream6\.0-riogrande-release$">
+  <branch name="edream6.0-riogrande-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="CAF"/>
     <allowed-dms-tag name="Fix ASAP"/>
     <code-review>-1</code-review>
   </branch>
-  <branch pattern="^edream6\.0-fuji-release$">
+  <branch name="edream6.0-fuji-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="CAF"/>
     <allowed-dms-tag name="Fix ASAP"/>
     <code-review>-1</code-review>
   </branch>
-  <branch pattern="^edream6\.0-fuji-kddi-release$">
+  <branch name="edream6.0-fuji-kddi-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="CAF"/>
     <allowed-dms-tag name="Fix ASAP"/>
     <code-review>-1</code-review>
   </branch>
-  <branch pattern="^edream6\.0-fuji-docomo-release$">
+  <branch name="edream6.0-fuji-docomo-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="CAF"/>
     <code-review>-1</code-review>
   </branch>
-  <branch pattern="^edream6\.0-fuji-docomo-plus-release$">
+  <branch name="edream6.0-fuji-docomo-plus-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="CAF"/>
     <code-review>-1</code-review>

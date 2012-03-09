@@ -72,21 +72,6 @@ class TestBranchPolicies(unittest.TestCase):
         self.assertTrue(p.is_tag_allowed("TAG 4", "branch-2"))
         self.assertFalse(p.is_tag_allowed("TAG 5", "branch-2"))
 
-    def test_valid_config_regex_branch(self):
-        """ Test that the class constructor and its methods behave
-        correctly when it is instantiated with a config containing
-        a branch policy with a regular expression branch pattern.
-        """
-        p = self._get_policy("policy_valid_regex_branch.xml")
-        self.assertEquals(len(p.branches), 1)
-        self.assertTrue(p.branch_has_policy("branch-1"))
-        self.assertTrue(p.branch_has_policy("branch-11"))
-        self.assertTrue(p.branch_has_policy("branch-111"))
-        self.assertFalse(p.branch_has_policy("x-branch-1"))
-        self.assertFalse(p.branch_has_policy("branch-2"))
-        self.assertFalse(p.branch_has_policy("branch-22"))
-        self.assertFalse(p.branch_has_policy("branch-222"))
-
     def test_valid_config_regex_tags(self):
         """ Test that the class constructor and its methods behave
         correctly when it is instantiated with a config containing
@@ -151,6 +136,14 @@ class TestBranchPolicies(unittest.TestCase):
         """
         self.assertRaises(BranchPolicyError, self._get_policy,
             "policy_invalid_multi_verify_scores.xml")
+
+    def test_invalid_multiple_same_branch(self):
+        """ Test that the class constructor raises an exception
+        when instantiated with a config that specifies more than
+        one branch with the same name.
+        """
+        self.assertRaises(BranchPolicyError, self._get_policy,
+            "policy_invalid_multi_same_branch.xml")
 
     def test_invalid_code_review_score(self):
         """ Test that the class constructor raises an exception

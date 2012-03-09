@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <branches>
-  <branch pattern="branch-1">
+  <branch name="branch-1">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="TAG 2"/>
     <code-review>-1</code-review>

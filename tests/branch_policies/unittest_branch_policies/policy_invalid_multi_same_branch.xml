@@ -4,7 +4,10 @@
     <dms-required>true</dms-required>
     <allowed-dms-tag name="TAG 1"/>
     <allowed-dms-tag name="TAG 2"/>
-    <code-review>-2</code-review>
-    <verify>-1</verify>
+  </branch>
+  <branch name="branch-1">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="TAG 3"/>
+    <allowed-dms-tag name="TAG 4"/>
   </branch>
 </branches>

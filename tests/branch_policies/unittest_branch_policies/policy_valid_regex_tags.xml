@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <branches>
-  <branch pattern="branch-name">
+  <branch name="branch-name">
     <dms-required>true</dms-required>
     <allowed-dms-tag pattern="^TAG 1\d*$"/>
     <allowed-dms-tag name="TAG 2"/>
