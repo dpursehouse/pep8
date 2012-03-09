@@ -96,11 +96,12 @@ class TestBranchPolicies(unittest.TestCase):
         self.assertEquals(len(p.branches), 1)
         self.assertTrue(p.branch_has_policy("branch-name"))
         self.assertTrue(p.branch_requires_dms("branch-name"))
-        self.assertEquals(p.get_branch_tagnames("branch-name"), [])
+        self.assertEquals(p.get_branch_tagnames("branch-name"), ["TAG 2"])
         self.assertTrue(p.is_tag_allowed("TAG 1", "branch-name"))
         self.assertTrue(p.is_tag_allowed("TAG 12", "branch-name"))
         self.assertTrue(p.is_tag_allowed("TAG 123", "branch-name"))
-        self.assertFalse(p.is_tag_allowed("TAG 2", "branch-name"))
+        self.assertTrue(p.is_tag_allowed("TAG 2", "branch-name"))
+        self.assertFalse(p.is_tag_allowed("TAG 3", "branch-name"))
 
     def test_valid_dms_not_required(self):
         """ Test that the class constructor and its methods behave
@@ -190,6 +191,14 @@ class TestBranchPolicies(unittest.TestCase):
         """
         self.assertRaises(BranchPolicyError, self._get_policy,
             "policy_invalid_empty_dms_required_element.xml")
+
+    def test_invalid_tag_name_and_pattern(self):
+        """ Test that the class constructor raises an exception
+        when instantiated with a config that specifies `allowed-dms-tag`
+        with both the `name` and `pattern` properties.
+        """
+        self.assertRaises(BranchPolicyError, self._get_policy,
+            "policy_invalid_tag_name_and_pattern.xml")
 
 if __name__ == '__main__':
     unittest.main()

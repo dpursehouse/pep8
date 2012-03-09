@@ -48,10 +48,14 @@ class BranchPolicies():
                     verify = None
                     for element in branch.findall("allowed-dms-tag"):
                         tagname = element.get("name")
-                        if tagname:
-                            tagnames.append(tagname.strip())
                         tagpattern = element.get("pattern")
-                        if tagpattern:
+                        if tagname and tagpattern:
+                            raise BranchPolicyError("Cannot specify both "
+                                                    "`name` and `pattern` for "
+                                                    "`allowed-dms-tag`.")
+                        elif tagname:
+                            tagnames.append(tagname.strip())
+                        elif tagpattern:
                             tagpatterns.append(tagpattern.strip())
 
                     dms_required_element = self._get_element(branch,
