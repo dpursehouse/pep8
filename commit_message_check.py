@@ -4,13 +4,11 @@
 
 import logging
 import optparse
-import os
 import re
 import sys
 
-import commit_message
+from commit_message import CommitMessage
 import gerrit
-from git import GitRepository
 from include_exclude_matcher import IncludeExcludeMatcher
 import processes
 from retry import retry
@@ -105,6 +103,10 @@ def is_utf8_string(string):
         return False
     else:
         return True
+
+
+class CommitMessageCheckerError(Exception):
+    """ Raised when an error occurs during commit message check. """
 
 
 class CommitMessageChecker(object):
@@ -213,9 +215,9 @@ class CommitMessageChecker(object):
 
 def format_results(results):
     '''
-    Format the results of the commit message check
+    Format the results of the commit message check.
     Return the formatted results as a string, number of errors, and number
-    of warnings
+    of warnings.
     '''
     messages = {ERROR_SEVERITY.ERROR: "Error",
                 ERROR_SEVERITY.WARNING: "Warning"}
@@ -236,26 +238,15 @@ def format_results(results):
     return output, errors, warnings
 
 
-@retry(processes.ChildExecutionError, tries=3, backoff=2, delay=60)
-def get_commit_message(options):
-    ''' Get the commit message from the change.
+@retry(CommitMessageCheckerError, tries=3, backoff=2, delay=60)
+def get_commit_message(gerrit_handle, revision):
+    ''' Get the commit message from the change specified by `revision`.
     '''
-    patchset_ref = gerrit.get_patchset_refspec(options.change_nr,
-                                               options.patchset_nr)
-
-    logging.info("Fetching patch set %s", patchset_ref)
-    git = GitRepository(options.cache_path, os.path.join("git://",
-                                                         options.gerrit_url,
-                                                         options.affected_git))
-    git.fetch(refspec=patchset_ref)
-
-    # Extract the commit message and find any DMS issues in it.
-    _errcode, msg, _err = processes.run_cmd("git",
-                                            "cat-file",
-                                            "-p",
-                                            "FETCH_HEAD",
-                                            path=git.git_path)
-    return commit_message.CommitMessage(msg)
+    results = gerrit_handle.query(revision)
+    if not results:
+        raise CommitMessageCheckerError("Gerrit didn't find revision %s" % \
+                                        revision)
+    return CommitMessage(results[0]["commitMessage"])
 
 
 def _main():
@@ -264,11 +255,6 @@ def _main():
     parser.add_option("", "--gerrit-url", dest="gerrit_url",
                       default=DEFAULT_GERRIT_SERVER,
                       help="The URL to the Gerrit server.")
-    parser.add_option("-c", "--cache-path", dest="cache_path",
-                      default="cache",
-                      help="The path to the local directory where the " \
-                           "downloaded gits are cached to avoid cloning " \
-                           "them for each invocation of the script.")
     parser.add_option("-u", "--gerrit-user", dest="gerrit_user",
                       default=None,
                       help="The username that should be used when logging " \
@@ -285,9 +271,11 @@ def _main():
                       help="The change number to check.")
     parser.add_option("", "--patchset", dest="patchset_nr", type="int",
                       help="The patchset number.")
-    parser.add_option("", "--project", dest="affected_git",
+    parser.add_option("", "--project", dest="project",
                       help="The name of the project on which the " \
                            "change is uploaded.")
+    parser.add_option("", "--revision", dest="revision",
+                      help="The patchset revision.")
     parser.add_option("", "--exclude-git", dest="git_ex",
                       action="append", metavar="REGEXP",
                       help="A regular expression that will be matched " \
@@ -307,32 +295,28 @@ def _main():
         fatal(1, "Change nr. missing. Use --change option.")
     if not options.patchset_nr:
         fatal(1, "Patchset nr. missing. Use --patchset option.")
-    if not options.affected_git:
+    if not options.project:
         fatal(1, "Project name missing. Use --project option.")
+    if not options.revision:
+        fatal(1, "Patchset revision missing. Use --revision option.")
 
     # By default we include all gits, and then exclude any that are
     # specified by the user with the --exclude-git option.
     git_matcher = IncludeExcludeMatcher([r"^"], options.git_ex)
-    if not git_matcher.match(options.affected_git):
+    if not git_matcher.match(options.project):
         logging.info("git %s is excluded from commit message check",
-                     options.affected_git)
+                     options.project)
         exit(0)
 
     try:
-        message = get_commit_message(options)
-    except processes.ChildExecutionError, err:
-        fatal(1, err)
-    except EnvironmentError, err:
-        fatal(1, "Error extracting commit message: %s: %s" % \
-                 (err.strerror, err.filename))
-    try:
+        gerrit_handle = gerrit.GerritSshConnection(options.gerrit_url,
+                                                   username=options.gerrit_user)
+        message = get_commit_message(gerrit_handle, options.revision)
         checker = CommitMessageChecker(message)
         results = checker.check()
         output, errors, warnings = format_results(results)
         logging.info(output)
         if (errors or warnings):
-            g = gerrit.GerritSshConnection(options.gerrit_url,
-                                           username=options.gerrit_user)
             code_review = None
             # If any errors have been found, set -1 code review score
             if errors:
@@ -342,7 +326,7 @@ def _main():
                 # Only attempt to include code review score if the change is
                 # still open and the patch set is current.
                 is_open, current_patchset = \
-                    g.change_is_open(options.change_nr)
+                    gerrit_handle.change_is_open(options.change_nr)
                 if not is_open:
                     logging.info("Change %d is closed.  Not adding code review "
                                  "score.", options.change_nr)
@@ -353,18 +337,18 @@ def _main():
                 else:
                     code_review = -1
             if not options.dry_run:
-                g.review_patchset(change_nr=options.change_nr,
-                                  patchset=options.patchset_nr,
-                                  message=FAIL_MESSAGE % output,
-                                  codereview=code_review)
+                gerrit_handle.review_patchset(change_nr=options.change_nr,
+                                              patchset=options.patchset_nr,
+                                              message=FAIL_MESSAGE % output,
+                                              codereview=code_review)
     except gerrit.GerritSshConfigError, e:
-        fatal(1, "Error getting Gerrit ssh config: %s" % err)
+        fatal(1, "Error establishing connection to Gerrit: %s" % err)
     except processes.ChildExecutionError, err:
         fatal(1, "Error submitting review to Gerrit: %s" % err)
     except gerrit.GerritQueryError, err:
-        fatal(1, "Error submitting review to Gerrit: %s" % err)
-    except commit_message.CommitMessageError, e:
-        fatal(1, "Commit message error: %s" % e)
+        fatal(1, "Gerrit query error: %s" % err)
+    except CommitMessageCheckerError, e:
+        fatal(1, "Unable to get commit message: %s" % e)
 
 if __name__ == '__main__':
     try:

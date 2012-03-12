@@ -185,7 +185,7 @@ class GerritSshConnection(object):
         """
 
         args = ["query", "--current-patch-set", "--all-approvals",
-                "--format", "JSON",
+                "--format", "JSON", "--commit-message",
                 escape_string(querystring)]
         response, _err = self.run_gerrit_command(args)
 

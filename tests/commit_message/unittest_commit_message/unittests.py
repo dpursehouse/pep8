@@ -2,15 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import os
-import sys
 import unittest
 
-from commit_message import CommitMessage, CommitMessageError
+from commit_message import CommitMessage
 
 
 class TestCommitMessage(unittest.TestCase):
-    """Test that the CommitMessage and CommitMessageAuthor
-    classes behave correctly.
+    """Test that the CommitMessage class behaves correctly.
     """
 
     def get_commit_message(self, filename):
@@ -28,37 +26,6 @@ class TestCommitMessage(unittest.TestCase):
         self.assertEqual(c.message.split('\n'),
             ["Commit message body line 1",
              "Commit message body line 2"])
-        self.assertEqual(c.author.type, "author")
-        self.assertEqual(c.author.name, "Author Name")
-        self.assertEqual(c.author.email, "author.name@sonyericsson.com")
-        self.assertEqual(c.committer.type, "committer")
-        self.assertEqual(c.committer.name, "Committer Name")
-        self.assertEqual(c.committer.email, "committer.name@sonyericsson.com")
-
-    def test_commit_message_missing_header_parts(self):
-        """Tests that a commit message missing one of the parts in the
-        header is handled correctly.
-        """
-        self.assertRaises(CommitMessageError, self.get_commit_message,
-            "commit_message_invalid_missing_header_author.txt")
-        self.assertRaises(CommitMessageError, self.get_commit_message,
-            "commit_message_invalid_missing_header_committer.txt")
-
-    def test_commit_message_invalid_header_part(self):
-        """Tests that a commit message with an invalid part in the
-        header is handled correctly.
-        """
-        self.assertRaises(CommitMessageError, self.get_commit_message,
-            "commit_message_invalid_header_author.txt")
-        self.assertRaises(CommitMessageError, self.get_commit_message,
-            "commit_message_invalid_header_committer.txt")
-
-    def test_commit_message_invalid_header_repeated(self):
-        """Tests that a commit message with repeated part in the
-        header is handled correctly.
-        """
-        self.assertRaises(CommitMessageError, self.get_commit_message,
-            "commit_message_invalid_header_repeated.txt")
 
 
 if __name__ == '__main__':

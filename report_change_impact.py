@@ -29,7 +29,6 @@ from branch_policies import BranchPolicies
 from commit_message import CommitMessage
 from dmsutil import DMSTagServer, DMSTagServerError
 import gerrit
-from git import GitRepository
 from include_exclude_matcher import IncludeExcludeMatcher
 import manifest
 import manifestbranches
@@ -143,6 +142,10 @@ If you are committing test input (or similar), you might want to
 consider saving them outside the git repository."""
 
 
+class ChangeImpactCheckerError(Exception):
+    """ Raised when an error occurs during change impact check. """
+
+
 def _find_commit_size_script():
     '''Attempt to find the script that will be used to check the size
     of the commit.
@@ -174,25 +177,16 @@ def _get_tagged_issues(issues, tags, target_branch):
     return server_conn.dms_for_tags(issues, tags, target_branch)
 
 
-@retry(processes.ChildExecutionError, tries=2, backoff=2, delay=30)
-def _get_patchset_fixed_issues(options):
-    """ Returns a list of issues fixed in the patchset.
+@retry(ChangeImpactCheckerError, tries=2, backoff=2, delay=30)
+def _get_patchset_fixed_issues(gerrit_handle, revision):
+    """ Returns a list of issues fixed in the patchset specified by `revision`.
     """
-    patchset_ref = gerrit.get_patchset_refspec(options.change_nr,
-                                               options.patchset_nr)
-    logging.info("Fetching patch set %s", patchset_ref)
-    git = GitRepository(options.cache_path, os.path.join("git://",
-                                                         options.gerrit_url,
-                                                         options.affected_git))
-    git.fetch(refspec=patchset_ref)
-
+    results = gerrit_handle.query(revision)
+    if not results:
+        raise ChangeImpactCheckerError("Gerrit didn't find revision %s" % \
+                                       revision)
     # Extract the commit message and find any DMS issues in it.
-    _errcode, msg, _err = processes.run_cmd("git",
-                                            "cat-file",
-                                            "-p",
-                                            "FETCH_HEAD",
-                                            path=git.git_path)
-    commit_message = CommitMessage(msg)
+    commit_message = CommitMessage(results[0]["commitMessage"])
     return commit_message.get_fixed_issues()
 
 
@@ -257,11 +251,6 @@ def _main():
     parser.add_option("", "--gerrit-url", dest="gerrit_url",
                       default=DEFAULT_GERRIT_SERVER,
                       help="The URL to the Gerrit server.")
-    parser.add_option("-c", "--cache-path", dest="cache_path",
-                      default="cache",
-                      help="The path to the local directory where the " \
-                          "downloaded gits are cached to avoid cloning " \
-                          "them for each invocation of the script.")
     parser.add_option("-m", "--manifest-path", dest="manifest_path",
                       default=None,
                       help="The path to the local directory where the " \
@@ -336,12 +325,14 @@ def _main():
                       help="The change number to check.")
     parser.add_option("", "--patchset", dest="patchset_nr", type="int",
                       help="The patchset number.")
-    parser.add_option("", "--project", dest="affected_git",
+    parser.add_option("", "--project", dest="project",
                       help="The name of the project on which the " \
                           "change is uploaded.")
     parser.add_option("", "--branch", dest="affected_branch",
                       help="The name of the branch on which the " \
                           "change is uploaded.")
+    parser.add_option("", "--revision", dest="revision",
+                      help="The patchset revision.")
     parser.add_option("", "--commit-size", dest="commit_size",
                       help="Limit (kB) before warning about commit size " \
                            "(default %d).  Setting 0 disables this " \
@@ -356,10 +347,12 @@ def _main():
         semcutil.fatal(1, "Change nr. missing. Use --change option.")
     if not options.patchset_nr:
         semcutil.fatal(1, "Patchset nr. missing. Use --patchset option.")
-    if not options.affected_git:
+    if not options.project:
         semcutil.fatal(1, "Project name missing. Use --project option.")
     if not options.affected_branch:
         semcutil.fatal(1, "Branch name missing. Use --branch option.")
+    if not options.revision:
+        semcutil.fatal(1, "Patchset revision missing. Use --revision option.")
 
     if options.verbose:
         logging.basicConfig(format='%(message)s', level=logging.INFO)
@@ -378,8 +371,8 @@ def _main():
     # If the git does not match our patterns there's no reason
     # to continue.
     git_matcher = IncludeExcludeMatcher(options.git_in, options.git_ex)
-    if not git_matcher.match(options.affected_git):
-        logging.info("No match for git %s", options.affected_git)
+    if not git_matcher.match(options.project):
+        logging.info("No match for git %s", options.project)
         return 0
 
     # If the git branch does not match our patterns there's no reason
@@ -418,9 +411,9 @@ def _main():
             manifests = manifestbranches.get_manifests(branch,
                                                        options.manifest_path)
             for _ref, prettybranch, mfest in manifests:
-                if options.affected_git in mfest and \
+                if options.project in mfest and \
                         options.affected_branch == \
-                            mfest[options.affected_git]["revision"]:
+                            mfest[options.project]["revision"]:
                     affected_manifests.append(prettybranch)
                     logging.info("- %s", prettybranch)
         except processes.ChildExecutionError, err:
@@ -445,6 +438,12 @@ def _main():
     code_review = None
     verify = None
 
+    try:
+        gerrit_handle = gerrit.GerritSshConnection(options.gerrit_url,
+                                                   username=options.gerrit_user)
+    except gerrit.GerritSshConfigError, err:
+        semcutil.fatal(1, "Error establishing connection to Gerrit: %s" % err)
+
     # If a policy configuration is specified, check that the commit follows
     # the policy.
     if options.policy_file:
@@ -462,16 +461,15 @@ def _main():
             # Find the DMS issue(s) listed in the commit message of this patch
             # set.
             try:
-                dmslist = _get_patchset_fixed_issues(options)
+                dmslist = _get_patchset_fixed_issues(gerrit_handle,
+                                                     options.revision)
                 if not len(dmslist):
                     logging.info("No DMS found in commit message")
                 else:
                     logging.info("Found DMS: %s", ", ".join(dmslist))
-            except processes.ChildExecutionError, err:
-                semcutil.fatal(2, err)
-            except EnvironmentError, err:
+            except (ChangeImpactCheckerError, gerrit.GerritQueryError), err:
                 semcutil.fatal(2, "Error extracting DMS issue information: "
-                                  "%s: %s" % (err.strerror, err.filename))
+                                  "%s:" % err)
 
             violations, code_review, verify = \
                 _get_dms_violations(config, dmslist, affected_manifests)
@@ -497,17 +495,19 @@ def _main():
 
     # Check that the size of the commit is not too large
     if options.commit_size > 0:
-        try:
-            script = _find_commit_size_script()
-            _ret, out, err = processes.run_cmd([script])
-            commit_size = int(out)
-            logging.info("Commit size: %d", commit_size)
-            if commit_size > options.commit_size:
-                if not message:
-                    message = MESSAGE_GREETING
-                message += MESSAGE_COMMIT_TOO_LARGE % commit_size
-        except (ValueError, processes.ChildExecutionError), e:
-            logging.error("Failed to check commit size: %s", e)
+        # This does not work as expected.  Disable for now.
+        logging.info("commit size check is disabled!")
+        #try:
+        #    script = _find_commit_size_script()
+        #    _ret, out, err = processes.run_cmd([script])
+        #    commit_size = int(out)
+        #    logging.info("Commit size: %d", commit_size)
+        #    if commit_size > options.commit_size:
+        #        if not message:
+        #            message = MESSAGE_GREETING
+        #        message += MESSAGE_COMMIT_TOO_LARGE % commit_size
+        #except (ValueError, processes.ChildExecutionError), e:
+        #    logging.error("Failed to check commit size: %s", e)
 
     # If any message has been generated, post it as a note to the change
     # along with code review and verify scores.
@@ -517,15 +517,13 @@ def _main():
         logging.info("Verify: %s", verify)
 
         try:
-            g = gerrit.GerritSshConnection(options.gerrit_url,
-                                           username=options.gerrit_user)
-
             # It is possible that the change has been merged, abandoned,
             # or a new patch set added during the time it has taken for this
             # script to run.
             # Only attempt to include code review and verify scores if
             # the change is still open and the patch set is still current.
-            is_open, current_patchset = g.change_is_open(options.change_nr)
+            is_open, current_patchset = \
+                gerrit_handle.change_is_open(options.change_nr)
             if not is_open:
                 logging.info("Change %d is closed: adding review message " \
                              "without code review or verify scores",
@@ -540,13 +538,11 @@ def _main():
                 code_review = None
                 verify = None
             if not options.dry_run:
-                g.review_patchset(change_nr=options.change_nr,
-                                  patchset=options.patchset_nr,
-                                  message=message,
-                                  codereview=code_review,
-                                  verified=verify)
-        except gerrit.GerritSshConfigError, err:
-            semcutil.fatal(1, "Error getting Gerrit ssh config: %s" % err)
+                gerrit_handle.review_patchset(change_nr=options.change_nr,
+                                              patchset=options.patchset_nr,
+                                              message=message,
+                                              codereview=code_review,
+                                              verified=verify)
         except processes.ChildExecutionError, err:
             semcutil.fatal(2, "Error submitting review to Gerrit: %s" % err)
         except gerrit.GerritQueryError, err:

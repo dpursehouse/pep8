@@ -8,11 +8,11 @@ if [ `expr $GERRIT_PATCHSET_NUMBER % 3` -eq 1 ] ; then
     python report_change_impact.py \
         --policy etc/dms_policy.xml \
         --verbose \
-        --cache-path ../cache/ \
         --change $GERRIT_CHANGE_NUMBER \
         --project $GERRIT_PROJECT \
         --patchset $GERRIT_PATCHSET_NUMBER \
         --branch $GERRIT_BRANCH \
+        --revision $GERRIT_PATCHSET_REVISION \
         --manifest-path ../manifest \
         --gerrit-user hudson_reviewer \
         --exclude-git '^ia/' \

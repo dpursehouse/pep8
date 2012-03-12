@@ -40,8 +40,8 @@ cd cm_tools
 # Invoke the commit message checker
 python commit_message_check.py \
     --verbose \
-    --cache-path ../cache/ \
     --change $GERRIT_CHANGE_NUMBER \
     --project $GERRIT_PROJECT \
     --patchset $GERRIT_PATCHSET_NUMBER \
+    --revision $GERRIT_PATCHSET_REVISION \
     --gerrit-user $GERRIT_USER $EXTRA_PARAMS
