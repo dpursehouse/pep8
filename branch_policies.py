@@ -54,7 +54,7 @@ class BranchPolicies(object):
     """ Encapsulation of branch issue tag policies.
     """
 
-    def __init__(self, config_file=None):
+    def __init__(self, config_file):
         """Raises an xml.parsers.expat.ExpatError exception if the
         input XML file can't be parsed, an IOError exception if the
         file can't be opened, or a BranchPolicyError if the XML file
@@ -62,62 +62,65 @@ class BranchPolicies(object):
         """
 
         self.branches = []
-        if config_file:
-            # Using XPath via xml.etree.ElementTree to parse the XML
-            # file.  I thought /branches/branch would be a valid XPath
-            # query returning all <branch> elements that were children
-            # of the <branches> root element, but this wasn't the
-            # case.
-            doc = ElementTree(file=config_file)
-            branches = []
-            for branch in doc.findall("branch"):
-                name = branch.get("name")
-                if not name:
-                    raise BranchPolicyError("Branch must have a `name` element")
 
-                if name in branches:
-                    raise BranchPolicyError("Cannot specify branch " \
-                                            "more than once (%s)" % name)
-                branches.append(name)
-                tagnames = []
-                tagpatterns = []
-                dms_required = False
-                code_review = None
-                verify = None
-                for tag in branch.findall("allowed-dms-tag"):
-                    tagname = tag.get("name")
-                    tagpattern = tag.get("pattern")
-                    if tagname and tagpattern:
-                        raise BranchPolicyError("Cannot specify both "
-                                                "`name` and `pattern` for "
-                                                "`allowed-dms-tag`.")
-                    elif tagname:
-                        tagnames.append(tagname.strip())
-                    elif tagpattern:
-                        tagpatterns.append(tagpattern.strip())
+        if not config_file:
+            raise BranchPolicyError("Config file must be specified")
 
-                dms_required_element = _get_element(branch, "dms-required")
-                if not dms_required_element:
-                    raise BranchPolicyError("`dms-required` value not "
-                                            "specified for branch %s" % \
-                                            name)
-                dms_required = dms_required_element == "true"
+        # Using XPath via xml.etree.ElementTree to parse the XML
+        # file.  I thought /branches/branch would be a valid XPath
+        # query returning all <branch> elements that were children
+        # of the <branches> root element, but this wasn't the
+        # case.
+        doc = ElementTree(file=config_file)
+        branches = []
+        for branch in doc.findall("branch"):
+            name = branch.get("name")
+            if not name:
+                raise BranchPolicyError("Branch must have a `name` element")
 
-                code_review = _get_score(branch, "code-review",
-                                         VALID_CODE_REVIEW)
-                verify = _get_score(branch, "verify", VALID_VERIFY)
+            if name in branches:
+                raise BranchPolicyError("Cannot specify branch " \
+                                        "more than once (%s)" % name)
+            branches.append(name)
+            tagnames = []
+            tagpatterns = []
+            dms_required = False
+            code_review = None
+            verify = None
+            for tag in branch.findall("allowed-dms-tag"):
+                tagname = tag.get("name")
+                tagpattern = tag.get("pattern")
+                if tagname and tagpattern:
+                    raise BranchPolicyError("Cannot specify both "
+                                            "`name` and `pattern` for "
+                                            "`allowed-dms-tag`.")
+                elif tagname:
+                    tagnames.append(tagname.strip())
+                elif tagpattern:
+                    tagpatterns.append(tagpattern.strip())
 
-                if (code_review or verify) and not dms_required:
-                    raise BranchPolicyError("Cannot specify score unless "
-                                            "DMS is required")
+            dms_required_element = _get_element(branch, "dms-required")
+            if not dms_required_element:
+                raise BranchPolicyError("`dms-required` value not "
+                                        "specified for branch %s" % \
+                                        name)
+            dms_required = dms_required_element == "true"
 
-                if dms_required or tagnames or tagpatterns:
-                    self.branches.append({"name": name,
-                                          "tagnames": tagnames,
-                                          "tagpatterns": tagpatterns,
-                                          "dms_required": dms_required,
-                                          "code_review": code_review,
-                                          "verify": verify})
+            code_review = _get_score(branch, "code-review",
+                                     VALID_CODE_REVIEW)
+            verify = _get_score(branch, "verify", VALID_VERIFY)
+
+            if (code_review or verify) and not dms_required:
+                raise BranchPolicyError("Cannot specify score unless "
+                                        "DMS is required")
+
+            if dms_required or tagnames or tagpatterns:
+                self.branches.append({"name": name,
+                                      "tagnames": tagnames,
+                                      "tagpatterns": tagpatterns,
+                                      "dms_required": dms_required,
+                                      "code_review": code_review,
+                                      "verify": verify})
 
     def branch_has_policy(self, dest_branch):
         """ Check if the `dest_branch` has a tag policy.

@@ -20,16 +20,10 @@ class TestBranchPolicies(unittest.TestCase):
         return BranchPolicies(os.path.join(os.environ["TESTDIR"], filename))
 
     def test_init_with_no_config(self):
-        """ Test that the class constructor and its methods behave
-        correctly when it is instantiated without a config.
+        """ Test that the class constructor behaves correctly when it
+        is instantiated without a config.
         """
-        p = BranchPolicies()
-        self.assertEquals(p.branches, [])
-        self.assertFalse(p.branch_has_policy("xyz"))
-        self.assertFalse(p.branch_requires_dms("xyz"))
-        self.assertEquals(p.get_branch_tagnames("xyz"), [])
-        self.assertEquals(p.get_policy("xyz"), None)
-        self.assertTrue(p.is_tag_allowed("tag", "xyz"))
+        self.assertRaises(BranchPolicyError, BranchPolicies, None)
 
     def test_valid_config_single_branch(self):
         """ Test that the class constructor and its methods behave
