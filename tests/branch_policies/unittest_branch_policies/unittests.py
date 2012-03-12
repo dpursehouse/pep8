@@ -193,5 +193,21 @@ class TestBranchPolicies(unittest.TestCase):
         self.assertRaises(BranchPolicyError, self._get_policy,
             "policy_invalid_tag_name_and_pattern.xml")
 
+    def test_invalid_no_branch_name(self):
+        """ Test that the class constructor raises an exception
+        when instantiated with a config that specifies a `branch` element
+        without a `name` property.
+        """
+        self.assertRaises(BranchPolicyError, self._get_policy,
+            "policy_invalid_no_branch_name.xml")
+
+    def test_invalid_empty_branch_name(self):
+        """ Test that the class constructor raises an exception
+        when instantiated with a config that specifies a `branch` element
+        with an empty `name` property.
+        """
+        self.assertRaises(BranchPolicyError, self._get_policy,
+            "policy_invalid_empty_branch_name.xml")
+
 if __name__ == '__main__':
     unittest.main()

@@ -56,8 +56,9 @@ class BranchPolicies(object):
 
     def __init__(self, config_file=None):
         """Raises an xml.parsers.expat.ExpatError exception if the
-        input XML file can't be parsed, or an IOError exception if the
-        file can't be opened.
+        input XML file can't be parsed, an IOError exception if the
+        file can't be opened, or a BranchPolicyError if the XML file
+        contains an invalid policy configuration.
         """
 
         self.branches = []
@@ -71,50 +72,52 @@ class BranchPolicies(object):
             branches = []
             for branch in doc.findall("branch"):
                 name = branch.get("name")
-                if name:
-                    if name in branches:
-                        raise BranchPolicyError("Cannot specify branch " \
-                                                "more than once (%s)" % name)
-                    branches.append(name)
-                    tagnames = []
-                    tagpatterns = []
-                    dms_required = False
-                    code_review = None
-                    verify = None
-                    for tag in branch.findall("allowed-dms-tag"):
-                        tagname = tag.get("name")
-                        tagpattern = tag.get("pattern")
-                        if tagname and tagpattern:
-                            raise BranchPolicyError("Cannot specify both "
-                                                    "`name` and `pattern` for "
-                                                    "`allowed-dms-tag`.")
-                        elif tagname:
-                            tagnames.append(tagname.strip())
-                        elif tagpattern:
-                            tagpatterns.append(tagpattern.strip())
+                if not name:
+                    raise BranchPolicyError("Branch must have a `name` element")
 
-                    dms_required_element = _get_element(branch, "dms-required")
-                    if not dms_required_element:
-                        raise BranchPolicyError("`dms-required` value not "
-                                                "specified for branch %s" % \
-                                                name)
-                    dms_required = dms_required_element == "true"
+                if name in branches:
+                    raise BranchPolicyError("Cannot specify branch " \
+                                            "more than once (%s)" % name)
+                branches.append(name)
+                tagnames = []
+                tagpatterns = []
+                dms_required = False
+                code_review = None
+                verify = None
+                for tag in branch.findall("allowed-dms-tag"):
+                    tagname = tag.get("name")
+                    tagpattern = tag.get("pattern")
+                    if tagname and tagpattern:
+                        raise BranchPolicyError("Cannot specify both "
+                                                "`name` and `pattern` for "
+                                                "`allowed-dms-tag`.")
+                    elif tagname:
+                        tagnames.append(tagname.strip())
+                    elif tagpattern:
+                        tagpatterns.append(tagpattern.strip())
 
-                    code_review = _get_score(branch, "code-review",
-                                             VALID_CODE_REVIEW)
-                    verify = _get_score(branch, "verify", VALID_VERIFY)
+                dms_required_element = _get_element(branch, "dms-required")
+                if not dms_required_element:
+                    raise BranchPolicyError("`dms-required` value not "
+                                            "specified for branch %s" % \
+                                            name)
+                dms_required = dms_required_element == "true"
 
-                    if (code_review or verify) and not dms_required:
-                        raise BranchPolicyError("Cannot specify score unless "
-                                                "DMS is required")
+                code_review = _get_score(branch, "code-review",
+                                         VALID_CODE_REVIEW)
+                verify = _get_score(branch, "verify", VALID_VERIFY)
 
-                    if dms_required or tagnames or tagpatterns:
-                        self.branches.append({"name": name,
-                                              "tagnames": tagnames,
-                                              "tagpatterns": tagpatterns,
-                                              "dms_required": dms_required,
-                                              "code_review": code_review,
-                                              "verify": verify})
+                if (code_review or verify) and not dms_required:
+                    raise BranchPolicyError("Cannot specify score unless "
+                                            "DMS is required")
+
+                if dms_required or tagnames or tagpatterns:
+                    self.branches.append({"name": name,
+                                          "tagnames": tagnames,
+                                          "tagpatterns": tagpatterns,
+                                          "dms_required": dms_required,
+                                          "code_review": code_review,
+                                          "verify": verify})
 
     def branch_has_policy(self, dest_branch):
         """ Check if the `dest_branch` has a tag policy.
