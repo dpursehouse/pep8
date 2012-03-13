@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?><manifest>
+
+  <remote fetch="git://review.sonyericsson.net/" name="origin" review="review.sonyericsson.net"/>
+
+  <default remote="origin" revision="edream6.0-fuji-docomo-release"/>
+
+</manifest>

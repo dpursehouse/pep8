@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?><manifest>
+
+  <remote fetch="git://review.sonyericsson.net/" name="origin" review="review.sonyericsson.net"/>
+
+  <default remote="origin" revision="edream6.0-fuji-docomo-release"/>
+
+  <!-- Start of open-source projects @origin(google), @type(ref), @reference(android-2.3.7_r1) -->
+  <project name="platform/bootable/bootloader/legacy" path="bootable/bootloader/legacy" revision="d3271024770ddcc2fb87dd22f8280764545ab05a"/>
+  <!-- End of open-source projects -->
+
+</manifest>
