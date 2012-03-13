@@ -57,6 +57,7 @@ def main(argv=None):
 
     if options.server:
         snap.server = options.server
+        orgSnap.server = options.server
 
     if options.copy:
         try:
