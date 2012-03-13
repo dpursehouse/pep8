@@ -30,6 +30,19 @@ def _get_element(node, element_name):
     return None
 
 
+def _get_all_elements(node, element_name):
+    """ Get the text from the elements with `element_name` in `node`.
+    Return a list of texts.
+    Raise BranchPolicy error if an element does not have a text value.
+    """
+    elements = []
+    for element in node.findall(element_name):
+        if not element.text:
+            raise BranchPolicyError("Element must have a text value")
+        elements.append(element.text)
+    return elements
+
+
 def _get_score(node, review_type, valid_scores):
     """ Get the score `review_type` from `node` and return it as an
     integer, or None if the score was not found in the node.
@@ -48,6 +61,33 @@ class BranchPolicyError(Exception):
     """ BranchPolicyError is raised when an invalid policy is
     configured.
     """
+
+
+class CherrypickPolicyError(Exception):
+    """ CherrypickPolicyError is raised when an invalid policy is
+    configured.
+    """
+
+
+class CherrypickPolicy(object):
+    """ Encapsulation of branch cherrypick policies.
+    """
+    def __init__(self, xmlnode):
+        self.source = xmlnode.get("source")
+        if not self.source:
+            raise CherrypickPolicyError("Cherrypick policy must have " \
+                                        "`source` property")
+        self.exclude_component = _get_all_elements(xmlnode, "exclude-component")
+        self.include_component = _get_all_elements(xmlnode, "include-component")
+        self.exclude_dms = _get_all_elements(xmlnode, "exclude-dms")
+        self.exclude_target_revision = \
+            _get_all_elements(xmlnode, "exclude-target-revision")
+        self.include_target_revision = \
+            _get_all_elements(xmlnode, "include-target-revision")
+        self.exclude_source_revision = \
+            _get_all_elements(xmlnode, "exclude-source-revision")
+        self.include_source_revision = \
+            _get_all_elements(xmlnode, "include-source-revision")
 
 
 class BranchPolicies(object):
@@ -84,6 +124,7 @@ class BranchPolicies(object):
             branches.append(name)
             tagnames = []
             tagpatterns = []
+            cherrypick_policies = []
             dms_required = False
             code_review = None
             verify = None
@@ -114,13 +155,17 @@ class BranchPolicies(object):
                 raise BranchPolicyError("Cannot specify score unless "
                                         "DMS is required")
 
-            if dms_required or tagnames or tagpatterns:
+            for policy in branch.findall("cherrypick-policy"):
+                cherrypick_policies.append(CherrypickPolicy(policy))
+
+            if dms_required or tagnames or tagpatterns or cherrypick_policies:
                 self.branches.append({"name": name,
                                       "tagnames": tagnames,
                                       "tagpatterns": tagpatterns,
                                       "dms_required": dms_required,
                                       "code_review": code_review,
-                                      "verify": verify})
+                                      "verify": verify,
+                                      "cherrypick": cherrypick_policies})
 
     def branch_has_policy(self, dest_branch):
         """ Check if the `dest_branch` has a tag policy.
@@ -167,6 +212,18 @@ class BranchPolicies(object):
         for branchpolicy in self.branches:
             if branchpolicy["name"] == dest_branch:
                 return branchpolicy
+        return None
+
+    def get_cherrypick_policy(self, source, target):
+        """ Return the cherrypick policy for `source` and `target`, or None
+        if there is no policy.
+        """
+        policy = self.get_policy(target)
+        if policy:
+            cherrypick_policies = policy["cherrypick"]
+            for cherrypick_policy in cherrypick_policies:
+                if cherrypick_policy.source == source:
+                    return cherrypick_policy
         return None
 
     def is_tag_allowed(self, tag, dest_branch):

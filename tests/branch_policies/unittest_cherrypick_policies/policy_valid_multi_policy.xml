@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<branches>
+  <branch name="target-branch">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="TAG 1"/>
+    <allowed-dms-tag name="TAG 2"/>
+    <code-review>-2</code-review>
+    <verify>-1</verify>
+    <cherrypick-policy source="source-branch">
+      <exclude-component>component/to/exclude</exclude-component>
+      <exclude-component>another/component/to/exclude</exclude-component>
+      <include-component>component/to/include</include-component>
+      <include-component>another/component/to/include</include-component>
+      <exclude-dms>DMS00123456</exclude-dms>
+      <exclude-dms>DMS00654321</exclude-dms>
+      <exclude-target-revision>target-revision-to-exclude</exclude-target-revision>
+      <exclude-target-revision>another-target-revision-to-exclude</exclude-target-revision>
+      <include-target-revision>target-revision-to-include</include-target-revision>
+      <include-target-revision>another-target-revision-to-include</include-target-revision>
+      <exclude-source-revision>source-revision-to-exclude</exclude-source-revision>
+      <exclude-source-revision>another-revision-to-exclude</exclude-source-revision>
+      <include-source-revision>source-revision-to-include</include-source-revision>
+      <include-source-revision>another-revision-to-include</include-source-revision>
+    </cherrypick-policy>
+    <cherrypick-policy source="another-source-branch">
+      <exclude-component>another/component/to/exclude</exclude-component>
+      <exclude-component>yet/another/component/to/exclude</exclude-component>
+      <include-component>another/component/to/include</include-component>
+      <include-component>yet/another/component/to/include</include-component>
+      <exclude-dms>DMS11123456</exclude-dms>
+      <exclude-dms>DMS11654321</exclude-dms>
+      <exclude-target-revision>another-target-revision-to-exclude</exclude-target-revision>
+      <exclude-target-revision>yet-another-target-revision-to-exclude</exclude-target-revision>
+      <include-target-revision>another-target-revision-to-include</include-target-revision>
+      <include-target-revision>yet-another-target-revision-to-include</include-target-revision>
+      <exclude-source-revision>another-source-revision-to-exclude</exclude-source-revision>
+      <exclude-source-revision>yet-another-revision-to-exclude</exclude-source-revision>
+      <include-source-revision>another-source-revision-to-include</include-source-revision>
+      <include-source-revision>yet-another-revision-to-include</include-source-revision>
+    </cherrypick-policy>
+  </branch>
+</branches>
