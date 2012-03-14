@@ -14,6 +14,7 @@ STR_NAME = "name"
 STR_PATH = "path"
 STR_PROJECT = "project"
 STR_REVISION = "revision"
+START_NODE = "start"
 
 
 class TestRepoXmlManifest(unittest.TestCase):
@@ -96,7 +97,9 @@ class TestRepoXmlManifest(unittest.TestCase):
         path = node.getAttribute(STR_PATH)
         self.assertEqual(new_project[STR_PATH], path)
         # Check category node exist.
-        self.assertTrue(default_manifest.categories[new_category]["node"])
+        node = default_manifest.category_info[new_category][START_NODE]
+        comment = node.nodeValue.strip()
+        self.assertEqual(comment, new_category)
 
     def test_remove_project(self):
         """ Test if projet details are removed properly."""
@@ -113,6 +116,7 @@ class TestRepoXmlManifest(unittest.TestCase):
         # Check category is removed from cateogty info dictionary.
         self.assertFalse(category in default_manifest.categories)
         self.assertRaises(TypeError, node.getAttribute, STR_PATH)
+        self.assertFalse(category in default_manifest.category_info)
 
     def test_update_revision(self):
         """Test the revision is properly updated."""

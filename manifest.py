@@ -10,6 +10,8 @@ STR_NAME = "name"
 STR_PATH = "path"
 STR_PROJECT = "project"
 STR_REVISION = "revision"
+START_NODE = "start"
+END_NODE = "end"
 
 
 class ManifestParseError(Exception):
@@ -46,14 +48,17 @@ class RepoXmlManifest(Immutable):
         # Default revision
         self.default_rev = ""
         # Project dictionary.
-        # Format - name:{name: "", path: "", revision: ""}
+        # Format - {name:{name: "", path: "", revision: ""}}
         self.projects = {}
         # Child nodes w.r.t git name.
         # Format - name: {src: "", dst: ""}
         self.child_nodes = {}
         # Categories.
-        # Format - category:{node: "", "path": "node", "path": "node" ... }
+        # Format - {category:{"path": "node", "path": "node" ... }}
         self.categories = {}
+        # Category info
+        # Format - {category: {start: "", end: ""}}
+        self.category_info = {}
         self.manifestdata = manifestdata
 
         self._parse_manifest()
@@ -118,11 +123,16 @@ class RepoXmlManifest(Immutable):
                     # Add the new category to the list (if not in list).
                     if category not in self.categories:
                         # Initialize dict and add the node value.
-                        self.categories[category] = {"node": node}
+                        self.categories[category] = {}
+                        self.category_info[category] = {START_NODE: node}
                 # Check for end of category. End of category is not mandatory
                 # to be present in manifest, as start of new category is taken
                 # as end of category for the previous.
                 elif end_pattern.match(comment):
+                    if category in self.category_info:
+                        self.category_info[category][END_NODE] = node
+                    else:
+                        self.category_info[category] = {END_NODE: node}
                     category = "Uncategorized"
             elif node.nodeType is xml.dom.Node.ELEMENT_NODE and \
                     node.nodeName == STR_PROJECT:
@@ -190,7 +200,8 @@ class RepoXmlManifest(Immutable):
             newline = doc.createTextNode("\n")
             self.manifest.childNodes[0].appendChild(newline)
             # Initialize dict and add the node value.
-            self.categories[category] = {"node": comment}
+            self.categories[category] = {}
+            self.category_info[category] = {START_NODE: comment}
             ref_node = newline
         else:
             # Find the location for the new git w.r.t 'path' in category.
@@ -201,10 +212,15 @@ class RepoXmlManifest(Immutable):
                 ref_node = self.categories[category][pathlist[0]]
             else:
                 # Add git to the end of the category.
-                pathlist = self.categories[category].keys()
-                pathlist.sort()
-                pathlist.reverse()
-                ref_node = self.categories[category][pathlist[0]].nextSibling
+                if len(self.categories[category]):
+                    pathlist = self.categories[category].keys()
+                    pathlist.sort()
+                    pathlist.reverse()
+                    ref_node = \
+                        self.categories[category][pathlist[0]].nextSibling
+                else:
+                    ref_node = \
+                        self.category_info[category][START_NODE].nextSibling
         # Create the node.
         node = self.create_element("project", ref_proj_dict)
         if child_dict:
@@ -319,15 +335,19 @@ class RepoXmlManifest(Immutable):
         del self.categories[category][path]
         del self.projects[project]
         # If all the projects are removed from this category
-        # remove the category itself. One element will be there
-        # with 'node' value. So checking for > 1.
-        if (not len(self.categories[category]) > 1) and \
+        # remove the category itself.
+        if (not len(self.categories[category])) and \
                (category != "Uncategorized"):
-            node = self.categories[category]["node"]
+            node = self.category_info[category][START_NODE]
             prev_node = node.previousSibling
             self.manifest.childNodes[0].removeChild(node)
-            del self.categories[category]
             node.unlink()
+            if END_NODE in self.category_info[category]:
+                node = self.category_info[category][END_NODE]
+                self.manifest.childNodes[0].removeChild(node)
+                node.unlink()
+            del self.categories[category]
+            del self.category_info[category]
             # Remove the newline before the category comment line.
             if prev_node.nodeType is xml.dom.Node.TEXT_NODE and \
                prev_node.nodeValue == "\n":
