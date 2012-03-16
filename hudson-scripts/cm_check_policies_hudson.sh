@@ -25,7 +25,6 @@ if [ `expr $GERRIT_PATCHSET_NUMBER % 3` -eq 1 ] ; then
         --exclude-manifest-ref cherrypick \
         --exclude-manifest-ref '-int$' \
         --exclude-manifest-ref '/ics-pitaya-viv$' \
-        --exclude-manifest-ref '/ics-mogami-(row|zeus-att|zeus-cdma|zeus-vzw)$' \
         --exclude-manifest-ref '/ginger-ste-dev(-int2)?$' \
         --exclude-manifest-ref '/ginger-dev$' \
         --exclude-manifest-ref '/test-mogami-yaffs$' \
