@@ -53,8 +53,7 @@ class Repo(object):
             raise RepoError("Specified path '%s' does not exist" % path)
         self.workspace = path
 
-        if os.path.exists(os.path.join(self.workspace, ".repo")):
-            return
+        self._check_inside_repo()
 
         if not branch:
             raise RepoError("Specify the manifest branch name")
@@ -87,6 +86,19 @@ class Repo(object):
             except processes.ChildExecutionError, err:
                 raise RepoError("Failed to initialize static manifest "
                                 "%s: %s" % (static_manifest, err))
+
+    def _check_inside_repo(self):
+        """Raises an exception if the workspace is inside a previous
+        repo workspace.
+
+        """
+        checkdir = self.workspace
+        while checkdir != os.path.dirname(checkdir):
+            checkdir = os.path.dirname(checkdir)
+            repodir = os.path.join(checkdir, ".repo")
+            if os.path.exists(repodir):
+                raise RepoError("'repo init' already done in a parent "
+                                "directory: %s" % repodir)
 
     def sync(self, project=None, jobs=None):
         """Sync the project.
