@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import json
+import logging
 import optparse
 import os
 import os.path
@@ -87,7 +88,8 @@ class GerritCherrypickLatest(object):
             # A lot of the information about errors from Git comes on stdout
             raise CherrypickError(e.result[1].strip() + "\n" +
                     e.result[2].strip())
-        print "Change %s in %s cherry-picked OK (ref:%s)" % (change, path, ref)
+        logging.info("Change %s in %s cherry-picked OK (ref:%s)" %
+                     (change, path, ref))
 
 if __name__ == "__main__":
     usage = "usage: %prog [options] changes..."
@@ -96,8 +98,15 @@ if __name__ == "__main__":
         default=os.getcwd(), help="Path to the workspace")
     parser.add_option("-u", "--username", dest="username",
         help="Name to use when logging in at review.sonyericsson.net.")
+    parser.add_option("-v", "--verbose", dest="verbose",
+        action="store_true", help="Print all commands.")
     (options, args) = parser.parse_args()
     options.workspace = rstrip(options.workspace, "/")
+
+    if options.verbose:
+        logging.basicConfig(format='%(message)s', level=logging.DEBUG)
+    else:
+        logging.basicConfig(format='%(message)s', level=logging.INFO)
 
     try:
         if options.username:
@@ -115,14 +124,14 @@ if __name__ == "__main__":
                 # The change must be a decimal number
                 change_nr = int(change, 10)
             except:
-                print >> sys.stderr, "Change %s failed: Invalid change ID" % \
-                    (change)
+                logging.error("Change %s failed: Invalid change ID" %
+                              (change))
                 failcount += 1
                 continue
             try:
                 cherry_picker.gerrit_cherrypick_latest(change)
             except CherrypickError, err:
-                print >> sys.stderr, "Change %s failed:" % (change), err
+                logging.error("Change %s failed: %s" % (change, err))
                 failcount += 1
         sys.exit(failcount)
     except gerrit.GerritSshConfigError, e:

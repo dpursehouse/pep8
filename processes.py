@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 import sys
@@ -84,6 +85,8 @@ def run_cmd(*cmdandargs, **kwargs):
     if "path" in kwargs:
         popenkwargs["cwd"] = kwargs["path"]
         cmddesc += " (In directory: %s)" % kwargs["path"]
+
+    logging.debug("Running: %s" % cmddesc)
 
     if "input" in kwargs:
         popenkwargs["stdin"] = subprocess.PIPE
