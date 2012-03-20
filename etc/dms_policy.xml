@@ -30,6 +30,13 @@
     <allowed-dms-tag name="Fix ASAP"/>
     <code-review>-1</code-review>
   </branch>
+  <branch name="edream6.0-riogrande-plus-release">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="CAF+"/>
+    <allowed-dms-tag name="CAF"/>
+    <allowed-dms-tag name="Fix ASAP"/>
+    <code-review>-1</code-review>
+  </branch>
   <branch name="edream6.0-fuji-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="CAF"/>
