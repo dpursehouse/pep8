@@ -33,6 +33,7 @@ def readXml(alist, paramlist):
     parameters = alist.getElementsByTagName("item")
     for param in parameters:
         paramlist.append([int(param.getAttribute("id")),
+                          str(param.getAttribute("index")),
                           str(param.getAttribute("sg")),
                           str(param.getAttribute("source")),
                           str(param.getAttribute("name")),
@@ -69,15 +70,16 @@ def makeDiff(oldxmlfile, newxmlfile, oldid, buildid):
 
     print "{| class='wikitable sortable' border='1'"
     print "|- "
-    print "! ID !! Old Owner !! Source "
+    print "! ID !! class='unsortable'| Index !! Old Owner !! Source "
     print "! class='unsortable'| Old Name !! class='unsortable'| Old Value"
     founddiff = 0
 
     # x_item[0] = id
-    # x_item[1] = sg
-    # x_item[2] = source
-    # x_item[3] = name
-    # x_item[4] = value
+    # x_item[1] = index
+    # x_item[2] = sg
+    # x_item[3] = source
+    # x_item[4] = name
+    # x_item[5] = value
     for olditem in oldparams:
         clrsg = ""
         clrname = ""
@@ -85,15 +87,17 @@ def makeDiff(oldxmlfile, newxmlfile, oldid, buildid):
         clrremitem = ""
         oldfound = -1
         for index, newitem in enumerate(newparams):
-            # find the correct NV/source combination
-            if newitem[0] == olditem[0] and newitem[2] == olditem[2]:
+            # find the correct NV/index/source combination
+            if (newitem[0] == olditem[0] and
+                newitem[1] == olditem[1] and
+                newitem[3] == olditem[3]):
                 oldfound = index
                 # check if the sg, name or value have changed
-                if newitem[1] != olditem[1]:
+                if newitem[2] != olditem[2]:
                     clrsg = "style='background: pink' | "
-                if newitem[3] != olditem[3]:
-                    clrname = "style='background: pink' | "
                 if newitem[4] != olditem[4]:
+                    clrname = "style='background: pink' | "
+                if newitem[5] != olditem[5]:
                     clrvalue = "style='background: pink' | "
                 if clrsg + clrname + clrvalue != "":
                     diffs = diffs + 1
@@ -111,17 +115,18 @@ def makeDiff(oldxmlfile, newxmlfile, oldid, buildid):
         if clrsg + clrname + clrvalue + clrremitem != "":
             print "|-"
             print "| %s%s " % (clrremitem, olditem[0])
-            print "| %s%s%s " % (clrremitem, clrsg, olditem[1])
-            print "| %s%s " % (clrremitem, olditem[2])
-            print "| %s%s%s " % (clrremitem, clrname, olditem[3])
-            print "| %s%s%s " % (clrremitem, clrvalue, olditem[4])
+            print "| %s%s " % (clrremitem, olditem[1])
+            print "| %s%s%s " % (clrremitem, clrsg, olditem[2])
+            print "| %s%s " % (clrremitem, olditem[3])
+            print "| %s%s%s " % (clrremitem, clrname, olditem[4])
+            print "| %s%s%s " % (clrremitem, clrvalue, olditem[5])
 
     print "|} "
 
     # All parameters that are left in newparam are new
     print "{| class='wikitable sortable' border='1'"
     print "|- "
-    print "! ID !! Owner !! Source "
+    print "! ID !! class='unsortable'| Index !! Owner !! Source "
     print "! class='unsortable'| Name !! class='unsortable'| Value"
     clrnewitem = "style='background: lightgreen' | "
     for item in newparams:
@@ -132,6 +137,7 @@ def makeDiff(oldxmlfile, newxmlfile, oldid, buildid):
         print "| %s%s " % (clrnewitem, item[2])
         print "| %s%s " % (clrnewitem, item[3])
         print "| %s%s " % (clrnewitem, item[4])
+        print "| %s%s " % (clrnewitem, item[5])
 
     print "|} "
 

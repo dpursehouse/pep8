@@ -93,6 +93,7 @@ def handleParaValues(values, thisfile, parameters, level):
         #if (str(value.getAttribute("encoding")) == "dec"):
         # TODO: add encoding types
         parameters.append([int(value.getAttribute("id")),
+                           value.getAttribute("index"),
                            order,
                            thisfile,
                            str(value.getAttribute("name")),
@@ -138,7 +139,8 @@ def createWikiCode(parameters, owners, filename):
         f.write("* State 'X' = involved in overwritten values\n")
         f.write("{| class='wikitable sortable' border='1'\n")
         f.write("|- \n")
-        f.write("! ID !! Owner !! Source !! class='unsortable'|")
+        f.write("! ID !! class='unsortable'|Index !! Owner !! Source ")
+        f.write("!! class='unsortable'|")
         f.write("Name !! class='unsortable'|Value !! State\n")
 
         params = sorted(parameters)
@@ -148,16 +150,21 @@ def createWikiCode(parameters, owners, filename):
             statetext = ""
 
             if i + 1 < len(params):
-                if params[i][0] == params[i + 1][0]:
+                if (params[i][0] == params[i + 1][0] and
+                    params[i][1] == params[i + 1][1]):
                     pretext += "<strike>"
                     afttext = "</strike>"
-                    statetext = "X(%s)" % str(params[i][0])
+                    statetext = "X(%s/%s)" % (str(params[i][0]),
+                                              str(params[i][1]))
             if i > 0:
-                if params[i][0] == params[i - 1][0]:
-                    statetext = "X(%s)" % str(params[i][0])
+                if (params[i][0] == params[i - 1][0] and
+                    params[i][1] == params[i - 1][1]):
+                    statetext = "X(%s/%s)" % (str(params[i][0]),
+                                              str(params[i][1]))
 
             f.write("|- \n")
             f.write("| %s%s%s |" % (pretext, str(params[i][0]), afttext))
+            f.write("| %s%s%s |" % (pretext, params[i][1], afttext))
 
             foundowner = 0
             ownertext = "(default)"
@@ -167,20 +174,21 @@ def createWikiCode(parameters, owners, filename):
                     break
 
             f.write("| %s%s%s |" % (pretext, ownertext, afttext))
-            f.write("| %s%s%s |" % (pretext, str(params[i][2]).lstrip(),
-                                    afttext))
             f.write("| %s%s%s |" % (pretext, str(params[i][3]).lstrip(),
                                     afttext))
-            f.write("| %s%s%s \n" % (pretext, makeSpace(params[i][4]),
+            f.write("| %s%s%s |" % (pretext, str(params[i][4]).lstrip(),
+                                    afttext))
+            f.write("| %s%s%s \n" % (pretext, makeSpace(params[i][5]),
                                      afttext))
             f.write("| %s \n" % (statetext))
 
             with open(rawfile, 'a') as r:
-                r.write("<item id=\"%s\" sg=\"%s\" source=\"%s\"" %
-                        (params[i][0], ownertext, str(params[i][2]).lstrip()))
-                r.write(" name=\"%s\" value=\"%s\"/>\n" %
+                r.write("<item id=\"%s\" index=\"%s\" sg=\"%s\"" %
+                        (params[i][0], params[i][1], ownertext))
+                r.write(" source=\"%s\" name=\"%s\" value=\"%s\"/>\n" %
                         (str(params[i][3]).lstrip(),
-                         makeSpace(params[i][4])))
+                         str(params[i][4]).lstrip(),
+                         makeSpace(params[i][5])))
 
         with open(rawfile, 'a') as r:
             r.write("</NV>")
