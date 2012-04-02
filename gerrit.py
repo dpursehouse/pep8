@@ -3,6 +3,7 @@ the Gerrit Code Review software.
 """
 
 import json
+import os
 import re
 import urllib
 
@@ -98,7 +99,7 @@ class GerritSshConnection(object):
         """
 
         self.hostname = hostname
-        self.username = username
+        self.username = username or self._get_user_from_alias(hostname)
         if not self.username:
             try:
                 _exitcode, out, _err = processes.run_cmd("git", "config",
@@ -137,6 +138,41 @@ class GerritSshConnection(object):
             raise GerritSshConfigError("Gerrit's configuration URL '%s' "
                                        "contained unexpected data." %
                                        config_url)
+
+    def _get_user_from_alias(self, hostname):
+        """ Parses .ssh/config to find the first alias that points to and
+        returns the user name defined in the alias. If no alias is found,
+        return None. """
+
+        aliases = {}
+        current_alias = ""
+        appr_alias = ""
+
+        config_file = os.path.join(os.getenv("HOME"), ".ssh", "config")
+        try:
+            cfile = open(config_file)
+        except IOError:
+            return None
+
+        for line in cfile:
+            if line.strip():
+                tag, val = line.lstrip().split()
+                if not line[0].isspace():
+                    if tag == "Host":
+                        current_alias = val
+                        aliases[current_alias] = {}
+                    else:
+                        current_alias = ""
+                elif current_alias:
+                    if tag in ["Hostname", "Port", "User"]:
+                        aliases[current_alias][tag] = val
+                        if (tag == "Hostname") and (val == hostname):
+                            appr_alias = current_alias
+        cfile.close()
+        if appr_alias and ("User" in aliases[appr_alias]):
+            return aliases[appr_alias]["User"]
+        else:
+            return None
 
     def query(self, querystring):
         """Sends the query `querystring` to Gerrit and returns the
