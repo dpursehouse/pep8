@@ -1,0 +1,48 @@
+<manifest>
+<remote name="origin" fetch="git://review.sonyericsson.net/" review="review.sonyericsson.net"/>
+<default revision="master" remote="origin"/>
+<project path="tools/c2d" name="semctools/c2d" revision="repository-manager"/>
+<project path="tools/c2d-jboss" name="semctools/c2d-jboss"/>
+<project path="tools/c2d-extra" name="semctools/c2d-extra"/>
+<project path="tools/chkbugreport" name="semctools/chkbugreport"/>
+<project path="tools/chkdiskusage" name="semctools/chkdiskusage"/>
+<project path="tools/semcsystem" name="semctools/semcsystem" revision="sw-integration" />
+<project path="tools/appbuild" name="semctools/appbuild"/>
+<project path="tools/appbuild-testdata" name="semctools/appbuild-testdata"/>
+<project path="tools/semc-multi-build" name="semctools/semc-multi-build"/>
+<project path="tools/user-statistics-service" name="semctools/user-statistics-service"/>
+<project path="tools/coverity" name="semctools/coverity"/>
+<project path="tools/fullbuild" name="semctools/fullbuild"/>
+<project path="tools/productcm-tools" name="semctools/productcm-tools" />
+<project path="tools/seste" name="semctools/seste" />
+<project path="tools/lauterbach" name="tools/lauterbach" />
+<project path="tools/tagit" name="semctools/tagit" />
+<project path="tools/autorebase" name="semctools/autorebase" />
+<project path="tools/eclipse/sonyericsson" name="semctools/eclipse/sonyericsson" />
+<project path="tools/eclipse/thirdparty" name="semctools/eclipse/thirdparty" />
+<project path="tools/eclipse/stericsson" name="semctools/eclipse/stericsson" />
+<project path="tools/cm_tools" name="semctools/cm_tools" />
+<project path="tools/idd-probes" name="semctools/idd-probes" />
+<project path="tools/idd-tools" name="semctools/idd-tools" />
+<project path="tools/test-tools" name="semctools/test-tools" />
+<project path="tools/automated-remote-control" name="semctools/automated-remote-control" />
+<project path="tools/keyboard-layout-generator" name="semctools/keyboard-layout-generator" />
+<project path="tools/devworld/sdk-addon" name="devworld/sdk-addon" />
+<project path="tools/swe-common" name="semctools/swe-common" />
+<project path="tools/opengrok" name="semctools/opengrok" />
+<project path="tools/flashgordon/fg3" name="semctools/flashgordon/fg3" />
+<project path="tools/flashgordon/libgg" name="semctools/flashgordon/libgg" />
+<project path="tools/flashgordon/libusb" name="semctools/flashgordon/libusb" />
+<project path="tools/cm-standard-ref" name="semctools/cm-standard-ref" />
+<!--<project path="tools/protex" name="semctools/protex" />-->
+<project path="tools/cbut-tools" name="semctools/cbut-tools" />
+<project path="tools/mib-tools" name="semctools/mib-tools" />
+<project path="tools/viz-tool" name="semctools/viz-tool" />
+<project path="tools/stacktrace" name="semctools/stacktrace" />
+<project path="tools/multimedia-tools" name="semctools/multimedia-tools" />
+<project path="tools/crashtool" name="semctools/crashtool" />
+<project path="tools/mib-crash" name="semctools/mib-crash" />
+<project path="tools/web-tools" name="semctools/web-tools" />
+<project path="tools/mock-http-srv" name="semctools/mock-http-srv" />
+<project path="tools/swe-utils" name="semctools/swe-utils" />
+</manifest>

@@ -1,0 +1,16 @@
+EXITSTATUS=0
+
+TEMPDIR=$(mktemp -d) || exit $?
+
+./modman.py -i $TESTDIR/../manifest.xml -s $TESTDIR/../static.xml \
+        $TEMPDIR/result.xml $TEMPDIR/branch.xml 1>&2
+EXITSTATUS=$(expr $EXITSTATUS + $?)
+
+diff -q $TEMPDIR/result.xml $TESTDIR/result.xml 1>&2
+EXITSTATUS=$(expr $EXITSTATUS + $?)
+
+diff -q $TEMPDIR/branch.xml $TESTDIR/branch.xml 1>&2
+EXITSTATUS=$(expr $EXITSTATUS + $?)
+
+#rm -rf $TEMPDIR
+exit $EXITSTATUS
