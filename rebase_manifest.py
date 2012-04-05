@@ -226,11 +226,9 @@ class UpdateMerge:
         try:
             (ret, res, err) = processes.run_cmd("semc-swversion-convert",
                                                 "%s" % options.source_version)
-            self.rebase_msg = "Rebase from %s" % options.source_version
             self.flag_sw_ver = True
         except processes.ChildExecutionError, err:
             self.flag_sw_ver = False
-            self.rebase_msg = ""
         if self.flag_sw_ver and options.amss_version:
             try:
                 cmd = ["repository", "list", options.source_version, "-g",
@@ -367,8 +365,6 @@ class UpdateMerge:
                         self.log.error("Error parsing ref default manifest: "
                                        "%s" % err)
                         self.flag_manifest_rev = False
-        self.pld_gits = \
-            self.gerrit_handler.gerrit.get_gits_in_group("android-pld")
         if self.options.file_report:
             self.options.file_report = \
                 os.path.normpath(os.path.join(options.workspace,
@@ -467,19 +463,18 @@ class UpdateMerge:
 
                 flag_conflict = False
                 static_rev = self.src_manifest.projects[project][STR_REVISION]
+                rebase_msg = "Category: integration"
                 if self.options.amss_version:
-                    self.log.info("AMSS git")
                     merge_msg = "Merge delta from %s into %s" % \
                                     (self.options.amss_version, branch_name)
-                    self.rebase_msg = "Category: integration"
-                elif project in self.pld_gits and self.flag_sw_ver:
-                    self.log.info("PLD git.")
+                elif self.flag_sw_ver:
                     merge_msg = "Merge delta from %s into %s" % \
                                     (self.options.source_version, branch_name)
-                    self.rebase_msg = "Category: integration"
                 else:
                     merge_msg = "Merge commit %s into %s" % (static_rev,
                                                              branch_name)
+                    rebase_msg = "Component rebase"
+
                 review_message = self.review_msg
                 git_path = self.src_manifest.projects[project]["path"]
                 runpath = os.path.join(self.clone_dir, git_path)
@@ -503,7 +498,7 @@ class UpdateMerge:
                                                         "--no-ff", "--stat",
                                                         "--log", "--no-commit",
                                                         "-m", "%s" % merge_msg,
-                                                        "-m", self.rebase_msg,
+                                                        "-m", rebase_msg,
                                                         path=runpath)
                     if "Already up-to-date." in res:
                         self.log.info("Already up-to-date.")
@@ -678,14 +673,20 @@ class UpdateMerge:
 
             self.log.info("Updated manifest file %s" % self.target_file)
             # Commit the change on the target (topic) branch
-            if self.options.amss_version and self.flag_sw_ver:
+            commit_msg = "Manifest rebase\nCategory: integration"
+            if self.options.amss_version:
                 commit_header = "Merge delta from %s into %s" % \
                                     (self.options.amss_version,
                                      self.options.target_branch)
-                commit_msg = "Category: integration"
+            elif self.flag_sw_ver:
+                commit_header = "Merge delta from %s into %s" % \
+                                    (self.options.source_version,
+                                     self.options.target_branch)
             else:
-                commit_header = self.rebase_msg
-                commit_msg = ""
+                file_name = os.path.basename(self.options.source_version)
+                commit_header = "Merge manifest %s into %s" % \
+                                    (file_name, self.options.target_branch)
+                commit_msg = "Manifest rebase"
             if gits_added:
                 commit_msg = "%s\nAdded New git(s):\n%s" % \
                              (commit_msg, ("\n").join(gits_added))
