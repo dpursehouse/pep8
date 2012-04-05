@@ -751,6 +751,7 @@ class UpdateMerge:
             Error saving report file.
          """
 
+        manifest_changed = False
         if self.options.flag_manifest:
             self.log.info("\nManifest rebase status")
             self.log.info("Updated the revision for the following projects:")
@@ -773,6 +774,7 @@ class UpdateMerge:
             if not len(set(self.rev_updated) | temp_added | temp_removed):
                 self.log.info("platform/manifest: Nothing to commit")
             elif self.options.flag_upload:
+                manifest_changed = True
                 self.log.info("\nManifest file Gerrit upload:")
                 self.log.info("platform/manifest: %s" % self.manifest_review)
         else:
@@ -791,16 +793,19 @@ class UpdateMerge:
             else:
                 self.log_list(self.merge_done)
 
-        if self.options.file_report:
+        if self.options.file_report and (manifest_changed or \
+                                         len(self.merge_review)):
             try:
                 with open(self.options.file_report, "w") as fp:
-                    # Manifest upload URL
                     pattern = re.compile("https?://%s/([0-9]+)" % GERRIT_URL)
-                    gerrit_url = ""
-                    match = pattern.search(self.manifest_review)
-                    if match:
-                        gerrit_url = match.group(0)
-                    fp.write("%s: %s\n" % (self.manifest_git_path, gerrit_url))
+                    # Manifest upload URL
+                    if manifest_changed:
+                        gerrit_url = ""
+                        match = pattern.search(self.manifest_review)
+                        if match:
+                            gerrit_url = match.group(0)
+                        fp.write("%s: %s\n" % (self.manifest_git_path,
+                                               gerrit_url))
                     # Component rebase Gerrit uploads
                     if len(self.merge_review):
                         for (key, value) in self.merge_review.items():
