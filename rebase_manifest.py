@@ -327,7 +327,7 @@ class UpdateMerge:
             self.target_projects)
 
         self.flag_manifest_rev = False
-        if self.added_projects and self.flag_sw_ver:
+        if self.flag_sw_ver and not options.amss_version:
             try:
                 res = getmanifest.get_control_fields(options.source_version,
                                                      repo_url=options.repo_url)
@@ -595,31 +595,28 @@ class UpdateMerge:
         self.log.info("Starting manifest rebase")
         # Add any new gits to target manifest
         for project in self.added_projects:
-            if not self.exclude_git_matcher.match(project):
-                category = None
-                if self.flag_manifest_rev and \
-                       project in self.src_default.projects:
-                    category = self.src_default.get_category(project)
-                    def_rev = \
-                        self.src_default.projects[project][STR_REVISION]
-                    if git.is_tag(def_rev):
-                        self.src_manifest.projects[project][STR_REVISION] = \
-                            def_rev
-                try:
-                    # Child node is maintained in separate list. Check for
-                    # child nodes and add if necessary.
-                    child_node = None
-                    if project in self.src_manifest.child_nodes:
-                        child_node = self.src_manifest.child_nodes[project]
-                    self.final_manifest.add_new_project(
-                        self.src_manifest.projects[project], category,
-                        child_node)
-                except (ManifestError, TypeError), err:
-                    self.log.critical("Error adding project to manifest: "
-                                      "%s" % err)
-                    self.clean_up()
-                    raise UpdateMergeError("Error adding project to manifest: "
-                                           "%s" % err)
+            if self.exclude_git_matcher.match(project):
+                continue
+            category = None
+            if self.flag_manifest_rev and \
+                   project in self.src_default.projects:
+                category = self.src_default.get_category(project)
+                def_rev = self.src_default.projects[project][STR_REVISION]
+                if git.is_tag(def_rev):
+                    self.src_manifest.projects[project][STR_REVISION] = def_rev
+            try:
+                # Child node is maintained in separate list. Check for
+                # child nodes and add if necessary.
+                child_node = None
+                if project in self.src_manifest.child_nodes:
+                    child_node = self.src_manifest.child_nodes[project]
+                self.final_manifest.add_new_project(
+                    self.src_manifest.projects[project], category, child_node)
+            except (ManifestError, TypeError), err:
+                self.log.critical("Error adding project to manifest: %s" % err)
+                self.clean_up()
+                raise UpdateMergeError("Error adding project to manifest: "
+                                       "%s" % err)
 
         # Remove gits which got removed from target manifest
         for project in self.removed_projects:
@@ -636,22 +633,26 @@ class UpdateMerge:
         # Update the common gits' revision
         self.rev_updated = []
         for project in self.common_projects:
-            if not self.exclude_git_matcher.match(project) and \
-                   project not in self.branched_gits:
-                try:
-                    src_rev = self.src_manifest.projects[project][STR_REVISION]
-                    tgt_rev = \
-                        self.final_manifest.projects[project][STR_REVISION]
-                    if src_rev != tgt_rev and not git.is_tag(tgt_rev):
-                        self.log.info("%s:%s" % (project, src_rev))
-                        self.rev_updated.append(project)
-                        self.final_manifest.update_revision(project, src_rev)
-                except (ManifestError, TypeError), err:
-                    self.log.error("Error updating manifest revision: "
-                                   "%s" % err)
-                    self.clean_up()
-                    raise UpdateMergeError("Error updating manifest revision: "
-                                           "%s" % err)
+            if self.exclude_git_matcher.match(project) or \
+                   project in self.branched_gits:
+                continue
+            try:
+                src_rev = self.src_manifest.projects[project][STR_REVISION]
+                if self.flag_manifest_rev and \
+                       project in self.src_default.projects:
+                    def_rev = self.src_default.projects[project][STR_REVISION]
+                    if git.is_tag(def_rev):
+                        src_rev = def_rev
+                tgt_rev = self.final_manifest.projects[project][STR_REVISION]
+                if src_rev != tgt_rev:
+                    self.log.info("%s:%s" % (project, src_rev))
+                    self.rev_updated.append(project)
+                    self.final_manifest.update_revision(project, src_rev)
+            except (ManifestError, TypeError), err:
+                self.log.error("Error updating manifest revision: %s" % err)
+                self.clean_up()
+                raise UpdateMergeError("Error updating manifest revision: "
+                                       "%s" % err)
         # Write the target manifest file
         # Create a temporary output file in the workspace folder
         gits_added = \
