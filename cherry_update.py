@@ -6,94 +6,16 @@ branches.
 
 import logging
 import optparse
-import re
 import sys
 
-from cherry_status import CherrypickStatusServer, CherrypickStatusError
-from cherry_status import DEFAULT_STATUS_SERVER
+from cm_server import CMServer, CherrypickStatusError, CMServerError
+from cm_server import DEFAULT_SERVER
 from gerrit import GerritSshConnection, GerritSshConfigError, GerritQueryError
 from processes import ChildExecutionError
 from semcutil import fatal
 
-
-class CherrypickStatus(object):
-    ''' Encapsulation of cherry pick status.
-    '''
-
-    def __init__(self, csvdata):
-        ''' Initialise self with `csvdata`.
-        Raise CherrypickStatusError if CSV data is not valid.
-        '''
-        data = csvdata.rstrip().split(',')
-        if len(data) < 9:
-            raise CherrypickStatusError("Not enough data in csv")
-        self.branch = data[0]
-        self.path = data[1]
-        self.project = data[2]
-        self.sha1 = data[3]
-        self.dms = data[4]
-        self.pick_status = None
-        self.change_nr = None
-        self.error = None
-        self.set_pick_status(data[5])
-        self.review = data[6]
-        self.verify = data[7]
-        self.status = data[8]
-        self.dirty = False
-
-    def set_pick_status(self, pick_status):
-        ''' Update pick_status, error and change_nr according to `pick_status`,
-        if it has changed, and set the state to dirty.
-        '''
-        if self.pick_status != pick_status:
-            self.pick_status = pick_status
-            # If the pick status is a Gerrit review URL, extract
-            # the change number.  Otherwise extract the error message.
-            match = re.match("^https?.*?(\d+)$", self.pick_status)
-            if not match:
-                self.error = self.pick_status
-                self.change_nr = None
-            else:
-                self.error = None
-                self.change_nr = match.group(1)
-            self.dirty = True
-
-    def set_merge_status(self, status):
-        ''' Update status with `status` if it has changed and
-        set the state to dirty.
-        '''
-        if self.status != status:
-            self.status = status
-            self.dirty = True
-
-    def set_review(self, review):
-        ''' Update review value with `review` if it has changed and
-        set the state to dirty.
-        '''
-        if self.review != review:
-            self.review = review
-            self.dirty = True
-
-    def set_verify(self, verify):
-        ''' Update verify value with `verify` if it has changed and
-        set the state to dirty.
-        '''
-        if self.verify != verify:
-            self.verify = verify
-            self.dirty = True
-
-    def is_dirty(self):
-        ''' Check if the cherry pick is dirty, i.e. has been updated.
-        Return True if so, otherwise False.
-        '''
-        return self.dirty
-
-    def __str__(self):
-        ''' Serialise self to a CSV string.
-        '''
-        return "%s,%s,%s,%s,%s,%s,%s,%s,%s" % (self.branch, self.path,
-            self.project, self.sha1, self.dms, self.pick_status,
-            self.review, self.verify, self.status)
+# URL of the Gerrit server
+GERRIT_URL = "review.sonyericsson.net"
 
 
 def _calculate_score(scores, blocker):
@@ -130,20 +52,20 @@ def _update_status_from_gerrit(gerrit, cherry):
     verifies = []
     query = None
 
-    # For cherry picks recorded as an error, check if a change has been
-    # uploaded in the meantime.
-    if cherry.error:
-        if cherry.error == "Already merged":
-            cherry.set_merge_status("MERGED")
-            cherry.set_review("2")
-            cherry.set_verify("1")
-        elif cherry.error == "Failed due to merge conflict":
+    if cherry.change_nr:
+        query = str(cherry.change_nr)
+    elif cherry.message:
+        # For cherry picks recorded as an error, check if a change has been
+        # uploaded in the meantime.
+        if cherry.message == "Already merged":
+            cherry.set_status("MERGED")
+            cherry.set_review(2)
+            cherry.set_verify(1)
+        elif cherry.message == "Failed due to merge conflict":
             query = "project:%s " \
                     "branch:%s " \
                     "message:cherry.picked.from.commit.%s" % \
                     (cherry.project, cherry.branch, cherry.sha1)
-    elif cherry.change_nr:
-        query = cherry.change_nr
 
     if query:
         # Query Gerrit for the change.
@@ -153,10 +75,9 @@ def _update_status_from_gerrit(gerrit, cherry):
             # and update in the cherry pick.
             result = results[0]
             if "number" in result:
-                cherry.set_pick_status("http://review.sonyericsson.net/%s" % \
-                                       result["number"])
+                cherry.set_change_nr(int(result["number"]))
             if "status" in result:
-                cherry.set_merge_status(result["status"])
+                cherry.set_status(result["status"])
             if "currentPatchSet" in result:
                 if "approvals" in result["currentPatchSet"]:
                     approvals = result["currentPatchSet"]["approvals"]
@@ -165,46 +86,45 @@ def _update_status_from_gerrit(gerrit, cherry):
                             reviews += [int(approval["value"])]
                         elif approval["type"] == "VRIF":
                             verifies += [int(approval["value"])]
-                cherry.set_review("%d" % _calculate_score(reviews, -2))
-                cherry.set_verify("%d" % _calculate_score(verifies, -1))
+                cherry.set_review(_calculate_score(reviews, -2))
+                cherry.set_verify(_calculate_score(verifies, -1))
 
     return cherry
 
 
-def _update_cherrypicks(status_server, target, dry_run):
-    ''' Connect to the `status_server` and get the list of cherry picks for
-    `target`.  For each cherry pick, find the current status from Gerrit and
-    then update on the status server if the status has changed.  If `dry_run`
-    is True, don't actually update the status on the server.
+def _update_cherrypicks(server, manifest, source, target, dry_run):
+    ''' Connect to the `server` and get the list of cherry picks for the
+    `source` and `target` combination.  For each cherry pick, find the current
+    status from Gerrit and then update on the status server if the status has
+    changed.  If `dry_run` is True, don't actually update the status on the
+    server.
     Skip any cherry picks with error status.
     Raise GerritQueryError if the gerrit query returns an error.
     Return total cherry picks processed, total skipped, total
     updated, and total errors occurred.
     '''
-    csvdata = status_server.get_old_cherrypicks(target)
-    total = len(csvdata)
+    cherries = server.get_old_cherrypicks(manifest, source, target)
+    total = len(cherries)
 
     errors = 0
     skipped = 0
     updated = 0
 
     if total:
-        gerrit = GerritSshConnection("review.sonyericsson.net")
-        for line in csvdata:
+        gerrit = GerritSshConnection(GERRIT_URL)
+        for cherry in cherries:
             try:
-                cherry = CherrypickStatus(line)
-
                 # No need to update the status if it's already merged
                 if cherry.status != "MERGED":
                     cherry = _update_status_from_gerrit(gerrit, cherry)
 
                 if cherry.is_dirty():
-                    logging.info("Updating: %s,%s,%s,%s,%s,%s",
-                                 cherry.project, cherry.sha1,
-                                 cherry.pick_status, cherry.review,
-                                 cherry.verify, cherry.status)
+                    logging.info("Updating: %s", str(cherry))
                     if not dry_run:
-                        status_server.update_status(target, "%s" % cherry)
+                        server.update_cherrypick_status(manifest,
+                                                        source,
+                                                        target,
+                                                        cherry)
                     updated += 1
                 else:
                     logging.info("Skipping: %s,%s",
@@ -213,6 +133,9 @@ def _update_cherrypicks(status_server, target, dry_run):
             except CherrypickStatusError, e:
                 errors += 1
                 logging.error("Cherry pick status error: %s", e)
+            except CMServerError, e:
+                errors += 1
+                logging.error("CM server error: %s", e)
             except GerritQueryError, e:
                 errors += 1
                 logging.error("Gerrit query error: %s", e)
@@ -224,43 +147,48 @@ def _update_cherrypicks(status_server, target, dry_run):
 
 
 def _main():
-    usage = "usage: %prog [options]"
+    usage = "usage: %prog --source SOURCE --target TARGET [options]"
     parser = optparse.OptionParser(usage=usage)
+    parser.add_option("", "--source", action="store", default=None,
+                      dest="source", help="Source branch.")
     parser.add_option("", "--target", action="store", default=None,
-                      dest="target", help="Target branch.  Update all " \
-                           "targets if not specified.")
+                      dest="target", help="Target branch.")
+    parser.add_option("", "--manifest", action="store",
+                      default="platform/manifest",
+                      dest="manifest", help="Manifest git name.")
     parser.add_option("", "--dry-run", dest="dry_run", action="store_true",
-                      help="Do everything except actually update the " \
-                          "status.")
-    parser.add_option("", "--status-server", dest="status_server",
-                      help="IP address or name of the status server.",
-                      action="store", default=DEFAULT_STATUS_SERVER)
+                      help="Do everything except actually update the status.")
+    parser.add_option("", "--server", dest="server",
+                      help="IP address or name of the CM server.",
+                      action="store", default=DEFAULT_SERVER)
     (options, _args) = parser.parse_args()
 
     logging.basicConfig(format='%(message)s', level=logging.INFO)
 
     try:
-        status_server = CherrypickStatusServer(options.status_server)
+        if not options.source:
+            parser.error("Must specify --source")
         if not options.target:
-            targets = status_server.get_all_targets()
-        else:
-            targets = [options.target]
+            parser.error("Must specify --target")
 
-        error_count = 0
-        for target in targets:
-            logging.info("Updating status for %s", target)
+        server = CMServer(options.server)
+        logging.info("Updating status for %s -> %s on manifest %s",
+                     options.source, options.target, options.manifest)
 
-            total, skipped, updated, errors = _update_cherrypicks(
-                                                status_server, target,
-                                                options.dry_run)
-            error_count += errors
-            logging.info("\nProcessed %d cherry picks\n" +
-                         "Updated: %d\n" +
-                         "Skipped: %d\n" +
-                         "Errors: %d\n", total, updated, skipped, errors)
-        return error_count
+        total, skipped, updated, errors = _update_cherrypicks(server,
+                                                              options.manifest,
+                                                              options.source,
+                                                              options.target,
+                                                              options.dry_run)
+        logging.info("\nProcessed %d cherry picks\n" +
+                     "Updated: %d\n" +
+                     "Skipped: %d\n" +
+                     "Errors: %d\n", total, updated, skipped, errors)
+        return errors
     except CherrypickStatusError, e:
         fatal(1, "Cherry pick status error: %s" % e)
+    except CMServerError, e:
+        fatal(1, "CM server error: %s" % e)
     except GerritSshConfigError, e:
         fatal(1, "Gerrit SSH error: %s" % e)
 
