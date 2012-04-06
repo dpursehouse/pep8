@@ -1,18 +1,24 @@
 #!/usr/bin/env python
 
+""" For given list of manifest branches, generate a list of components
+used on the manifest(s) and their revisions, and write to a given wiki
+page.
+"""
+
 from optparse import OptionParser
 import os
 import re
 import sys
 
-cm_tools = os.path.dirname(os.path.abspath(__file__))
-if cm_tools not in sys.path:
-    sys.path.append(cm_tools)
-
+from git import is_sha1, is_tag
 from include_exclude_matcher import IncludeExcludeMatcher
 import manifest
 import processes
 from wiki import semcwikitools
+
+# Prefixes to use when finding manifest refs
+_STRIPPED_PREFIXES = [r'^refs/(?:heads|tags)/(.*)',
+                      r'^refs/remotes/[^/]+/(.*)']
 
 
 def get_manifests(refname, manifestpath):
@@ -54,30 +60,28 @@ def get_manifests(refname, manifestpath):
     # Ask `git show-ref` to list all branches that match the ref
     # given in `refname`. That command returns two-column lines
     # containing (SHA-1, refname).
-    code, out, err = processes.run_cmd("git", "show-ref", refname,
-                                       path=manifestpath)
-    for sha1, ref in [s.split() for s in out.splitlines()]:
+    _code, out, _err = processes.run_cmd("git", "show-ref", refname,
+                                         path=manifestpath)
+    for sha1, ref in [s.split() for s in str(out).splitlines()]:
         # For each (SHA-1, ref) pair, get a list of files
         # and check if default.xml is included.
-        code, out, err = processes.run_cmd("git", "ls-tree", sha1,
-                                           path=manifestpath)
+        _code, tree, _err = processes.run_cmd("git", "ls-tree", sha1,
+                                              path=manifestpath)
 
         # If default.xml is not found, we can skip this ref.
-        if "default.xml" not in out:
+        if "default.xml" not in tree:
             continue
 
         # Get the manifest data
-        code, out, err = processes.run_cmd("git", "show",
-                                           "%s:default.xml" % (ref),
-                                           path=manifestpath)
-        manifestdata = out.strip()
+        _code, manifestdata, _err = processes.run_cmd("git", "show",
+                                                      "%s:default.xml" % (ref),
+                                                      path=manifestpath)
+        manifestdata = str(manifestdata).strip()
 
-        # If a ref matches one of the elements in `stripped_prefixes`,
+        # If a ref matches one of the elements in `_STRIPPED_PREFIXES`,
         # set `prettyname` to the first captured group.
-        stripped_prefixes = [r'^refs/(?:heads|tags)/(.*)',
-                             r'^refs/remotes/[^/]+/(.*)']
         prettyname = ref
-        for prefix in stripped_prefixes:
+        for prefix in _STRIPPED_PREFIXES:
             match = re.search(prefix, ref)
             if match:
                 prettyname = match.group(1)
@@ -92,19 +96,19 @@ def find_projects(branches):
     """Returns a set of all the projects found in the manifests.
     Input is the tuple-list structure returned by get_manifests."""
     projects = set()
-    for ref, branch, manifest in branches:
-        projects.update(manifest)
+    for _ref, _branch, mfest in branches:
+        projects.update(mfest)
     return projects
 
 
-def isstatic(s):
-    """Tries to guess if a ref points to a static version or not.
+def is_static(ref):
+    """Tries to guess if `ref` points to a static version or not.
     Returns None if not.
     Returns a string with a short form of the static version otherwise."""
-    if len(s) == 40 and s.isalnum():
-        return s[:6]
-    elif s.startswith("refs/tags"):
-        return s.replace("refs/tags", "")
+    if is_sha1(ref):
+        return ref[:6]
+    elif is_tag(ref):
+        return ref.replace("refs/tags", "")
 
 
 def get_branches_html(branches, pattern_matcher):
@@ -122,7 +126,7 @@ def get_branches_html(branches, pattern_matcher):
  not included in the manifest.</h1>\n\n"""
 
     data += '<table style="padding: 10px;"><tr><th></th>'
-    for ref, branch, manifest in branches:
+    for _ref, branch, mfest in branches:
         data += "<th>%s</th>" % branch
     data += "</tr>\n"
 
@@ -131,18 +135,18 @@ def get_branches_html(branches, pattern_matcher):
     for project in sorted(projects):
         data += "<tr><td>%s</td>" % (project)
         branchcount = {}
-        for ref, branch, manifest in branches:
-            if project in manifest:
-                rev = manifest[project]["revision"]
+        for _ref, branch, mfest in branches:
+            if project in mfest:
+                rev = mfest[project]["revision"]
                 if rev not in branchcount:
                     branchcount[rev] = 0
                 branchcount[rev] += 1
 
-        for ref, branch, manifest in branches:
-            if project in manifest:
-                rev = manifest[project]["revision"]
+        for _ref, branch, mfest in branches:
+            if project in mfest:
+                rev = mfest[project]["revision"]
                 style = ""
-                static = isstatic(rev)
+                static = is_static(rev)
                 if static:
                     style = ' style="background-color:#CCCCCC;"'
                     rev = static
@@ -228,8 +232,8 @@ def _main():
         data += "<strong>%s</strong><br />" % error
     data += get_branches_html(branches, pattern_matcher.match)
 
-    w = semcwikitools.get_wiki(options.wiki)
-    semcwikitools.write_page(w, options.page, data)
+    wiki = semcwikitools.get_wiki(options.wiki)
+    semcwikitools.write_page(wiki, options.page, data)
 
 if __name__ == "__main__":
     _main()
