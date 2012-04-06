@@ -474,7 +474,9 @@ class UpdateMerge:
                 flag_conflict = False
                 static_rev = self.src_manifest.projects[project][STR_REVISION]
                 rebase_msg = "Category: integration"
-                if self.options.amss_version:
+                if self.options.commit_message:
+                    merge_msg = self.options.commit_message
+                elif self.options.amss_version:
                     merge_msg = "Merge delta from %s into %s" % \
                                     (self.options.amss_version, branch_name)
                 elif self.flag_sw_ver:
@@ -687,7 +689,9 @@ class UpdateMerge:
             self.log.info("Updated manifest file %s" % self.target_file)
             # Commit the change on the target (topic) branch
             commit_msg = "Manifest rebase\nCategory: integration"
-            if self.options.amss_version:
+            if self.options.commit_message:
+                commit_header = self.options.commit_message
+            elif self.options.amss_version:
                 commit_header = "Merge delta from %s into %s" % \
                                     (self.options.amss_version,
                                      self.options.target_branch)
@@ -889,7 +893,8 @@ def _main():
                                    "[--review-msg]"
                                    "[--manifest]"
                                    "[--no-reviewers]"
-                                   "[--reviewers-on-conflict]")
+                                   "[--reviewers-on-conflict]"
+                                   "[--commit-message]")
     parser.add_option("-s", "--source-version", dest="source_version",
                       default=None,
                       help="Official label for the base manifest version. " \
@@ -975,6 +980,9 @@ def _main():
                       dest="reviewers_on_conflict", default=False,
                       help="Enable adding reviewers only for merge conflict "
                            "commits.")
+    parser.add_option("--commit-message", dest="commit_message",
+                      default=None,
+                      help="Message to be used as commit message header.")
 
     (options, args) = parser.parse_args()
 
