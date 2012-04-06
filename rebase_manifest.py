@@ -242,7 +242,7 @@ class UpdateMerge:
         if self.flag_sw_ver and options.amss_version:
             try:
                 cmd = ["repository", "list", options.source_version, "-g",
-                       "fw-amss-.*-modem"]
+                       "fw-.*modem"]
                 if options.repo_url:
                     cmd += ["-ru", options.repo_url]
                 (ret, res, err) = processes.run_cmd(cmd)
