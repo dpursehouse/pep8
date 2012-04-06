@@ -508,8 +508,9 @@ class UpdateMerge:
                     (ret, res, err) = processes.run_cmd("git", "merge",
                                                         static_rev, "-v",
                                                         "--no-ff", "--stat",
-                                                        "--log", "--no-commit",
-                                                        "-m", "%s" % merge_msg,
+                                                        "--log=300",
+                                                        "--no-commit",
+                                                        "-m", merge_msg,
                                                         "-m", rebase_msg,
                                                         path=runpath)
                     if "Already up-to-date." in res:
