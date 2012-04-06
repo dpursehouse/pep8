@@ -169,6 +169,16 @@ class UpdateMerge:
                           "is not defined.")
             self.options.force_push = False
 
+        if self.options.no_reviewers:
+            self.log.info("Disabled adding reviewers listed in source commit."
+                          "\nStill reviewers provided by `--reviewer` option "
+                          "will be added.")
+        if self.options.reviewers_on_conflict:
+            self.log.info("Reviewers will be added only for merge conflict "
+                          "commits.\nReviewers provided by `--reviewer` "
+                          "option will be added for all commits.")
+            self.options.no_reviewers = True
+
         current_dir = os.getcwd()
         options.workspace = os.path.normpath(os.path.join(current_dir,
                                                           options.workspace))
@@ -527,14 +537,17 @@ class UpdateMerge:
                     self.merge_done.append(project)
                 if self.options.flag_upload:
                     reviewers = []
-                    try:
-                        gerrit_handle = self.gerrit_handler.gerrit
-                        (reviewers, url) = \
-                            gerrit_handle.get_review_information(
-                                static_rev, include_owner=True)
-                    except Exception, err:
-                        self.log.error("Failed to get reviewers list: %s" %
-                                       err)
+                    if not self.options.no_reviewers or \
+                           (self.options.reviewers_on_conflict and \
+                            flag_conflict):
+                        try:
+                            gerrit_handle = self.gerrit_handler.gerrit
+                            (reviewers, url) = \
+                                gerrit_handle.get_review_information(
+                                    static_rev, include_owner=True)
+                        except Exception, err:
+                            self.log.error("Failed to get reviewers list: %s" %
+                                           err)
                     reviewers += self.options.reviewers
                     if reviewers:
                         self.log.info("Reviewers: %s" % ",".join(reviewers))
@@ -874,7 +887,9 @@ def _main():
                                    "[--reviewer reviewer]"
                                    "[--force-push]"
                                    "[--review-msg]"
-                                   "[--manifest]")
+                                   "[--manifest]"
+                                   "[--no-reviewers]"
+                                   "[--reviewers-on-conflict]")
     parser.add_option("-s", "--source-version", dest="source_version",
                       default=None,
                       help="Official label for the base manifest version. " \
@@ -952,6 +967,14 @@ def _main():
     parser.add_option("--manifest", action="store_false",
                       dest="flag_manifest", default=True,
                       help="Disable manifest rebase")
+    parser.add_option("--no-reviewers", action="store_true",
+                      dest="no_reviewers", default=False,
+                      help="Disable adding reviewers, from the source commit, "
+                           "to the commit message")
+    parser.add_option("--reviewers-on-conflict", action="store_true",
+                      dest="reviewers_on_conflict", default=False,
+                      help="Enable adding reviewers only for merge conflict "
+                           "commits.")
 
     (options, args) = parser.parse_args()
 
