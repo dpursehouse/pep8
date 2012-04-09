@@ -8,13 +8,15 @@ import os
 import shutil
 import sys
 import tempfile
+import urlparse
 import urllib2
-import xml.dom.minidom
 import warnings
+import xml.dom.minidom
 
 from debian_bundle import debfile
 from debian_bundle import deb822
 
+import external_package_revision as pkg_rev
 import gitrevision
 import processes
 
@@ -27,8 +29,20 @@ class ParsePackageError(Exception):
         self.value = value
 
     def __str__(self):
-        consequence = ("An error occured when parsing controlfields:\n%s" %
-                                                                (self.value))
+        consequence = "An error occured when parsing controlfields:\n%s" % \
+                                                                (self.value)
+        return consequence
+
+
+class OpenC2DPageError(Exception):
+    def __init__(self, page_url, error):
+        super(OpenC2DPageError, self).__init__(page_url, error)
+        self.page_url = page_url
+        self.error = error
+
+    def __str__(self):
+        consequence = "Can't open package c2d page %s:\n%s" % \
+                      (self.page_url, self.error)
         return consequence
 
 
@@ -258,6 +272,33 @@ def get_log(workdir, url, gitpath, version):
     mygit = gitrevision.GitWorkspace(url, gitpath, workdir)
     mygit.clone(version)
     return mygit.log(version)
+
+
+def check_external_debs(c2d_url, deb_xml_file):
+    """
+        Check if the specified package is available on specified c2d server.
+        Return list of debs not exist in the specified c2d server.
+
+        c2d_url - like http://androidswrepo.sonyericsson.net/pool/semc/
+        deb_xml_file - the external packages xml config file, like pld.xml
+
+        Raise OpenC2DPageError if open c2d_pkg_url failed
+    """
+    package_info = pkg_rev.get_external_package_info(deb_xml_file)
+    unavailable_deb_list = []
+    for pkg, revision in package_info.items():
+        pkg_full_name = "%s_%s_all.deb" % (pkg, revision)
+        #Get the first character of the pkg_full_name
+        pkg_dir = pkg_full_name[0:1]
+        c2d_pkg_page = urlparse.urljoin(c2d_url, "%s/%s" % (pkg_dir, pkg))
+        try:
+            handle = urllib2.urlopen(c2d_pkg_page)
+            result = handle.read()
+        except urllib2.HTTPError, error:
+            raise OpenC2DPageError(c2d_pkg_page, error)
+        if pkg_full_name not in result:
+            unavailable_deb_list.append(pkg_full_name)
+    return unavailable_deb_list
 
 
 def _test(tmp):
