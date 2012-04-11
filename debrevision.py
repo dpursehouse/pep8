@@ -297,7 +297,7 @@ def check_external_debs(c2d_url, deb_xml_file):
         except urllib2.HTTPError, error:
             raise OpenC2DPageError(c2d_pkg_page, error)
         if pkg_full_name not in result:
-            unavailable_deb_list.append(pkg_full_name)
+            unavailable_deb_list.append((pkg, revision))
     return unavailable_deb_list
 
 

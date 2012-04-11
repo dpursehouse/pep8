@@ -78,8 +78,8 @@ def _main():
                             logging.info("Pass Check!")
                             continue
                         for deb in unavailable_deb_list:
-                            logging.info(deb)
-                            unavailable_debs.write("%s\n" % deb)
+                            logging.info("%s %s", deb[0], deb[1])
+                            unavailable_debs.write("%s %s\n" % (deb[0], deb[1]))
                     except (IOError, OpenC2DPageError), err:
                         fatal(1, err)
 
