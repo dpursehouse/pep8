@@ -12,11 +12,11 @@ import os
 import urlparse
 from xml.dom import minidom, Node
 
-from debrevision import check_external_debs, OpenC2DPageError
+from debrevision import check_external_debs
 import processes
 from semcutil import fatal
 
-C2D_URL = "http://androidswrepo-cnbj.sonyericsson.net/"
+LOCAL_C2D_URL = "http://androidswrepo-cnbj.sonyericsson.net/"
 C2D_PATH = "pool/semc/"
 DEFAULT_PACKAGE_TYPE_LIST = ["external-packages", "pld-packages",
                              "decoupled-apps", "installable-apps",
@@ -31,8 +31,8 @@ def _main():
     parser.add_option("-w", "--workspace", dest="workspace",
                         default=os.getcwd(),
                         help="Set the workspace for checking!")
-    parser.add_option("-u", "--c2d_url", dest="c2d_url",
-                        default=C2D_URL,
+    parser.add_option("-u", "--local_c2d_url", dest="local_c2d_url",
+                        default=LOCAL_C2D_URL,
                         help="Set the local c2d url")
     parser.add_option("-f", "--file", dest="file",
                         default=RECORD_FILE,
@@ -43,7 +43,6 @@ def _main():
             fatal(1, "Repo is not installed in %s" % options.workspace)
     except OSError, error:
         fatal(1, error)
-    c2d_url = urlparse.urljoin(options.c2d_url, C2D_PATH)
     package_type_list = DEFAULT_PACKAGE_TYPE_LIST
     logging.basicConfig(format="%(message)s", level=logging.INFO)
     if args:
@@ -62,7 +61,7 @@ def _main():
         try:
             xml_files = os.listdir(pkg_path)
         except OSError:
-            logging.warning("%s is not available in current platform!",
+            logging.warning("%s is not available in current workspace!",
                             pkg_type)
             continue
         with open(options.file, "a") as unavailable_debs:
@@ -72,7 +71,8 @@ def _main():
                 else:
                     logging.info("** %s **", xml)
                     try:
-                        unavailable_deb_list = check_external_debs(c2d_url,
+                        unavailable_deb_list = check_external_debs(
+                            urlparse.urljoin(options.local_c2d_url, C2D_PATH),
                             os.path.join(pkg_path, xml))
                         if not unavailable_deb_list:
                             logging.info("Pass Check!")
@@ -80,8 +80,7 @@ def _main():
                         for deb in unavailable_deb_list:
                             logging.info("%s %s", deb[0], deb[1])
                             unavailable_debs.write("%s %s\n" % (deb[0], deb[1]))
-                    except (IOError, OpenC2DPageError), err:
+                    except (IOError, processes.ChildRuntimeError), err:
                         fatal(1, err)
-
 if __name__ == "__main__":
     _main()
