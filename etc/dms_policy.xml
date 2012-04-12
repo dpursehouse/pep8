@@ -32,6 +32,7 @@
   </branch>
   <branch name="edream6.0-riogrande-plus-release">
     <dms-required>true</dms-required>
+    <allowed-dms-tag name="MR"/>
     <allowed-dms-tag name="CAF+"/>
     <allowed-dms-tag name="CAF"/>
     <allowed-dms-tag name="Fix ASAP"/>
