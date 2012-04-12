@@ -8,27 +8,40 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import urllib
+import urllib2
+from urlparse import urljoin
 import xml.dom.minidom
 
 import debrevision
 import deltapi
 import dmsutil
+from manifest import RepoXmlManifest, ManifestParseError
 
 DMS_TAG_SERVER = 'android-cm-web.sonyericsson.net'
+
+DEFAULT_GIT_COMMAND = "git shortlog --no-merges"
+
+DEFAULT_JOB_URL = "http://android-ci-cm.jpto.sonyericsson.net/view/CM/job/" \
+                  "offbuild_ginger-fuji/api/xml"
 
 # Handle the case that external_package_gits is not available since that
 # is a scenario likely to occur on older branches
 try:
     import external_package_gits
-except:
+except ImportError:
     print >> sys.stderr, "*** Warning! The python module " \
         "external_package_gits is not available. No log for decoupled " \
         "applications will be created."
 
 
 def miniparse(url):
-    return xml.dom.minidom.parse(urllib.urlopen(url))
+    return xml.dom.minidom.parse(urllib2.urlopen(url))
+
+
+def get_manifest(url):
+    if not url.startswith("http"):
+        url = urljoin("file://", os.path.abspath(url))
+    return RepoXmlManifest(urllib2.urlopen(url))
 
 
 def getTextOfFirstTagByName(element, name):
@@ -41,13 +54,12 @@ def getTextOfFirstTagByName(element, name):
     return rc.strip()
 
 
-def main(argv):
-
-    parser = OptionParser()
+def main():
+    usage = "%prog [options] OLDBUILDID NEWBUILDID"
+    parser = OptionParser(usage=usage)
 
     parser.add_option("-j", "--job", dest="job",
-                      default="http://android-ci.sonyericsson.net/job/" \
-                              "offbuild_edream1.0-int/api/xml",
+                      default=DEFAULT_JOB_URL,
                       help="An official build job URL on Hudson")
     parser.add_option("-n", "--not", dest="not_refs",
                       help="One or more refs (comma separated list) to exclude")
@@ -64,10 +76,13 @@ def main(argv):
                       default=DMS_TAG_SERVER,
                       help="Name of the DMS Tag Server [default: %default]")
     parser.add_option("--git-cmd", dest="gitCommand",
-                      default="git shortlog --no-merges",
+                      default=DEFAULT_GIT_COMMAND,
                       help="Add arbitrary git command [default: %default]")
 
     (options, args) = parser.parse_args()
+
+    if len(args) < 2:
+        parser.error("Not enough arguments")
 
     oldBuildId = args[0]
     newBuildId = args[1]
@@ -94,34 +109,37 @@ def main(argv):
         newJobUrl = "do"
 
     if not (mainJobUrl.endswith('api/xml') or mainJobUrl.endswith('api/xml/')):
-        mainJobUrl = urljoin(mainJobUrl, 'api', 'xml')
+        mainJobUrl = _urljoin(mainJobUrl, 'api', 'xml')
 
     if oldJobUrl == "do" or newJobUrl == "do":
-        mainJobXml = miniparse(mainJobUrl)
-        for build in mainJobXml.getElementsByTagName("build"):
-            buildJobUrl = getTextOfFirstTagByName(build, "url")
-            buildJobXml = miniparse(urljoin(buildJobUrl, "api", "xml"))
-            try:
-                text = getTextOfFirstTagByName(buildJobXml, "description")
-                if oldJobUrl == "do":
-                    if text.strip() == oldBuildId:
-                        oldJobUrl = buildJobUrl
-                        print "Found build job url: %s" % buildJobUrl
-                if newJobUrl == "do":
-                    if text.strip() == newBuildId:
-                        newJobUrl = buildJobUrl
-                        print "Found build job url: %s" % buildJobUrl
-            except AttributeError:
-                continue
-            if oldJobUrl != "do" and newJobUrl != "do":
-                break
+        try:
+            mainJobXml = miniparse(mainJobUrl)
+            for build in mainJobXml.getElementsByTagName("build"):
+                buildJobUrl = getTextOfFirstTagByName(build, "url")
+                buildJobXml = miniparse(_urljoin(buildJobUrl, "api", "xml"))
+                try:
+                    text = getTextOfFirstTagByName(buildJobXml, "description")
+                    if oldJobUrl == "do":
+                        if text.strip() == oldBuildId:
+                            oldJobUrl = buildJobUrl
+                            print "Found build job url: %s" % buildJobUrl
+                    if newJobUrl == "do":
+                        if text.strip() == newBuildId:
+                            newJobUrl = buildJobUrl
+                            print "Found build job url: %s" % buildJobUrl
+                except AttributeError:
+                    continue
+                if oldJobUrl != "do" and newJobUrl != "do":
+                    break
+        except urllib2.URLError, err:
+            print >> sys.stderr, "Error downloading manifest: %s" % err
 
     if oldManifestUrl == "" and oldJobUrl != "do":
-        oldManifestUrl = urljoin(oldJobUrl,
+        oldManifestUrl = _urljoin(oldJobUrl,
                              "artifact", "result-dir/manifest_static.xml")
 
     if newManifestUrl == "" and newJobUrl != "do":
-        newManifestUrl = urljoin(newJobUrl,
+        newManifestUrl = _urljoin(newJobUrl,
                              "artifact", "result-dir/manifest_static.xml")
 
     if newManifestUrl == "":
@@ -137,24 +155,31 @@ def main(argv):
                        tag_server=options.server,
                        no_dw=options.no_dw)
 
-    dg.generateDiff(oldManifestUrl, newManifestUrl, notFilter)
-    if "external_package_gits" in sys.modules:
-        dg.diffDecoupledApps(oldManifestUrl, newManifestUrl, notFilter)
-    dg.printRevertLog()
-    dg.printCommitCount()
-    if options.logfile:
-        dg.saveDMSList(options.logfile)
-    if not options.no_dw:
-        dg.dmsqueryQry()
+    try:
+        dg.generateDiff(oldManifestUrl, newManifestUrl, notFilter)
+        if "external_package_gits" in sys.modules:
+            dg.diffDecoupledApps(oldManifestUrl, newManifestUrl, notFilter)
+        dg.printRevertLog()
+        dg.printCommitCount()
+        if options.logfile:
+            dg.saveDMSList(options.logfile)
+        if not options.no_dw:
+            dg.dmsqueryQry()
+    except DiffGeneratorError, e:
+        print >> sys.stderr, "Could not generate diff: %s" % e
 
 
 class GitError(Exception):
     """Occurs when executing a git command."""
 
 
+class DiffGeneratorError(Exception):
+    """ Raised when error occurs during diff generation."""
+
+
 class DiffGenerator(object):
 
-    def __init__(self, count=True, gitcmd="git shortlog --no-merges",
+    def __init__(self, count=True, gitcmd=DEFAULT_GIT_COMMAND,
                  tag_server=DMS_TAG_SERVER, no_dw=True):
         self.all_issues = []
         self.count = count
@@ -170,98 +195,82 @@ class DiffGenerator(object):
     def generateDiff(self, oldManifestUri, newManifestUri, notFilter=None):
         print "Old manifest: %s" % oldManifestUri
         print "New manifest: %s" % newManifestUri
-        oldManifest = miniparse(oldManifestUri)
-        newManifest = miniparse(newManifestUri)
+
+        try:
+            oldManifest = get_manifest(oldManifestUri)
+        except (ManifestParseError, urllib2.URLError), e:
+            raise DiffGeneratorError("Failed to get old manifest: %s" % e)
+
+        try:
+            newManifest = get_manifest(newManifestUri)
+        except (ManifestParseError, urllib2.URLError), e:
+            raise DiffGeneratorError("Failed to get new manifest: %s" % e)
 
         newgits = []
         self.dmslist = []
 
-        for newProject in newManifest.getElementsByTagName("project"):
-            matchFound = False
-            for oldProject in oldManifest.getElementsByTagName("project"):
-                if newProject.getAttribute("name") != \
-                        oldProject.getAttribute("name"):
-                    continue
-                matchFound = True
-                try:
-                    newrev = newProject.getAttribute("revision")
-                except AttributeError:
-                    print >> sys.stderr, "Missing new revision for %s" % (
-                                        newProject.getAttribute("name"))
-                    continue
-                try:
-                    oldrev = oldProject.getAttribute("revision")
-                except AttributeError:
-                    print >> sys.stderr, "Missing old revision for %s" % (
-                                         oldProject.getAttribute("name"))
-                    continue
-
-                if newrev == oldrev:
-                    continue
-                else:
-                    newProjPath = newProject.getAttribute("path")
-                    if not newProjPath:
-                        newProjPath = newProject.getAttribute("name")
-                    print "** %s **" % newProjPath
-                    print "\n".join(self.runGitlog(newProjPath,
-                                                   newrev,
-                                                   oldrev))
-
-                    log = "\n".join(self.runLog(newProjPath,
-                                           newrev,
-                                           oldrev))
-
-                    self.dmslist.extend(self.dmsqueryShow(log))
-
-                    self.revert_logs += self.get_revert_info(newProjPath,
-                                                             newrev,
-                                                             oldrev)
-
-                    self.revert_dms = self.dmsqueryShow(self.revert_logs)
-
-                    if notFilter != None:
-                        filteredLog = "\n".join(self.runLog(
-                                                newProjPath,
-                                                newrev,
-                                                oldrev,
-                                                notFilter))
-
-                        self.concatLog = self.concatLog + filteredLog
-
-                        self.commitCountFiltered += \
-                            self.countCommits(newProjPath,
-                                              newrev,
-                                              oldrev,
-                                              notFilter)
-
-                        self.commitCount += self.countCommits(newProjPath,
-                                                              newrev,
-                                                              oldrev)
-                    else:
-                        self.concatLog = self.concatLog + log
-
-                        self.commitCountFiltered += \
-                            self.countCommits(newProjPath, newrev, oldrev)
-                        self.commitCount += \
-                            self.countCommits(newProjPath, newrev, oldrev)
-
-            # if the project does not exist in the old manifest it must have
+        for project in newManifest.projects:
+            # If the project does not exist in the old manifest it must have
             # been added since then.
-            if not matchFound:
-                newgits.append(newProject)
+            if project not in oldManifest.projects:
+                newgits.append(project)
+                continue
+
+            newrev = newManifest.projects[project]["revision"]
+            oldrev = oldManifest.projects[project]["revision"]
+
+            if newrev == oldrev:
+                continue
+
+            newProjPath = newManifest.projects[project]["path"]
+
+            print "** %s **" % newProjPath
+            print "\n".join(self.runGitlog(newProjPath, newrev, oldrev))
+
+            log = "\n".join(self.runLog(newProjPath, newrev, oldrev))
+
+            self.dmslist.extend(self.dmsqueryShow(log))
+
+            self.revert_logs += \
+                self.get_revert_info(newProjPath, newrev, oldrev)
+
+            self.revert_dms = self.dmsqueryShow(self.revert_logs)
+
+            if notFilter != None:
+                filteredLog = "\n".join(self.runLog(
+                                        newProjPath,
+                                        newrev,
+                                        oldrev,
+                                        notFilter))
+
+                self.concatLog = self.concatLog + filteredLog
+
+                self.commitCountFiltered += \
+                    self.countCommits(newProjPath,
+                                      newrev,
+                                      oldrev,
+                                      notFilter)
+
+                self.commitCount += self.countCommits(newProjPath,
+                                                      newrev,
+                                                      oldrev)
+            else:
+                self.concatLog = self.concatLog + log
+
+                count = self.countCommits(newProjPath, newrev, oldrev)
+                self.commitCountFiltered += count
+                self.commitCount += count
 
         if len(newgits) > 0:
             print "New gits added:"
             for proj in newgits:
                 print "name=\"%s\" path=\"%s\"" % \
-                    (proj.getAttribute("name"), proj.getAttribute("path"))
+                    (proj, newManifest.projects[proj]["path"])
 
         # project name is non-volatile so it can be used as key to find the
         # the same projects in two manifests.
-        newset = set([proj.getAttribute("name") \
-                    for proj in newManifest.getElementsByTagName("project")])
-        oldset = set([proj.getAttribute("name") \
-                    for proj in oldManifest.getElementsByTagName("project")])
+        newset = set([proj for proj in newManifest.projects])
+        oldset = set([proj for proj in oldManifest.projects])
 
         # projects in the old manifest that can't be found in the new, must have
         # been removed.
@@ -269,6 +278,9 @@ class DiffGenerator(object):
         if len(removed) > 0:
             print "Removed gits:"
             print "\n".join(removed)
+
+        # Sort the DMS list and remove duplicates
+        self.dmslist = sorted(list(set(self.dmslist)))
 
         if self.dmslist:
             print "DMS issues found:"
@@ -285,23 +297,9 @@ class DiffGenerator(object):
         """Search for a project tag with name=projectName in the manifest
         minidom
         Return the contents of the path and revision attributes"""
-        for project in manifest.getElementsByTagName("project"):
-            if project.getAttribute("name") == projectName:
-                path = project.getAttribute("path")
-                rev = project.getAttribute("revision")
-                break
-        # TODO: Improve this with exception handling instead of sys.exit
-        if (path == ""):
-            print >> sys.stderr, \
-                "Cannot find the path to %s in the manifest" \
-                % (projectName)
-            sys.exit(1)
-        if (rev == ""):
-            print >> sys.stderr, \
-                "Cannot find the revision of %s in the manifest" \
-                % (projectName)
-            sys.exit(1)
-        return (path, rev)
+
+        return (manifest.projects[projectName]["path"],
+                manifest.projects[projectName]["revision"])
 
     def getPackageListGits(self, manifestUrl, manifest, semcsystemPath,
                            semcsystemRev, packageFilesFileName, checkoutDir):
@@ -558,7 +556,7 @@ class DiffGenerator(object):
             os.chdir(path)
         except OSError:
             print >> sys.stderr, "Could not change directory to %s" % path
-            sys.exit(2)
+            return 0
 
         cmd = "git log --no-merges --pretty=oneline %s..%s" % (oldrev, newrev)
 
@@ -606,7 +604,7 @@ class DiffGenerator(object):
             os.chdir(path)
         except OSError:
             print >> sys.stderr, "Could not change directory to %s" % path
-            sys.exit(2)
+            return ""
         cmd = "%s %s..%s" % (self.gitcmd, oldrev, newrev)
         (ret, res) = command(cmd)
         os.chdir(rootdir)
@@ -618,7 +616,7 @@ class DiffGenerator(object):
             os.chdir(path)
         except OSError:
             print >> sys.stderr, "Could not change direcotory to %s" % path
-            sys.exit(2)
+            return ""
 
         cmd = "git log %s..%s" % (oldrev, newrev)
 
@@ -712,16 +710,16 @@ def isRef(candidate, gitpath=None):
     return False
 
 
-def command(command):
-    gitCmd = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
+def command(cmd):
+    gitCmd = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     result = gitCmd.communicate()[0].splitlines()
     retval = gitCmd.returncode
     return (retval, result)
 
 
-def urljoin(first, *rest):
+def _urljoin(first, *rest):
     return "/".join([first.rstrip('/'),
            "/".join([part.lstrip('/') for part in rest])])
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main()
