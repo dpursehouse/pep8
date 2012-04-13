@@ -34,18 +34,6 @@ class ParsePackageError(Exception):
         return consequence
 
 
-class OpenC2DPageError(Exception):
-    def __init__(self, page_url, error):
-        super(OpenC2DPageError, self).__init__(page_url, error)
-        self.page_url = page_url
-        self.error = error
-
-    def __str__(self):
-        consequence = "Can't open package c2d page %s:\n%s" % \
-                      (self.page_url, self.error)
-        return consequence
-
-
 class DebControl(object):
     """Class to extract and parse debian control fields.
     From debian package or repository.
@@ -282,7 +270,7 @@ def check_external_debs(c2d_url, deb_xml_file):
         c2d_url - like http://androidswrepo.sonyericsson.net/pool/semc/
         deb_xml_file - the external packages xml config file, like pld.xml
 
-        Raise OpenC2DPageError if open c2d_pkg_url failed
+        Raise processes.ChildRuntimeError if execute repository command failed
     """
     package_info = pkg_rev.get_external_package_info(deb_xml_file)
     unavailable_deb_list = []
@@ -295,9 +283,13 @@ def check_external_debs(c2d_url, deb_xml_file):
             handle = urllib2.urlopen(c2d_pkg_page)
             result = handle.read()
         except urllib2.HTTPError, error:
-            raise OpenC2DPageError(c2d_pkg_page, error)
-        if pkg_full_name not in result:
-            unavailable_deb_list.append((pkg, revision))
+            cmd = ["repository", "listrevisions", pkg, "-ru", c2d_url]
+            revisions = processes.run_cmd(cmd)[1].strip().split("\n")
+            if not revisions or revisions and revision not in revisions:
+                unavailable_deb_list.append((pkg, revision))
+        else:
+            if pkg_full_name not in result:
+                unavailable_deb_list.append((pkg, revision))
     return unavailable_deb_list
 
 
