@@ -282,8 +282,9 @@ def check_external_debs(c2d_url, deb_xml_file):
         try:
             handle = urllib2.urlopen(c2d_pkg_page)
             result = handle.read()
-        except urllib2.HTTPError, error:
-            cmd = ["repository", "listrevisions", pkg, "-ru", c2d_url]
+        except (ValueError, urllib2.HTTPError), error:
+            cmd = ["repository", "listrevisions", pkg, "-ru",
+                   c2d_url.rpartition('pool')[0]]
             revisions = processes.run_cmd(cmd)[1].strip().split("\n")
             if not revisions or revisions and revision not in revisions:
                 unavailable_deb_list.append((pkg, revision))
