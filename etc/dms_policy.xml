@@ -66,4 +66,10 @@
     <allowed-dms-tag name="Fix ASAP"/>
     <code-review>-1</code-review>
   </branch>
+  <branch name="edream6.1-fuji-r2-att-release">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="Fix ASAP"/>
+    <allowed-dms-tag name="ATT LE"/>
+    <code-review>-1</code-review>
+  </branch>
 </branches>
