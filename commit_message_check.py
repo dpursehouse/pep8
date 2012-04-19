@@ -341,14 +341,14 @@ def _main():
                                               patchset=options.patchset_nr,
                                               message=FAIL_MESSAGE % output,
                                               codereview=code_review)
-    except gerrit.GerritSshConfigError, e:
+    except gerrit.GerritSshConfigError, err:
         fatal(1, "Error establishing connection to Gerrit: %s" % err)
     except processes.ChildExecutionError, err:
         fatal(1, "Error submitting review to Gerrit: %s" % err)
     except gerrit.GerritQueryError, err:
         fatal(1, "Gerrit query error: %s" % err)
-    except CommitMessageCheckerError, e:
-        fatal(1, "Unable to get commit message: %s" % e)
+    except CommitMessageCheckerError, err:
+        fatal(1, "Unable to get commit message: %s" % err)
 
 if __name__ == '__main__':
     try:
