@@ -1,0 +1,5 @@
+*.py      opt/somc-cmtools/py/cm_tools
+wiki/*.py opt/somc-cmtools/py/cm_tools/wiki
+external  opt/somc-cmtools/py/cm_tools
+*.sh      opt/somc-cmtools/bin
+*.pl      opt/somc-cmtools/bin

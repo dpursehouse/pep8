@@ -1,0 +1,16 @@
+Source: somc-cmtools
+Section: utils
+Priority: extra
+Maintainer: Ernst Sjöstrand <ernst.sjostrand@sonymobile.com>
+Build-Depends: debhelper (>= 7), git-buildpackage
+Standards-Version: 3.8.3
+
+Package: somc-cmtools
+Architecture: all
+Depends: ${misc:Depends}
+Description: Scripts and libraries made by CM
+ This package contains scripts and python libraries
+ made by CM at Sony Mobile. Some generally useful scripts
+ are available in /usr/local/bin, the rest is available in
+ /opt/somc-cmtools/.
+ Python libraries are in /opt/somc-cmtools/py/.

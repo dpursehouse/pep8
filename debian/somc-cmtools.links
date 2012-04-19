@@ -1,0 +1,3 @@
+/opt/somc-cmtools/py/cm_tools/tag-official-release.py /usr/local/bin/tag-official-release
+/opt/somc-cmtools/py/cm_tools/gerrit_cherrypick_latest.py /usr/local/bin/gerrit_cherrypick_latest
+/opt/somc-cmtools/py/cm_tools/getmanifest.py /usr/local/bin/getmanifest
