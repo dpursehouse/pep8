@@ -26,8 +26,8 @@ GET_CHERRYPICK_STATUS = "/harvest/cherries/manifest/%(manifest)s/" \
 # URL for branch configuration query
 GET_BRANCH_CONFIG = "/explorer/system-branches/%(manifest)s/xml/"
 
-# Path to the .netrc file
-NETRC_FILE = expanduser("~/.netrc")
+# Path to the default .netrc file
+DEFAULT_NETRC_FILE = expanduser("~/.netrc")
 
 
 class CMServerError(Exception):
@@ -38,6 +38,12 @@ class CMServerError(Exception):
 class CherrypickStatusError(Exception):
     ''' CherrypickStatusError is raised when something goes wrong
     setting or getting cherry pick status to/from the status server.
+    '''
+
+
+class CredentialsError(Exception):
+    ''' Raised when there is a problem getting the credentials from the
+    .netrc file.
     '''
 
 
@@ -155,6 +161,31 @@ class CherrypickStatus(object):
         return urllib.urlencode(data)
 
 
+def get_credentials_from_netrc(server_name, netrc_file=DEFAULT_NETRC_FILE):
+    ''' Return the login credentials (username, password) for `server_name`
+    from `netrc_file`.  Return empty strings if the `server_name` was not
+    listed in the netrc file.
+    Raise CredentialsError if anything goes wrong.
+    '''
+    username = ""
+    password = ""
+
+    if not isfile(netrc_file):
+        raise CredentialsError(".netrc file %s does not exist" % netrc_file)
+
+    try:
+        info = netrc.netrc(netrc_file)
+        username, _account, password = info.authenticators(server_name)
+    except netrc.NetrcParseError, err:
+        raise CredentialsError(".netrc parse error: %s", err)
+    except TypeError:
+        # TypeError is raised when the server is not listed in the
+        # .netrc file.
+        pass
+
+    return (username, password)
+
+
 class CMServer(object):
     ''' Encapsulate access to the CM server.
     '''
@@ -165,18 +196,10 @@ class CMServer(object):
         self._server = server
         self._auth = ""
 
-        if isfile(NETRC_FILE):
-            try:
-                info = netrc.netrc(NETRC_FILE)
-                login, _account, password = info.authenticators(self._server)
-                self._auth = \
-                    encodestring("%s:%s" % (login, password)).replace('\n', '')
-            except netrc.NetrcParseError, err:
-                raise CMServerError("netrc parse error: %s", err)
-            except TypeError:
-                # TypeError is raised when the server is not listed in the
-                # .netrc file.
-                pass
+        # Get username and password from .netrc and generate authentication
+        # token to be passed in HTTP headers when communicating with the server.
+        user, pwd = get_credentials_from_netrc(self._server)
+        self._auth = encodestring("%s:%s" % (user, pwd)).replace('\n', '')
 
     def _open_url(self, path, data=None):
         ''' Open the URL on the server specified by `path`, optionally with
