@@ -61,7 +61,7 @@ def _update_status_from_gerrit(gerrit, cherry):
             cherry.set_status("MERGED")
             cherry.set_review(2)
             cherry.set_verify(1)
-        elif cherry.message == "Failed due to merge conflict":
+        elif cherry.message.startswith("Failed"):
             query = "project:%s " \
                     "branch:%s " \
                     "message:cherry.picked.from.commit.%s" % \
