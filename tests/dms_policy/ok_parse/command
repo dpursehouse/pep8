@@ -1,3 +1,0 @@
-export PYTHONPATH=$PYTHONPATH:`pwd`
-
-$TESTDIR/parse_policy.py etc/dms_policy.xml

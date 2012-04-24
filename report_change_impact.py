@@ -22,10 +22,12 @@ changes being inspected. """
 import logging
 import optparse
 import os
+import StringIO
 import sys
 from xml.parsers.expat import ExpatError
 
-from branch_policies import BranchPolicies
+from branch_policies import BranchPolicies, BranchPolicyError
+from cm_server import CMServer, CMServerError
 from commit_message import CommitMessage
 from dmsutil import DMSTagServer, DMSTagServerError
 import gerrit
@@ -210,6 +212,9 @@ def _get_dms_violations(config, dmslist, affected_manifests):
             if not tagnames:
                 continue
 
+            logging.info("Branch %s requires tags: %s",
+                         branch, ', '.join(tagnames))
+
             try:
                 tagged_issues = _get_tagged_issues(dmslist, tagnames, branch)
             except DMSTagServerError, e:
@@ -251,15 +256,10 @@ def _main():
     parser.add_option("", "--gerrit-url", dest="gerrit_url",
                       default=DEFAULT_GERRIT_SERVER,
                       help="The URL to the Gerrit server.")
-    parser.add_option("-m", "--manifest-path", dest="manifest_path",
-                      default=None,
-                      help="The path to the local directory where the " \
-                          "manifest git that we should compare against " \
-                          "can be found.")
-    parser.add_option("-p", "--policy", dest="policy_file",
-                      default=None,
-                      help="Name of a file containing the configuration " \
-                          "of DMS policies per branch.")
+    parser.add_option("-m", "--manifest-name", dest="manifest_name",
+                      default="platform/manifest",
+                      help="The project name of the manifest git that should " \
+                          "be used to check impact of changes.")
     parser.add_option("-u", "--gerrit-user", dest="gerrit_user",
                       default=None,
                       help="The username that should be used when logging " \
@@ -340,9 +340,9 @@ def _main():
                       type="int", default=DEFAULT_MAX_COMMIT_SIZE)
     (options, _args) = parser.parse_args()
 
-    if not options.manifest_path:
-        semcutil.fatal(1, "Path to manifest git missing. " \
-                          "Use --manifest-path option.")
+    if not os.path.isdir(options.manifest_name):
+        semcutil.fatal(1, "Manifest path %s does not exist" % \
+                          options.manifest_name)
     if not options.change_nr:
         semcutil.fatal(1, "Change nr. missing. Use --change option.")
     if not options.patchset_nr:
@@ -390,7 +390,7 @@ def _main():
                                                  options.manifest_ref_ex)
         _ret, out, _err = processes.run_cmd("git", "for-each-ref",
                                             "--format=%(refname)",
-                                            path=options.manifest_path)
+                                            path=options.manifest_name)
         branches = filter(manifest_matcher.match, str(out).splitlines())
     except processes.ChildExecutionError, err:
         semcutil.fatal(2, "Error finding manifest branches: %s" % err)
@@ -405,11 +405,12 @@ def _main():
     # earlier. Store the subset of branches that would be affected if
     # the change is submitted in `affected_manifests`.
     affected_manifests = []
-    logging.info("Extracting affected system branches from manifest data...")
+    logging.info("Finding %s branches affected by change %d...",
+                 options.manifest_name, options.change_nr)
     for branch in branches:
         try:
             manifests = manifestbranches.get_manifests(branch,
-                                                       options.manifest_path)
+                                                       options.manifest_name)
             for _ref, prettybranch, mfest in manifests:
                 if options.project in mfest and \
                         options.affected_branch == \
@@ -444,54 +445,56 @@ def _main():
     except gerrit.GerritSshConfigError, err:
         semcutil.fatal(1, "Error establishing connection to Gerrit: %s" % err)
 
-    # If a policy configuration is specified, check that the commit follows
-    # the policy.
-    if options.policy_file:
-        try:
-            config = BranchPolicies(options.policy_file)
-        except ExpatError, err:
-            semcutil.fatal(2, "Error parsing %s: %s" % \
-                (options.policy_file, err))
+    # Get the branch configs for the specified manifest.
+    logging.info("Getting branch configuration from CM server...")
+    try:
+        server = CMServer()
+        branch_config = server.get_branch_config(options.manifest_name)
+        config = BranchPolicies(StringIO.StringIO(branch_config))
+    except (BranchPolicyError, CMServerError, ExpatError, IOError), err:
+        semcutil.fatal(2, "Error getting branch configuration for %s: %s" % \
+                          (options.manifest_name, err))
 
-        # Check this commit's DMS tags if at least one affected manifest
-        # branch has a policy associated with it.
-        if not filter(config.branch_has_policy, affected_manifests):
-            logging.info("No affected system branches with DMS tag policy")
-        else:
-            # Find the DMS issue(s) listed in the commit message of this patch
-            # set.
-            try:
-                dmslist = _get_patchset_fixed_issues(gerrit_handle,
-                                                     options.revision)
-                if not len(dmslist):
-                    logging.info("No DMS found in commit message")
-                else:
-                    logging.info("Found DMS: %s", ", ".join(dmslist))
-            except (ChangeImpactCheckerError, gerrit.GerritQueryError), err:
-                semcutil.fatal(2, "Error extracting DMS issue information: "
-                                  "%s:" % err)
+    # Check that the commit follows the policy.
 
-            violations, code_review, verify = \
-                _get_dms_violations(config, dmslist, affected_manifests)
-
-            if violations:
-                if not message:
-                    message = MESSAGE_GREETING
-                message += MESSAGE_DMS_VIOLATION_PART_1
-
-                for violation in violations:
-                    # Gerrit creates new bullet items when it gets newline
-                    # characters within a bullet list paragraph, so unless
-                    # we remove the newlines from the violation texts the
-                    # resulting bullet list will contain multiple bullets
-                    # and look crappy.
-                    message += "* %s\n" % violation.replace("\n", " ")
-
-                message += MESSAGE_DMS_VIOLATION_PART_2
-            else:
-                logging.info("No DMS violations")
+    # Check this commit's DMS tags if at least one affected manifest
+    # branch has a policy associated with it.
+    if not filter(config.branch_has_policy, affected_manifests):
+        logging.info("No affected system branches with DMS tag policy")
     else:
-        logging.info("No DMS policy")
+        logging.info("Checking DMS policies...")
+        # Find the DMS issue(s) listed in the commit message of this patch
+        # set.
+        try:
+            dmslist = _get_patchset_fixed_issues(gerrit_handle,
+                                                 options.revision)
+            if not len(dmslist):
+                logging.info("No DMS found in commit message")
+            else:
+                logging.info("Found DMS: %s", ", ".join(dmslist))
+        except (ChangeImpactCheckerError, gerrit.GerritQueryError), err:
+            semcutil.fatal(2, "Error extracting DMS issue information: "
+                              "%s:" % err)
+
+        violations, code_review, verify = \
+            _get_dms_violations(config, dmslist, affected_manifests)
+
+        if violations:
+            if not message:
+                message = MESSAGE_GREETING
+            message += MESSAGE_DMS_VIOLATION_PART_1
+
+            for violation in violations:
+                # Gerrit creates new bullet items when it gets newline
+                # characters within a bullet list paragraph, so unless
+                # we remove the newlines from the violation texts the
+                # resulting bullet list will contain multiple bullets
+                # and look crappy.
+                message += "* %s\n" % violation.replace("\n", " ")
+
+            message += MESSAGE_DMS_VIOLATION_PART_2
+        else:
+            logging.info("No DMS violations")
 
     # Check that the size of the commit is not too large
     if options.commit_size > 0:

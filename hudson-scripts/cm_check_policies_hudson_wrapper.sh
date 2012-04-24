@@ -10,13 +10,13 @@ fi
 
 # If the manifest gits exist, make sure they are up to date.  If they
 # do not exist yet, clone them.
-CM_CHECK_MANIFESTS=("manifest" "amssmanifest")
+CM_CHECK_MANIFESTS=("platform/manifest" "platform/amssmanifest")
 for m in "${CM_CHECK_MANIFESTS[@]}"
 do
     if [ -d $m ] ; then
         ( cd $m && git fetch && git remote prune origin )
     else
-        git clone git://review.sonyericsson.net/platform/$m
+        git clone git://review.sonyericsson.net/$m $m
     fi
 done
 

@@ -3,14 +3,13 @@
 for m in "$@"
 do
     python cm_tools/report_change_impact.py \
-        --policy cm_tools/etc/dms_policy.xml \
         --verbose \
         --change $GERRIT_CHANGE_NUMBER \
         --project $GERRIT_PROJECT \
         --patchset $GERRIT_PATCHSET_NUMBER \
         --branch $GERRIT_BRANCH \
         --revision $GERRIT_PATCHSET_REVISION \
-        --manifest-path $m \
+        --manifest-name $m \
         --gerrit-user hudson_reviewer \
         --exclude-git '^ia/' \
         --exclude-git '^edu/' \
