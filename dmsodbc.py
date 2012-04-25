@@ -8,6 +8,9 @@ except ImportError:
     # of the methods on the DMSODBC class.
     pass
 
+from cm_server import get_credentials_from_netrc, CredentialsError
+
+
 # SQL query to check which of the given DMS are tagged with the
 # given tags for the given release
 QRY_DMS_FOR_TAGS = """
@@ -72,10 +75,28 @@ class DMSODBCError(Exception):
 class DMSODBC(object):
     ''' Class for interfacing with DMS over ODBC.
     '''
-    def __init__(self, username, password, driver=ODBC_DRIVER,
-                server=ODBC_SERVER, database=ODBC_DATABASE,
-                schema=ODBC_SCHEMA):
+    def __init__(self, username=None, password=None,
+                driver=ODBC_DRIVER, server=ODBC_SERVER,
+                database=ODBC_DATABASE, schema=ODBC_SCHEMA):
+        ''' Initialise the ODBC connection with the given parameters.
+        Raise DMSODBCError if there is an error getting the server login
+        credentials from the .netrc file, or if the login credentials for
+        the given `server` were not found in the .netrc file.
+        '''
         self.connection = None
+
+        # If either the username or the password is not specified, attempt
+        # to get them from the .netrc file
+        if (not username) or (not password):
+            try:
+                username, password = get_credentials_from_netrc(server)
+                if (not username) or (not password):
+                    raise DMSODBCError("Unable to get login credentials for " \
+                                       "%s from .netrc file." % server)
+            except CredentialsError, err:
+                raise DMSODBCError("Error getting login credentials for %s " \
+                                   "from .netrc file: %s" % (server, err))
+
         self.parameters = ODBC_PARAMETERS % {"driver": driver,
                                              "server": server,
                                              "database": database,
