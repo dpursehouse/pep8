@@ -35,7 +35,7 @@ class GerritError(Exception):
 
 class Gerrit:
     """Gerrit functionalities to support rebase"""
-    def __init__(self):
+    def __init__(self, gerrit_username=None):
         """Initilization method
 
         Creates 'FindReviewers' object. 'FindReviewers' internally
@@ -47,7 +47,7 @@ class Gerrit:
 
         """
         try:
-            self.finder = FindReviewers()
+            self.finder = FindReviewers(user=gerrit_username)
             self.gerrit = self.finder.gerrit
             self.username = self.gerrit.username
         except GerritSshConfigError, err:
@@ -152,7 +152,7 @@ class UpdateMerge:
         """
 
         self.options = options
-        self.gerrit_handler = Gerrit()
+        self.gerrit_handler = Gerrit(self.options.gerrit_user)
         self.revision_field = "XB-SEMC-Manifest-Revision"
         self.branch_field = "XB-SEMC-Manifest-Branch"
         self.log = log.logger
@@ -889,6 +889,7 @@ def _main():
                                    "[-w workspace]"
                                    "[-l log-file]"
                                    "[-f file-report]"
+                                   "[--gerrit-user gerrit_user]"
                                    "[--reviewer reviewer]"
                                    "[--force-push]"
                                    "[--review-msg]"
@@ -960,6 +961,9 @@ def _main():
                       help="File name to save the final report " \
                            "of git and gerrit upload URLs. " \
                            "Option can only be used along with -u/--upload.")
+    parser.add_option("--gerrit-user", dest="gerrit_user",
+                      default=None,
+                      help="Gerrit username to be used in the git commands.")
     parser.add_option("--reviewer", dest="reviewers",
                       action="append", default=[],
                       help="Reviewer email address. This option can be used "
