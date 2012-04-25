@@ -33,6 +33,14 @@ QRY_DMS_FOR_TAGS = """
  order by I.id ASC
 """
 
+QRY_DMS_AND_TITLES = """
+ select distinct I.id, I.title
+ from DMSUSER_JPTOH.dbo.issue I
+ where I.dbid <> 0
+ and (%(dmss)s)
+ order by I.id ASC
+"""
+
 # Default parameters for connection to the ODBC server
 ODBC_DRIVER = "{FreeTDS}"
 ODBC_SERVER = "JPTOCLQ201"
@@ -118,6 +126,26 @@ class DMSODBC(object):
                 raise DMSODBCError("pyodbc is not installed")
         cursor = self.connection.cursor()
         return cursor
+
+    def dms_with_title(self, dmss):
+        ''' Return a list of `dmss` and titles in format "ID Title".
+        Raise DMSODBCError if any error occurs.
+        '''
+        issues_list = []
+
+        # Remove duplicates from the input list
+        unique_dmss = list(set(dmss))
+
+        if unique_dmss:
+            dms_query = _build_sql_or_query("I.id", unique_dmss)
+            try:
+                query = QRY_DMS_AND_TITLES % {"dmss": dms_query}
+                result = self._get_cursor().execute(query)
+            except pyodbc.Error, err:
+                raise DMSODBCError("ODBC driver error: %s" % err)
+            issues_list = ["%s %s" % (row.id, row.title) for row in result]
+
+        return issues_list
 
     def dms_for_tags(self, dmss, tags, target_branch):
         ''' Return a list of the `dmss` which are tagged with at least one of
