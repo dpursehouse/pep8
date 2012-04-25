@@ -14,10 +14,8 @@ import xml.dom.minidom
 
 import debrevision
 import deltapi
-import dmsutil
+import dmsodbc
 from manifest import RepoXmlManifest, ManifestParseError
-
-DMS_TAG_SERVER = 'android-cm-web.sonyericsson.net'
 
 DEFAULT_GIT_COMMAND = "git shortlog --no-merges"
 
@@ -72,9 +70,6 @@ def main():
     parser.add_option("-l", "--log", dest="logfile",
                       help="Save the list of integrated DMS issues in the " \
                            "`logfile` file")
-    parser.add_option("--server", dest="server",
-                      default=DMS_TAG_SERVER,
-                      help="Name of the DMS Tag Server [default: %default]")
     parser.add_option("--git-cmd", dest="gitCommand",
                       default=DEFAULT_GIT_COMMAND,
                       help="Add arbitrary git command [default: %default]")
@@ -152,7 +147,6 @@ def main():
 
     dg = DiffGenerator(count=options.count,
                        gitcmd=options.gitCommand,
-                       tag_server=options.server,
                        no_dw=options.no_dw)
 
     try:
@@ -179,8 +173,7 @@ class DiffGeneratorError(Exception):
 
 class DiffGenerator(object):
 
-    def __init__(self, count=True, gitcmd=DEFAULT_GIT_COMMAND,
-                 tag_server=DMS_TAG_SERVER, no_dw=True):
+    def __init__(self, count=True, gitcmd=DEFAULT_GIT_COMMAND, no_dw=True):
         self.all_issues = []
         self.count = count
         self.query = 'DMSquery.qry'
@@ -190,7 +183,7 @@ class DiffGenerator(object):
         self.commitCountFiltered = 0
         self.commitCount = 0
         self.revert_logs = ""
-        self.tag_server = dmsutil.DMSTagServer(tag_server)
+        self.tag_server = dmsodbc.DMSODBC()
 
     def generateDiff(self, oldManifestUri, newManifestUri, notFilter=None):
         print "Old manifest: %s" % oldManifestUri
