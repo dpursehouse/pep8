@@ -208,9 +208,12 @@ class CMServer(object):
         Raise CMServerError if anything goes wrong.
         '''
         try:
-            request = urllib2.Request(urljoin('http://' + self._server, path))
+            url = urljoin('http://' + self._server, path)
+            if data:
+                url = urljoin(url, "?" + data)
+            request = urllib2.Request(url)
             request.add_header("Authorization", "Basic %s" % self._auth)
-            return urllib2.urlopen(request, data=data)
+            return urllib2.urlopen(request)
         except urllib2.URLError, e:
             raise CMServerError("Connection error: %s" % e)
 
