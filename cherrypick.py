@@ -3,7 +3,7 @@
 '''
 Find cherry pick candidates in source branch(es) by processing the git log of
 each base branch and target branch. From the log, list of DMSs will be checked
-with DMS tag server and commits with correct DMS tag will be considered.
+with DMS server and commits with correct DMS tag will be considered.
 
 During each cherry pick, commit id will be checked in Gerrit commit message,
 and cherry pick of this commit will be skipped if corresponding commit is found
@@ -52,7 +52,7 @@ from branch_policies import BranchPolicyError, CherrypickPolicyError
 from cherry_status import CherrypickStatus, CherrypickStatusError
 from cm_server import CMServer, CMServerError, CredentialsError
 from cm_server import DEFAULT_SERVER
-from dmsutil import DMSTagServer, DMSTagServerError
+from dmsodbc import DMSODBC, DMSODBCError
 from find_reviewers import FindReviewers, AddReviewersError
 from gerrit import GerritSshConnection, GerritSshConfigError, GerritQueryError
 import git
@@ -60,7 +60,7 @@ from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 from semcutil import enum
 
-__version__ = '0.4.18'
+__version__ = '0.5.0'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -101,9 +101,6 @@ DEFAULT_TARGET_BRANCH_EXCLUDES = [r"^rel-", r"^maint-", "refs/tags/"]
 #Gerrit server URL
 GERRIT_URL = "review.sonyericsson.net"
 
-# Default server to use for DMS tag status
-DEFAULT_DMS_TAG_SERVER = "android-cm-web.sonyericsson.net"
-
 # Number of times to attempt git push of the cherry picked change
 MAX_PUSH_ATTEMPTS = 3
 
@@ -142,13 +139,15 @@ Cherry pick status page:
   http://cmweb.sonyericsson.net/harvest/cherries/
 """
 
-# Mail notification when DMS Tag Server fails and no fallback option is used
-TAG_SERVER_FAILED_NOTIFICATION_MAIL = \
+# Mail notification when DMS Query fails
+DMS_QUERY_FAILED_NOTIFICATION_MAIL = \
 """Hello,
 
-Automated cherry-pick failed.  The DMS tag server, '%s', returned error.
+Automated cherry-pick failed.  The DMS query returned an error:
+
 %s
-Check the server name or rectify the server error and rerun.
+
+Rectify the error and rerun.
 
 Unable to verify DMS status for target branch %s, for the following commit(s).
 
@@ -432,10 +431,6 @@ def option_parser():
                      dest='cwd',
                      help='working directory, default is current directory',
                      action="store", default=None)
-    opt_parser.add_option('--dms-tag-server',
-                     dest='dms_tag_server',
-                     help='IP address or name of DMS tag server',
-                     action="store", default=DEFAULT_DMS_TAG_SERVER)
     opt_parser.add_option('--status-server',
                      dest='status_server',
                      help='IP address or name of status server',
@@ -937,28 +932,27 @@ def dms_get_fix_for(commit_list):
         return commit_tag_list
 
     try:
-        logging.info("DMS tag request (%s) for %d issue(s): %s",
-                     OPT.dms_tag_server, len(dmss), ','.join(dmss))
-        server = DMSTagServer(OPT.dms_tag_server, timeout=120)
+        logging.info("DMS tag request for %d issue(s): %s",
+                     len(dmss), ','.join(dmss))
+        server = DMSODBC(username="DMS_JPTOCM_ReadOnly", password="jptocm")
         tags_dmss = server.dms_for_tags(dmss, dms_tags, OPT.target_branch)
         if tags_dmss:
             for cmt in commit_list:
                 if cmt.dms in tags_dmss:
                     commit_tag_list.append(cmt)
         return commit_tag_list
-    except DMSTagServerError, e:
+    except DMSODBCError, e:
+        logging.error('DMS query error: %s', e)
         # Report the error and quit.
-        logging.error('DMS tag server error: %s', e)
         cherry_info = '\n'.join([x.get_commit_info() for x in commit_list])
         recipient = []
-        subject = '[Cherrypick] DMS tag server error [%s]' % \
-                  OPT.target_branch
-        body = TAG_SERVER_FAILED_NOTIFICATION_MAIL % \
-                (OPT.dms_tag_server, e, OPT.target_branch,
+        subject = '[Cherrypick] DMS query error [%s]' % OPT.target_branch
+        body = DMS_QUERY_FAILED_NOTIFICATION_MAIL % \
+                (e, OPT.target_branch,
                 cherry_info, __version__)
         email(subject, body, recipient)
         cherry_pick_exit(ERROR_CODE.STATUS_DMS_SRV,
-                         'DMS Tag Server Error. Aborting.')
+                         'DMS Query Error.  Aborting.')
 
 
 def create_cherry_pick_list(commit_tag_list):
