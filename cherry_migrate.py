@@ -167,6 +167,8 @@ def migrate(old_server, new_server, source, target, dry_run=False):
         logging.error("%d Errors:", len(errors))
         for error in errors:
             logging.error(error)
+        return 1
+    return 0
 
 
 def _main():
@@ -200,8 +202,8 @@ def _main():
     if not options.newserver:
         parser.error("Must specify --new-server")
 
-    migrate(options.oldserver, options.newserver,
-            options.source, options.target, options.dry_run)
+    return migrate(options.oldserver, options.newserver,
+                   options.source, options.target, options.dry_run)
 
 if __name__ == "__main__":
-    _main()
+    exit(_main())
