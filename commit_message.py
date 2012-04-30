@@ -26,6 +26,12 @@ def _find_query_script():
     raise CommitMessageError("Could not find %s" % _QUERY_SCRIPT)
 
 
+def _sanitise_string(string):
+    '''Return `string` with all non-ascii characters removed.
+    '''
+    return "".join(i for i in string if ord(i) < 128)
+
+
 class CommitMessageError(Exception):
     '''CommitMessageError is raised when there is an error
     when performing an operation on the commit message.
@@ -67,7 +73,7 @@ class CommitMessage(object):
             result = processes.run_cmd(_find_query_script(),
                                        "--show",
                                        "--quiet",
-                                       input=self.message)
+                                       input=_sanitise_string(self.message))
             rawlist = str(result[1])
 
             # The output is one issue per line, but there may be

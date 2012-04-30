@@ -5,7 +5,7 @@ import os
 import sys
 import unittest
 
-from commit_message import CommitMessage
+from commit_message import CommitMessage, _sanitise_string
 
 
 class TestGetFixedIssues(unittest.TestCase):
@@ -20,6 +20,15 @@ class TestGetFixedIssues(unittest.TestCase):
         data = open(os.path.join(os.environ["TESTDIR"], filename))
         c = CommitMessage(data.read())
         return c.get_fixed_issues()
+
+    def test_sanitize_string(self):
+        """Tests that the _sanitise_string method correctly removes
+        non-ascii characters from the given string.
+        """
+        s = _sanitise_string("test" + "ö" + "test")
+        self.assertEquals(s, "testtest")
+        s = _sanitise_string("test" + "test")
+        self.assertEquals(s, "testtest")
 
     def test_changed_directory_in_tools_path(self):
         """Tests that the get_fixed_issues method works correctly when
