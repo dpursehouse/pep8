@@ -22,7 +22,7 @@ migrate ics-fuji edream6.1-fuji-release
 EXIT_STATUS=`expr $EXIT_STATUS + $?`
 migrate ics-fuji edream6.1-fuji-r2-att-release
 EXIT_STATUS=`expr $EXIT_STATUS + $?`
-migrate ics-fuji edream6.1-fuji-kddi-release
+migrate ics-fuji-kddi edream6.1-fuji-kddi-release
 EXIT_STATUS=`expr $EXIT_STATUS + $?`
 
 exit $EXIT_STATUS
