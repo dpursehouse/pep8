@@ -78,4 +78,13 @@
     <allowed-dms-tag name="Fix ASAP"/>
     <code-review>-1</code-review>
   </branch>
+  <branch name="blue-8960">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="CAF"/>
+    <allowed-dms-tag name="Fix ASAP"/>
+    <allowed-dms-tag name="DCM S2"/>
+    <allowed-dms-tag name="DCM CAF"/>
+    <allowed-dms-tag name="CA1"/>
+    <code-review>-1</code-review>
+  </branch>
 </branches>
