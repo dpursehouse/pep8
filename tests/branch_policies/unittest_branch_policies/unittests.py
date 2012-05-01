@@ -158,7 +158,7 @@ class TestBranchPolicies(unittest.TestCase):
     def test_invalid_score_without_dms(self):
         """ Test that the class constructor raises an exception
         when instantiated with a config that specifies a score
-        element in a branch that does not require DMS.
+        element in a branch that does not require DMS or tags.
         """
         self.assertRaises(BranchPolicyError, self._get_policy,
             "policy_invalid_score_without_dms.xml")

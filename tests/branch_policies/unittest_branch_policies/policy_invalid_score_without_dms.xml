@@ -2,7 +2,6 @@
 <branches>
   <branch name="branch-1">
     <dms-required>false</dms-required>
-    <allowed-dms-tag name="TAG 2"/>
     <code-review>-1</code-review>
   </branch>
 </branches>

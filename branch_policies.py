@@ -151,9 +151,11 @@ class BranchPolicies(object):
                                      VALID_CODE_REVIEW)
             verify = _get_score(branch, "verify", VALID_VERIFY)
 
-            if (code_review or verify) and not dms_required:
-                raise BranchPolicyError("Cannot specify score unless "
-                                        "DMS is required")
+            if (code_review or verify) and not \
+                    (dms_required or tagnames or tagpatterns):
+                raise BranchPolicyError("Cannot specify score for branch %s "
+                                        "because it does not require DMS or "
+                                        "tags" % name)
 
             for policy in branch.findall("cherrypick-policy"):
                 cherrypick_policies.append(CherrypickPolicy(policy))
