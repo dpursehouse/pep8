@@ -92,4 +92,11 @@
     <allowed-dms-tag name="DCM CAF"/>
     <code-review>-1</code-review>
   </branch>
+  <branch name="ics-mogami-row">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="CAF"/>
+    <allowed-dms-tag name="CAF2"/>
+    <allowed-dms-tag name="MR"/>
+    <code-review>-1</code-review>
+  </branch>
 </branches>
