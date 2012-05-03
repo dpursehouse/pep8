@@ -1,7 +1,5 @@
 #!/bin/bash -ex
 
-sleep 120
-
 # If the cm_tools git exists, make sure it's up to date.  If it
 # does not exist yet, clone it.
 if [ -d cm_tools ] ; then
