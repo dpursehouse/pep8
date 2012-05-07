@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.41'
+__version__ = '0.3.42'
 
 REPO = 'repo'
 GIT = 'git'
@@ -172,7 +172,7 @@ Useful links:
 How to cherry pick:
   https://wiki.sonyericsson.net/androiki/How_to_cherry-pick
 Cherry pick status page:
-  http://android-cm-web.sonyericsson.net/cherrypick/index.php
+  http://cmweb.sonyericsson.net/harvest/cherries/
 """
 
 # Mail notification when DMS Tag Server fails and no fallback option is used
