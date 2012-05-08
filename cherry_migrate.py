@@ -150,7 +150,7 @@ def migrate(old_server, new_server, source, target, dry_run=False):
             logging.info("%s: Already migrated", cherry.sha1)
             already_migrated += 1
             continue
-        if cherry.message.startswith("Failed to push"):
+        if cherry.message and cherry.message.startswith("Failed to push"):
             logging.info("%s: Not migrating \"Failed to push\"", cherry.sha1)
             skipped += 1
             continue
