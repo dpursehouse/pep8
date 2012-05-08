@@ -140,6 +140,7 @@ def migrate(old_server, new_server, source, target, dry_run=False):
     errors = []
     already_migrated = 0
     migrated = 0
+    skipped = 0
     server_new = CMServer(new_server)
     server_old = CMServer(old_server)
     legacy_cherries = get_legacy_cherries(server_old, target)
@@ -148,6 +149,10 @@ def migrate(old_server, new_server, source, target, dry_run=False):
         if cherry.sha1 in migrated_cherries:
             logging.info("%s: Already migrated", cherry.sha1)
             already_migrated += 1
+            continue
+        if cherry.message.startswith("Failed to push"):
+            logging.info("%s: Not migrating \"Failed to push\"", cherry.sha1)
+            skipped += 1
             continue
         logging.info("%s: Migrating...", cherry.sha1)
         if not dry_run:
@@ -162,6 +167,7 @@ def migrate(old_server, new_server, source, target, dry_run=False):
                 logging.error(message)
                 errors.append(message)
     logging.info("\nMigrated %d cherries", migrated)
+    logging.info("\nSkipped %d \"Failed to push\" cherries", skipped)
     logging.info("Skipped %d already migrated cherries", already_migrated)
     if errors:
         logging.error("%d Errors:", len(errors))
