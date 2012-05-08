@@ -103,7 +103,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.42'
+__version__ = '0.3.43'
 
 REPO = 'repo'
 GIT = 'git'
@@ -1215,8 +1215,21 @@ def cherry_pick(unique_commit_list, target_branch):
                 except GerritError, e:
                     logging.error("Error collecting email addresses: %s" % e)
 
-                if  OPT.reviewers:
+                # If we were unable to get the source change URL, use the
+                # sha1 instead.
+                if not url:
+                    url = cmt.commit
+
+                # Add reviewers specified in options
+                if OPT.reviewers:
                     reviewers += OPT.reviewers.split(',')
+
+                # Send failure notification email to the reviewers
+                # when not in dry-run mode.
+                emails = []
+                if not OPT.dry_run:
+                    emails += reviewers
+
                 # now cherry pick
                 r_cmd = [GIT, 'cherry-pick', '-x', cmt.commit]
                 git_log, err, ret = execmd(r_cmd)
@@ -1264,44 +1277,34 @@ def cherry_pick(unique_commit_list, target_branch):
                                     except GerritError, e:
                                         logging.error("Gerrit error: %s" % e)
                                 else:
-                                    pick_result = 'Gerrit URL not found ' \
+                                    pick_result = 'Failed to find Gerrit URL ' \
                                                   'after push'
                         else:
                             if push_attempts == MAX_PUSH_ATTEMPTS:
-                                logging.info(
+                                logging.error(
                                     'Failed to push %d times, giving up.' %
                                     MAX_PUSH_ATTEMPTS)
                                 pick_result = 'Failed to push to Gerrit'
                             else:
                                 logging.info('git push failed.  Retrying...')
                 else:
-                    # Send failure notification email to the reviewers
-                    # when not in dry-run mode.
-                    emails = []
-                    if not OPT.dry_run:
-                        emails += reviewers
-                    # If we were unable to get the source change URL, use the
-                    # sha1 instead.
-                    if not url:
-                        url = cmt.commit
                     if 'the conflicts' in err:
                         pick_result = 'Failed due to merge conflict'
-                        conflict_mail(target_branch, url, cmt.commit,
-                                      emails, pick_result)
                     elif 'is a merge but no -m' in err:
-                        pick_result = 'It is a merge commit'
-                        conflict_mail(target_branch, url, cmt.commit,
-                                      emails, pick_result)
+                        pick_result = 'Failed because it is a merge commit'
                     elif 'nothing to commit' in git_log:
                         pick_result = 'Already merged'
                     else:
                         pick_result = 'Failed due to unknown reason'
-                        conflict_mail(target_branch, url, cmt.commit,
-                                      emails, pick_result)
                     logging.error(err)
                     logging.error("Resetting to HEAD")
                     git_log, err, ret = execmd([GIT, 'reset', '--hard'])
                     logging.info(git_log)
+
+                # If something went wrong, send failure mail.
+                if pick_result.startswith("Failed"):
+                    conflict_mail(target_branch, url, cmt.commit,
+                                  emails, pick_result)
             else:
                 pick_result = '%s %s' % (git_log, err)
                 logging.info(pick_result)
