@@ -35,5 +35,10 @@ do
         --exclude-manifest-ref '/caf/' \
         --exclude-manifest-ref '/ti/' \
         --exclude-manifest-ref '-feat(ure)$' \
-        --exclude-manifest-ref '-feat(ure)?-'
+        --exclude-manifest-ref '-feat(ure)?-' \
+        --exclude-manifest-ref '/volatile-' \
+        --exclude-manifest-ref '-ux-program$' \
+        --exclude-manifest-ref '/ics-blue-att-test-downstream$' \
+        --exclude-manifest-ref '/feature-' \
+        --exclude-manifest-ref '/odin-8064$'
 done
