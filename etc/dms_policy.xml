@@ -78,13 +78,6 @@
     <allowed-dms-tag name="Fix ASAP"/>
     <code-review>-1</code-review>
   </branch>
-  <branch name="blue-8960">
-    <dms-required>true</dms-required>
-    <allowed-dms-tag name="Fix ASAP"/>
-    <allowed-dms-tag name="DCM S2"/>
-    <allowed-dms-tag name="DCM CAF"/>
-    <code-review>-1</code-review>
-  </branch>
   <branch name="blue-1.0-docomo-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="Fix ASAP"/>
