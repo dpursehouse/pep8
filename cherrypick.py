@@ -1,12 +1,6 @@
 #!/usr/bin/env python
 
 '''
-@author: Ekramul Huq
-
-'''
-
-DESCRIPTION = \
-'''
 Find cherry pick candidates in source branch(es) by processing the git log of
 each base branch and target branch. From the log, list of DMSs will be checked
 with DMS tag server and commits with correct DMS tag (--dms-tags) will be
@@ -93,7 +87,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.3.45'
+__version__ = '0.3.46'
 
 REPO = 'repo'
 GIT = 'git'
@@ -181,19 +175,6 @@ Thanks,
 Cherry-picker.
 Version: %s
 """
-
-
-class HelpFormatter(optparse.IndentedHelpFormatter):
-    """
-    Help formatter to override default formatter
-    """
-    def format_description(self, description):
-        """
-        Clean the text format and just print the description
-        """
-        if description:
-            print "Description:", description
-        return ''
 
 
 class GerritError(Exception):
@@ -398,8 +379,7 @@ def option_parser():
     """
     usage = ("%prog -t TARGET_BRANCH [--config CONF_FILE | -d DMS_TAGS" +
              " --mail-sender SENDER_ADDRESS [options]]")
-    opt_parser = optparse.OptionParser(formatter=HelpFormatter(),
-                                       usage=usage, description=DESCRIPTION,
+    opt_parser = optparse.OptionParser(usage=usage,
                                        version='%prog ' + __version__)
     opt_parser.add_option('-c', '--config',
                      dest='config_file',
