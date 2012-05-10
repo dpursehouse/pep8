@@ -87,7 +87,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.3.48'
+__version__ = '0.3.49'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -385,8 +385,8 @@ def option_parser():
     """
     Option parser
     """
-    usage = ("%prog -t TARGET_BRANCH [--config CONF_FILE | -d DMS_TAGS" +
-             " --mail-sender SENDER_ADDRESS [options]]")
+    usage = ("%prog -s SOURCE_BRANCH -t TARGET_BRANCH [--config CONF_FILE |" +
+             " -d DMS_TAGS --mail-sender SENDER_ADDRESS [options]]")
     opt_parser = optparse.OptionParser(usage=usage,
                                        version='%prog ' + __version__)
     opt_parser.add_option('-c', '--config',
@@ -400,6 +400,9 @@ def option_parser():
     opt_parser.add_option('-t', '--target-branch',
                      dest='target_branch',
                      help='target branch')
+    opt_parser.add_option('-s', '--source-branch',
+                     dest='source_branch',
+                     help='source branch')
     opt_parser.add_option("-i", "--include-target-branch",
                           dest="target_branch_include",
                           action="append", metavar="REGEXP",
@@ -1446,9 +1449,13 @@ def main():
     if len(sys.argv) < 2:
         OPT_PARSER.error("Insufficient arguments")
 
+    if not OPT.source_branch:
+        cherry_pick_exit(STATUS_ARGS, "Must pass source (-s) branch name")
+
+    if not OPT.target_branch:
+        cherry_pick_exit(STATUS_ARGS, "Must pass target (-t) branch name")
+
     if OPT.config_file:
-        if not OPT.target_branch:
-            cherry_pick_exit(STATUS_ARGS, "Must pass target (-t) branch name")
         config_parser()
 
     if not OPT.target_branch_include:
