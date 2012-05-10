@@ -75,14 +75,12 @@ Example:
 '''
 
 import errno
-import json
 import logging
 import optparse
 import os
 import pycurl
 import re
 import signal
-import socket
 import subprocess
 import sys
 import tempfile
@@ -103,7 +101,7 @@ from processes import ChildExecutionError
 DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
 WebPages/Search.aspx"
 
-__version__ = '0.3.43'
+__version__ = '0.3.44'
 
 REPO = 'repo'
 GIT = 'git'
@@ -260,7 +258,7 @@ class Gerrit(object):
                 self.gerrit.get_review_information(commit,
                                                    exclude_jenkins=True,
                                                    include_owner=True)
-            logging.info("Emails: %s" % ",".join(emails))
+            logging.info("Emails: %s", ",".join(emails))
             return emails, url
         except GerritQueryError, e:
             raise GerritError("Gerrit query error: %s", e)
@@ -679,7 +677,7 @@ def get_dms_list(target_branch):
             if not len(old_cherries):
                 logging.info("No old cherries found")
         except CherrypickStatusError, e:
-            logging.error("Status Server Error: %s " % e)
+            logging.error("Status Server Error: %s ", e)
 
     for name, rev_path in base_proj_rev.iteritems():
         target_revision = None
@@ -688,10 +686,10 @@ def get_dms_list(target_branch):
         base_rev = rev_path.split(',')[0]
         if OPT.include_git:
             if name not in OPT.include_git.split(','):
-                logging.info("%s: pass: git is not included" % name)
+                logging.info("%s: pass: git is not included", name)
                 continue
         elif OPT.exclude_git and name in OPT.exclude_git.split(','):
-            logging.info("%s: pass: git is excluded" % name)
+            logging.info("%s: pass: git is excluded", name)
             continue
 
         os.chdir(os.path.join(OPT.cwd, path))
@@ -699,52 +697,52 @@ def get_dms_list(target_branch):
         # If the revision of the source git is a sha1 or tag, we don't need
         # to cherry pick from it.
         if git.is_sha1_or_tag(base_rev):
-            logging.info("%s: pass: source revision is a sha1 or tag" % name)
+            logging.info("%s: pass: source revision is a sha1 or tag", name)
             continue
 
         # Skip any source gits that do not have a valid revision
         ret = execmd([GIT, 'show-ref', '-q', '--verify',
                       'refs/remotes/origin/' + base_rev])[2]
         if ret != 0:
-            logging.error("%s: pass: invalid revision %s" % (name, base_rev))
+            logging.error("%s: pass: invalid revision %s", name, base_rev)
             continue
 
         # Check that the git is available in the target manifest
         if not path in dst_proj_rev:
             logging.info("%s: pass: project does not exist in target "
-                         "manifest" % name)
+                         "manifest", name)
             continue
 
         t_revision = dst_proj_rev[path]
         if t_revision == base_rev:
             # No need to proceed if source and target both have same revision
             logging.info("%s: pass: project has same revision %s in target "
-                         "manifest" % (name, t_revision))
+                         "manifest", name, t_revision)
             continue
 
         if (git.is_sha1(t_revision)):
             target_revision = t_revision  # it's a sha1
             target_is_sha1 = True
-            logging.info("%s: target revision is a sha-1" % name)
+            logging.info("%s: target revision is a sha-1", name)
         else:
             matcher = IncludeExcludeMatcher(OPT.target_branch_include,
                                             OPT.target_branch_exclude)
             if (matcher.match(t_revision)):
                 target_revision = 'origin/' + t_revision
-                logging.info("%s: target branch is %s" % (name, t_revision))
+                logging.info("%s: target branch is %s", name, t_revision)
             else:
-                logging.info("%s: pass: target branch %s is excluded" % \
-                             (name, t_revision))
+                logging.info("%s: pass: target branch %s is excluded",
+                             name, t_revision)
                 continue
 
         os.chdir(os.path.join(OPT.cwd, path))
         mergebase, err, ret = execmd([GIT, 'merge-base', 'origin/' +
                                       base_rev, target_revision])
         if not mergebase:
-            logging.info("%s: pass: no merge-base for %s and %s" % \
-                         (name, base_rev, target_branch))
-            merge_base_log.write('No merge-base for %s and %s\n' %
-                                 (base_rev, target_branch))
+            logging.info("%s: pass: no merge-base for %s and %s",
+                         name, base_rev, target_branch)
+            merge_base_log.write('No merge-base for %s and %s\n',
+                                 base_rev, target_branch)
             logging.error(err)
             continue
         merge_base_log.write(mergebase + '\n')
@@ -779,7 +777,7 @@ def get_dms_list(target_branch):
                     commit.target_origin = target_revision
             else:
                 # Nothing to cherry pick in this git, go to next
-                logging.info("%s: pass: nothing to cherry pick" % name)
+                logging.info("%s: pass: nothing to cherry pick", name)
                 os.chdir(OPT.cwd)
                 continue
         if b_commit_list:
@@ -812,7 +810,7 @@ def clone_manifest_git(branch):
     ret = execmd(['rm', '-f', '-r', 'manifest'])[2]
     if (ret != 0):
         cherry_pick_exit(STATUS_RM_MANIFEST_DIR)
-    logging.info("Cloning the manifest git of branch %s" % branch)
+    logging.info("Cloning the manifest git of branch %s", branch)
     if OPT.amss_manifest:
         out, err, ret = execmd([GIT, 'clone',
                            'git://%s/platform/amssmanifest'
@@ -877,7 +875,7 @@ def update_manifest(branch, skip_review):
         return STATUS_UPDATE_MANIFEST
     out, err, ret = execmd([GIT, 'rebase', 'origin/' + branch], 300)
     if (ret != 0):
-        logging.error("Can't rebase the manifest: %s" % err)
+        logging.error("Can't rebase the manifest: %s", err)
         update_manifest_mail(branch, 'manifest', recipient)
         return STATUS_UPDATE_MANIFEST
     #Push the updated manifest
@@ -934,7 +932,7 @@ def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
         try:
             gerrit = Gerrit(gerrit_user=gituser)
         except GerritError, e:
-            logging.error("Gerrit error: %s" % e)
+            logging.error("Gerrit error: %s", e)
             return False
 
         #take a commit
@@ -946,20 +944,20 @@ def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
             try:
                 recipient = gerrit.collect_email_addresses(cmt.commit)[0]
             except GerritError, e:
-                logging.error("Unable to get recipient email: %s" % e)
+                logging.error("Unable to get recipient email: %s", e)
         ret = execmd([GIT, 'show-ref', '-q', '--verify',
                       'refs/remotes/origin/' + target_branch])[2]
         if ret == 0:
             logging.info("Branch %s already available for %s. " \
-                         "Manifest file will be updated."
-                         % (target_branch, git_name))
+                         "Manifest file will be updated.",
+                         target_branch, git_name)
             dst_manifest.update_revision(git_name, target_branch)
             manifest_change_required = True
             upd_project_list.append(git_name)
             return True
         if OPT.dry_run:
-            logging.info("Dry run: %s branch for %s will not be created." %
-                         (target_branch, git_name))
+            logging.info("Dry run: %s branch for %s will not be created.",
+                         target_branch, git_name)
             return True
         else:
             cmd = [GIT, 'push', 'ssh://%s@%s:29418/%s.git' %
@@ -967,8 +965,8 @@ def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
                    '%s:refs/heads/%s' % (sha1, target_branch)]
             log, err, ret = execmd(cmd)
             if ret == 0:
-                logging.info("Branch %s created on %s.  Branch point: %s" %
-                             (target_branch, git_name, sha1))
+                logging.info("Branch %s created on %s.  Branch point: %s",
+                             target_branch, git_name, sha1)
                 logging.info(log)
                 execmd([GIT, 'fetch'])
                 dst_manifest.update_revision(git_name, target_branch)
@@ -979,8 +977,8 @@ def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
                 return True
             else:
                 logging.error("Failed to create %s branch on %s. " \
-                              "Branch point: %s" %
-                              (target_branch, git_name, sha1))
+                              "Branch point: %s",
+                              target_branch, git_name, sha1)
                 logging.error(log)
                 logging.error(err)
                 return False
@@ -1051,7 +1049,7 @@ def dms_get_fix_for(commit_list):
                         commit_tag_list.append(cmt)
             return commit_tag_list
     except DMSTagServerError, e:
-        logging.error('DMS tag server error: %s' % e)
+        logging.error('DMS tag server error: %s', e)
         if not OPT.use_web_interface:
             # No fallback option specified.  Report the error and quit.
             cherry_info = '\n'.join([x.get_commit_info() for x in commit_list])
@@ -1160,7 +1158,7 @@ def cherry_pick(unique_commit_list, target_branch):
         try:
             status_server = CherrypickStatusServer(OPT.status_server)
         except CherrypickStatusError, e:
-            logging.error("Status Server Error: %s " % e)
+            logging.error("Status Server Error: %s ", e)
 
     logging.info("Cherry pick starting")
 
@@ -1188,9 +1186,9 @@ def cherry_pick(unique_commit_list, target_branch):
                         status_server.update_status(target_branch,
                             str(cmt) + ',' + url)
                     except CherrypickStatusError, e:
-                        logging.error("Status Server Error: %s" % e)
+                        logging.error("Status Server Error: %s", e)
         except GerritError, e:
-            logging.error("Gerrit error: %s" % e)
+            logging.error("Gerrit error: %s", e)
 
         # If we've found this commit, no need to cherry pick it
         if found:
@@ -1199,7 +1197,7 @@ def cherry_pick(unique_commit_list, target_branch):
         # Start the cherry pick
         try:
             pick_result = ''
-            logging.info('Cherry picking %s' % cmt)
+            logging.info('Cherry picking %s', cmt)
             os.chdir(os.path.join(OPT.cwd, cmt.path))
 
             # Check out the topic branch
@@ -1213,7 +1211,7 @@ def cherry_pick(unique_commit_list, target_branch):
                 try:
                     reviewers, url = gerrit.collect_email_addresses(cmt.commit)
                 except GerritError, e:
-                    logging.error("Error collecting email addresses: %s" % e)
+                    logging.error("Error collecting email addresses: %s", e)
 
                 # If we were unable to get the source change URL, use the
                 # sha1 instead.
@@ -1275,14 +1273,14 @@ def cherry_pick(unique_commit_list, target_branch):
                                         if OPT.approve:
                                             gerrit.approve(change_id)
                                     except GerritError, e:
-                                        logging.error("Gerrit error: %s" % e)
+                                        logging.error("Gerrit error: %s", e)
                                 else:
                                     pick_result = 'Failed to find Gerrit URL ' \
                                                   'after push'
                         else:
                             if push_attempts == MAX_PUSH_ATTEMPTS:
                                 logging.error(
-                                    'Failed to push %d times, giving up.' %
+                                    'Failed to push %d times, giving up.',
                                     MAX_PUSH_ATTEMPTS)
                                 pick_result = 'Failed to push to Gerrit'
                             else:
@@ -1330,7 +1328,7 @@ def cherry_pick(unique_commit_list, target_branch):
                 status_server.update_status(target_branch,
                     str(cmt) + ',' + pick_result)
             except CherrypickStatusError, e:
-                logging.error("Server is not reachable to update: %s" % e)
+                logging.error("Server is not reachable to update: %s", e)
 
     os.chdir(OPT.cwd)
 
@@ -1386,7 +1384,7 @@ def execmd(cmd, timeout=30):
                          "complete in %d sec." % (" ".join(cmd), timeout)
         kill_check.clear()
         if process.poll() != 0:
-            logging.error('Error executing: ' + " ".join(cmd))
+            logging.error('Error executing: %s', " ".join(cmd))
         return result_out, result_err, process.poll()
     except OSError, exp:
         logging.error(exp)
@@ -1404,7 +1402,7 @@ def log_to_file(contents, file_name=None, info=None, echo=False):
         with open(file_name, 'wb') as f:
             f.write(contents)
     except Exception, e:
-        logging.error("Error writing to file %s: %s" % (file_name, e))
+        logging.error("Error writing to file %s: %s", file_name, e)
 
     if echo:
         if info:
@@ -1472,13 +1470,12 @@ def email(subject, body, recipient):
             mailer.sendmail(sender, recipient, msg.as_string())
             mailer.quit()
         except smtplib.SMTPException, exp:
-            logging.error('Failed to send mail due to SMTP error: %s' % exp[1])
+            logging.error('Failed to send mail due to SMTP error: %s', exp[1])
             return
-        logging.info('Mail sent to %s for %s' % (', '.join(recipient),
-                                                 subject))
+        logging.info('Mail sent to %s for %s', ', '.join(recipient), subject)
     else:
         logging.error('Mail not sent: No recipients')
-        logging.error('%s\n%s' % (subject, body))
+        logging.error('%s\n%s', subject, body)
 
 
 def config_parser():
@@ -1548,7 +1545,7 @@ def main():
 
     args = ["%s = %s" %
             (key, value) for key, value in OPT.__dict__.iteritems()]
-    logging.info("Arguments are:\n%s\n" % "\n".join(args))
+    logging.info("Arguments are:\n%s\n", "\n".join(args))
     status_code = STATUS_OK
 
     if not os.path.exists(OPT.cwd + '/.repo'):
@@ -1580,7 +1577,7 @@ def main():
         for commit in unique_commit_list:
             prts = commit.split(',')
             if len(prts) < 5:
-                logging.error('Not enough parameters in %s' % commit)
+                logging.error('Not enough parameters in %s', commit)
                 continue
             else:
                 cmt = Commit(target=prts[0], path=prts[1], name=prts[2],
