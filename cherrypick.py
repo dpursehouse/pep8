@@ -33,10 +33,6 @@ It is possible to simulate the whole process by using the --dry-run option and
 possible to create only the cherry pick list and skip the push to Gerrit
 action with the -n(--no-push-to-gerrit) option.
 
-SEMC username and password are required in .netrc file for DMS tag check
-through web. It is not necessary if dms tag server is used (--dms-tag-server)
-and web interface is not used.
-
 repo envirionment must be initialized in working directory before you run this
 script.
 
@@ -78,7 +74,6 @@ import errno
 import logging
 import optparse
 import os
-import pycurl
 import re
 import signal
 import subprocess
@@ -98,10 +93,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-DMS_URL = "http://seldclq140.corpusers.net/DMSFreeFormSearch/\
-WebPages/Search.aspx"
-
-__version__ = '0.3.44'
+__version__ = '0.3.45'
 
 REPO = 'repo'
 GIT = 'git'
@@ -189,32 +181,6 @@ Thanks,
 Cherry-picker.
 Version: %s
 """
-
-
-class Httpdump(object):
-    """Http dump class"""
-    def __init__(self, url):
-        self.url = url
-        self.contents = ''
-
-    def body_callback(self, buf):
-        """
-        Call back function to read data
-        """
-        self.contents = self.contents + buf
-
-    def perform(self):
-        """
-        Perform data collection
-        """
-        my_curl = pycurl.Curl()
-        my_curl.setopt(pycurl.URL, self.url)
-        my_curl.setopt(pycurl.NETRC, 1)
-        my_curl.setopt(pycurl.HTTPAUTH, pycurl.HTTPAUTH_NTLM)
-        my_curl.setopt(pycurl.WRITEFUNCTION, self.body_callback)
-        my_curl.setopt(pycurl.VERBOSE, False)
-        my_curl.perform()
-        my_curl.close()
 
 
 class HelpFormatter(optparse.IndentedHelpFormatter):
@@ -486,10 +452,6 @@ def option_parser():
                      dest='dms_tag_server',
                      help='IP address or name of DMS tag server',
                      action="store", default=None)
-    opt_parser.add_option('--use-web-interface',
-                     dest='use_web_interface',
-                     help='Use DMS web interface if DMS tag server fails',
-                     action="store", default=False)
     opt_parser.add_option('--status-server',
                      dest='status_server',
                      help='IP address or name of status server',
@@ -1027,7 +989,6 @@ def dms_get_fix_for(commit_list):
     OPT.tag_list
     """
     commit_tag_list = []
-    progress = 0
     if not commit_list:
         return commit_tag_list
 
@@ -1049,51 +1010,18 @@ def dms_get_fix_for(commit_list):
                         commit_tag_list.append(cmt)
             return commit_tag_list
     except DMSTagServerError, e:
+        # Report the error and quit.
         logging.error('DMS tag server error: %s', e)
-        if not OPT.use_web_interface:
-            # No fallback option specified.  Report the error and quit.
-            cherry_info = '\n'.join([x.get_commit_info() for x in commit_list])
-            recipient = []
-            subject = '[Cherrypick] DMS tag server error [%s]' % \
-                      OPT.target_branch
-            body = TAG_SERVER_FAILED_NOTIFICATION_MAIL % \
-                    (OPT.dms_tag_server, e, OPT.target_branch,
-                    cherry_info, __version__)
-            email(subject, body, recipient)
-            cherry_pick_exit(STATUS_DMS_SRV,
-                             'Fallback to web interface is disabled.  ' \
-                             'Aborting.')
-
-    logging.info('Using DMS web interface')
-    for cmt in commit_list:
-        dms = cmt.dms
-        dump = Httpdump(DMS_URL + "?q=0___" + str(dms) + "___issue")
-        progress += 1
-        dump.perform()
-        contents = dump.contents
-        if "TITLE>You are not authorized to view this page</TITLE" in contents:
-            message = 'Authentication error, please check your .netrc file\n' \
-                      'Put "machine seldclq140.corpusers.net ' \
-                      'login <semcid> password <password>" in ' \
-                      '.netrc file and run again.'
-            cherry_pick_exit(STATUS_DMS_SRV, message)
-
-        # Read fix for and ecb decision and add to dms tag list
-        fixfor = re.findall(r'_lbFixFor.*>(.*)</span>&nbsp;</td>', contents)
-        ecbdecision = re.findall(r'CCBECBDecisionLog.*>(.*)</span>&nbsp;</td>',
-                                  contents)
-        if fixfor and ecbdecision:
-            fixfor = fixfor[0]
-            ecbdecision = ecbdecision[0]
-            if fixfor in OPT.dms_tags.split(','):
-                commit_tag_list.append(cmt)
-        print 'Collecting DMS info[' + int(progress * 50 / total) * '+',
-        print int((total - progress) * 50 / total) * '-' + "]", str(progress),
-        print '/' + str(total), "\r",
-        sys.stdout.flush()
-
-    print ''
-    return commit_tag_list
+        cherry_info = '\n'.join([x.get_commit_info() for x in commit_list])
+        recipient = []
+        subject = '[Cherrypick] DMS tag server error [%s]' % \
+                  OPT.target_branch
+        body = TAG_SERVER_FAILED_NOTIFICATION_MAIL % \
+                (OPT.dms_tag_server, e, OPT.target_branch,
+                cherry_info, __version__)
+        email(subject, body, recipient)
+        cherry_pick_exit(STATUS_DMS_SRV,
+                         'DMS Tag Server Error. Aborting.')
 
 
 def create_cherry_pick_list(commit_tag_list):
