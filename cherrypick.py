@@ -87,7 +87,10 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.3.47'
+__version__ = '0.3.48'
+
+# Disable pylint messages
+# pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
 
 REPO = 'repo'
 GIT = 'git'
@@ -316,6 +319,7 @@ class ManifestData(object):
             raise ValueError('Invalid base SHA1')
 
     def update_revision(self, project_name, new_revision):
+        """Update `project_name` revision to `new_revision`."""
         for element in self.get_projects():
             if (element.attributes['name'].nodeValue.encode('utf-8') ==
                     project_name):
@@ -345,6 +349,7 @@ class ManifestData(object):
         return self.dom.getElementsByTagName("project")
 
     def get_base_sha1(self):
+        """Return base sha1"""
         return self.base_sha1
 
 
@@ -757,13 +762,13 @@ def clone_manifest_git(branch):
         cherry_pick_exit(STATUS_RM_MANIFEST_DIR)
     logging.info("Cloning the manifest git of branch %s", branch)
     if OPT.amss_manifest:
-        out, err, ret = execmd([GIT, 'clone',
-                           'git://%s/platform/amssmanifest'
-                            % (GERRIT_URL), 'manifest', '-b', branch], 300)
+        _out, err, ret = execmd([GIT, 'clone',
+                            'git://%s/platform/amssmanifest'
+                             % (GERRIT_URL), 'manifest', '-b', branch], 300)
     else:
-        out, err, ret = execmd([GIT, 'clone',
-                           'git://%s/platform/manifest' % (GERRIT_URL),
-                           '-b', branch], 300)
+        _out, err, ret = execmd([GIT, 'clone',
+                            'git://%s/platform/manifest' % (GERRIT_URL),
+                            '-b', branch], 300)
 
     if (ret != 0):
         cherry_pick_exit(STATUS_CLONE_MANIFEST, err)
@@ -784,12 +789,12 @@ def update_manifest(branch, skip_review):
     os.chdir(OPT.cwd + '/manifest')
     #Creates a topic branch for the manifest changes
     #and writes the changes to default.xml
-    out, err, ret = execmd([GIT, 'branch', 'manifest-change',
-                            dst_manifest.get_base_sha1()])
+    _out, err, ret = execmd([GIT, 'branch', 'manifest-change',
+                             dst_manifest.get_base_sha1()])
     if (ret != 0):
         logging.error(err)
         return STATUS_UPDATE_MANIFEST
-    out, err, ret = execmd([GIT, 'checkout', 'manifest-change'])
+    _out, err, ret = execmd([GIT, 'checkout', 'manifest-change'])
     if (ret != 0):
         logging.error(err)
         return STATUS_UPDATE_MANIFEST
@@ -798,7 +803,7 @@ def update_manifest(branch, skip_review):
     except IOError, err:
         logging.error(err)
         return STATUS_UPDATE_MANIFEST
-    out, err, ret = execmd([GIT, 'add', 'default.xml'])
+    _out, err, ret = execmd([GIT, 'add', 'default.xml'])
     if (ret != 0):
         logging.error(err)
         return STATUS_UPDATE_MANIFEST
@@ -809,16 +814,16 @@ def update_manifest(branch, skip_review):
                  'Update revision(s) to branch:\n' \
                  '    ' + branch + '\n\n' \
                  'Project(s):\n' + proj_list
-    out, err, ret = execmd([GIT, 'commit', '-m', commit_msg])
+    _out, err, ret = execmd([GIT, 'commit', '-m', commit_msg])
     if (ret != 0):
         logging.error(err)
         return STATUS_UPDATE_MANIFEST
     #Rebase the manifest git
-    out, err, ret = execmd([GIT, 'fetch'], 300)
+    _out, err, ret = execmd([GIT, 'fetch'], 300)
     if (ret != 0):
         logging.error(err)
         return STATUS_UPDATE_MANIFEST
-    out, err, ret = execmd([GIT, 'rebase', 'origin/' + branch], 300)
+    _out, err, ret = execmd([GIT, 'rebase', 'origin/' + branch], 300)
     if (ret != 0):
         logging.error("Can't rebase the manifest: %s", err)
         update_manifest_mail(branch, 'manifest', recipient)
@@ -837,7 +842,7 @@ def update_manifest(branch, skip_review):
                'ssh://%s@%s:29418/platform/manifest' %
                (gituser, GERRIT_URL), 'HEAD:refs/%s/%s' % (dst_push, branch)]
 
-    out, err, ret = execmd(cmd, 300)
+    _out, err, ret = execmd(cmd, 300)
     if (ret != 0):
         logging.error(err)
         return STATUS_UPDATE_MANIFEST
@@ -1265,6 +1270,7 @@ def execmd(cmd, timeout=30):
     kill_check = threading.Event()
 
     def kill_process_after_timeout(pid):
+        """Callback method to kill process `pid` on timeout."""
         p = subprocess.Popen(['ps', '--ppid', str(pid)],
                              stdout=subprocess.PIPE)
         child_pids = []
