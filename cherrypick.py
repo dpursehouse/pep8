@@ -87,7 +87,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.3.50'
+__version__ = '0.3.51'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -214,9 +214,9 @@ class Gerrit(object):
             logging.info("Emails: %s", ",".join(emails))
             return emails, url
         except GerritQueryError, e:
-            raise GerritError("Gerrit query error: %s", e)
+            raise GerritError("Gerrit query error: %s" % e)
         except ChildExecutionError, e:
-            raise GerritError("Gerrit query execution error: %s", e)
+            raise GerritError("Gerrit query execution error: %s" % e)
 
     def is_commit_available(self, commit, target_branch, prj_name):
         ''' Return (url,date,status) tuple if `commit` is available in open
@@ -239,9 +239,9 @@ class Gerrit(object):
                         results[0]['status'])
             return None, None, None
         except GerritQueryError, e:
-            raise GerritError("Gerrit query error: %s", e)
+            raise GerritError("Gerrit query error: %s" % e)
         except ChildExecutionError, e:
-            raise GerritError("Gerrit query execution error: %s", e)
+            raise GerritError("Gerrit query execution error: %s" % e)
 
     def approve(self, change_id):
         ''' Approve the `change_id` with +2 score.
@@ -252,7 +252,7 @@ class Gerrit(object):
                                         patchset=1,
                                         codereview=2)
         except GerritQueryError, e:
-            raise GerritError("Gerrit query error: %s", e)
+            raise GerritError("Gerrit query error: %s" % e)
         except ChildExecutionError, e:
             raise GerritError("Error setting code review for change %s: %s" % \
                               (change_id, e))
@@ -265,7 +265,7 @@ class Gerrit(object):
             finder.add(change_id, reviewers)
         except AddReviewersError, e:
             raise GerritError("Error adding reviewers on change %s: %s" % \
-                              (change_id, e), echo=True)
+                              (change_id, e))
 
 
 class Commit(object):
