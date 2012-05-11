@@ -72,6 +72,20 @@
     <allowed-dms-tag name="ATT LE"/>
     <code-review>-1</code-review>
   </branch>
+  <branch name="edream6.1-fuji-r2-release">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="Fix ASAP"/>
+    <allowed-dms-tag name="CAF"/>
+    <code-review>-1</code-review>
+  </branch>
+  <branch name="esea-8260">
+    <dms-required>true</dms-required>
+    <allowed-dms-tag name="Fix ASAP"/>
+    <allowed-dms-tag name="ATT FFW"/>
+    <allowed-dms-tag name="CAF"/>
+    <allowed-dms-tag name="ATT LE"/>
+    <code-review>-1</code-review>
+  </branch>
   <branch name="edream6.1-fuji-kddi-release">
     <dms-required>true</dms-required>
     <allowed-dms-tag name="CAF"/>
