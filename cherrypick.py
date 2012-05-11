@@ -87,7 +87,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.3.51'
+__version__ = '0.3.52'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -1448,6 +1448,16 @@ def main():
     if OPT.config_file:
         config_parser()
 
+    # DMS tags must be specified, otherwise cherrypick script will
+    # try to cherrypick everything
+    if not OPT.dms_tags:
+        cherry_pick_exit(STATUS_ARGS, "Must specify DMS tags")
+    else:
+        # Handle the case that a string like " , " is passed as --dms-tags
+        tags = [tag for tag in OPT.dms_tags.strip().split(',') if tag]
+        if not tags:
+            cherry_pick_exit(STATUS_ARGS, "Must specify DMS tags")
+
     if not OPT.target_branch_include:
         OPT.target_branch_include = DEFAULT_TARGET_BRANCH_INCLUDES
 
@@ -1497,11 +1507,6 @@ def main():
         if commit_list:
             status_code = cherry_pick(commit_list, OPT.target_branch)
         cherry_pick_exit(status_code)
-
-    if (OPT.target_branch is None or OPT.dms_tags is None):
-        OPT_PARSER.print_help()
-        cherry_pick_exit(STATUS_ARGS, "Must provide target branch name (-t)" \
-                                      " and DMS tag list (-d)")
 
     commit_list = get_dms_list(OPT.target_branch)
     if not commit_list:
