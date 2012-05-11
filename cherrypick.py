@@ -79,9 +79,9 @@ import xml.dom.minidom
 
 from branch_policies import BranchPolicies
 from branch_policies import BranchPolicyError, CherrypickPolicyError
-from cherry_status import CherrypickStatusServer, CherrypickStatusError
-from cherry_status import DEFAULT_STATUS_SERVER
 from cm_server import CMServer, CMServerError, CredentialsError
+from cm_server import CherrypickStatus, CherrypickStatusError
+from cm_server import DEFAULT_SERVER
 from dmsutil import DMSTagServer, DMSTagServerError
 from find_reviewers import FindReviewers, AddReviewersError
 from gerrit import GerritSshConnection, GerritSshConfigError, GerritQueryError
@@ -89,7 +89,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.4.1'
+__version__ = '0.4.2'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -223,10 +223,10 @@ class Gerrit(object):
         except ChildExecutionError, e:
             raise GerritError("Gerrit query execution error: %s" % e)
 
-    def is_commit_available(self, commit, target_branch, prj_name):
-        ''' Return (url,date,status) tuple if `commit` is available in open
-        or abandoned state on `target_branch` of `prj_name`.
-        Otherwise return (None,None,None) tuple.
+    def is_commit_available(self, commit):
+        ''' Return cherry status object if `commit` is available in open
+        or abandoned state.
+        Otherwise return None.
         Raise GerritError if anything goes wrong.
         '''
         query = "project:%s status:open branch:%s " \
@@ -234,15 +234,23 @@ class Gerrit(object):
                 "OR " \
                 "project:%s status:abandoned branch:%s " \
                 "message:cherry.picked.from.commit.%s" % \
-                (prj_name, target_branch, commit,
-                 prj_name, target_branch, commit)
+                (commit.name, commit.target, commit.commit,
+                 commit.name, commit.target, commit.commit)
         try:
+            logging.info("Check for existing change in Gerrit: %s", query)
             results = self.gerrit.query(query)
-            if len(results) and 'url' in results[0]:
-                return (results[0]['url'],
-                        results[0]['lastUpdated'],
-                        results[0]['status'])
-            return None, None, None
+            logging.info("Found %d matches", len(results))
+            if len(results):
+                cherry = CherrypickStatus()
+                cherry.sha1 = commit.commit
+                cherry.project = commit.name
+                cherry.branch = commit.target
+                cherry.set_dms(commit.dms)
+                if 'change' in results[0] and 'status' in results[0]:
+                    cherry.set_change_nr(int(results[0]['change']))
+                    cherry.set_status(results[0]['status'])
+                    return cherry
+            return None
         except GerritQueryError, e:
             raise GerritError("Gerrit query error: %s" % e)
         except ChildExecutionError, e:
@@ -447,7 +455,7 @@ def option_parser():
     opt_parser.add_option('--status-server',
                      dest='status_server',
                      help='IP address or name of status server',
-                     action="store", default=DEFAULT_STATUS_SERVER)
+                     action="store", default=DEFAULT_SERVER)
     opt_parser.add_option('--approve',
                      dest='approve',
                      help='Approve uploaded change set in Gerrit with +2',
@@ -623,15 +631,18 @@ def get_dms_list(target_branch):
     base_commit_list, target_commit_list = [], []
 
     old_cherries = None
-    status_server = None
-    if OPT.status_server:
-        try:
-            status_server = CherrypickStatusServer(OPT.status_server)
-            old_cherries = status_server.get_old_cherrypicks(target_branch)
-            if not len(old_cherries):
-                logging.info("No old cherries found")
-        except CherrypickStatusError, e:
-            logging.error("Status Server Error: %s ", e)
+    try:
+        global cmserver
+        logging.info("Get old cherries from CM server...")
+        old_cherries = cmserver.get_old_cherrypicks(OPT.manifest,
+                                                    OPT.source_branch,
+                                                    target_branch)
+        if old_cherries:
+            logging.info("Found %s old cherries", len(old_cherries))
+        else:
+            logging.info("No old cherries found")
+    except (CMServerError, CherrypickStatusError), e:
+        logging.error("Error getting old cherry data: %s ", e)
 
     for name, rev_path in base_proj_rev.iteritems():
         target_revision = None
@@ -712,7 +723,7 @@ def get_dms_list(target_branch):
         # Exclude any commits that have already been processed and are
         # registered on the status server.
         if old_cherries:
-            all_cherries = "\n".join(old_cherries)
+            all_cherries = [cherry.sha1 for cherry in old_cherries]
             for cmt in b_commit_list_full:
                 if cmt.commit in all_cherries:
                     logging.info("%s: commit %s already processed once",
@@ -1064,12 +1075,7 @@ def cherry_pick(unique_commit_list, target_branch):
     #keep the result here
     cherrypick_result = []
 
-    status_server = None
-    if OPT.status_server:
-        try:
-            status_server = CherrypickStatusServer(OPT.status_server)
-        except CherrypickStatusError, e:
-            logging.error("Status Server Error: %s ", e)
+    global cmserver
 
     logging.info("Cherry pick starting")
 
@@ -1083,21 +1089,21 @@ def cherry_pick(unique_commit_list, target_branch):
         # but was not registered in the status server.
         found = False
         try:
-            url, date, status = gerrit.is_commit_available(cmt.commit,
-                                                           cmt.target,
-                                                           cmt.name)
-            if url and date and status:
+            cherry = gerrit.is_commit_available(cmt)
+            if cherry:
                 # It was found.  Update it in the status server.
                 found = True
-                logging.info('%s: commit %s already in Gerrit: %s,%s,%s',
-                             cmt.name, cmt.commit, url, status,
-                             time.ctime(date))
-                if status_server and not OPT.dry_run:
+                logging.info('%s: commit %s already in Gerrit: Change %d, %s',
+                             cmt.name, cmt.commit, cherry.change_nr,
+                             cherry.status)
+                if not OPT.dry_run:
                     try:
-                        status_server.update_status(target_branch,
-                            str(cmt) + ',' + url)
-                    except CherrypickStatusError, e:
-                        logging.error("Status Server Error: %s", e)
+                        cmserver.update_cherrypick_status(OPT.manifest,
+                                                          OPT.source_branch,
+                                                          target_branch,
+                                                          cherry)
+                    except CMServerError, e:
+                        logging.error("CM Server Error: %s", e)
         except GerritError, e:
             logging.error("Gerrit error: %s", e)
 
@@ -1108,6 +1114,7 @@ def cherry_pick(unique_commit_list, target_branch):
         # Start the cherry pick
         try:
             pick_result = ''
+            change_id = None
             logging.info('Cherry picking %s', cmt)
             os.chdir(os.path.join(OPT.cwd, cmt.path))
 
@@ -1234,12 +1241,23 @@ def cherry_pick(unique_commit_list, target_branch):
             ret_err = STATUS_CHERRYPICK_FAILED
 
         cherrypick_result.append(str(cmt) + ',' + pick_result)
-        if status_server and not OPT.dry_run:
+        if not OPT.dry_run:
             try:
-                status_server.update_status(target_branch,
-                    str(cmt) + ',' + pick_result)
-            except CherrypickStatusError, e:
-                logging.error("Server is not reachable to update: %s", e)
+                cherry = CherrypickStatus()
+                cherry.sha1 = cmt.commit
+                cherry.project = cmt.name
+                cherry.branch = target_branch
+                if change_id is not None:
+                    cherry.set_change_nr(int(change_id))
+                else:
+                    cherry.set_message(pick_result)
+                cherry.set_dms(cmt.dms)
+                cmserver.update_cherrypick_status(OPT.manifest,
+                                                  OPT.source_branch,
+                                                  target_branch,
+                                                  cherry)
+            except (CMServerError, CherrypickStatusError), e:
+                logging.error("Error updating cherry pick status: %s", e)
 
     os.chdir(OPT.cwd)
 
