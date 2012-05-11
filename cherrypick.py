@@ -87,7 +87,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.3.49'
+__version__ = '0.3.50'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -472,6 +472,11 @@ def option_parser():
                      help='List of gits to be included (comma separated)' +
                      '--exclude-git will be ignored.',
                      default=None,)
+    opt_parser.add_option('-m', '--manifest',
+                     dest='manifest',
+                     help='Specify which manifest to use.',
+                     action="store",
+                     default="platform/manifest")
     #debug options
     opt_group = opt_parser.add_option_group('Debug options')
     opt_group.add_option('-v', '--verbose',
@@ -509,12 +514,6 @@ def option_parser():
                      help='Use this Gerrit user to push, useful for ' +
                      'hudson job',
                      default=None)
-    opt_group.add_option('--amss-manifest',
-                     dest='amss_manifest',
-                     help='To specify platform/amssmanifest instead of ' +
-                     'platform/manifest',
-                     action="store_true",
-                     default=False)
     return opt_parser
 
 
@@ -764,14 +763,10 @@ def clone_manifest_git(branch):
     if (ret != 0):
         cherry_pick_exit(STATUS_RM_MANIFEST_DIR)
     logging.info("Cloning the manifest git of branch %s", branch)
-    if OPT.amss_manifest:
-        _out, err, ret = execmd([GIT, 'clone',
-                            'git://%s/platform/amssmanifest'
-                             % (GERRIT_URL), 'manifest', '-b', branch], 300)
-    else:
-        _out, err, ret = execmd([GIT, 'clone',
-                            'git://%s/platform/manifest' % (GERRIT_URL),
-                            '-b', branch], 300)
+    _out, err, ret = execmd([GIT, 'clone',
+                        'git://%s/%s' % (GERRIT_URL, OPT.manifest),
+                        'manifest',
+                        '-b', branch], 300)
 
     if (ret != 0):
         cherry_pick_exit(STATUS_CLONE_MANIFEST, err)
@@ -829,21 +824,16 @@ def update_manifest(branch, skip_review):
     _out, err, ret = execmd([GIT, 'rebase', 'origin/' + branch], 300)
     if (ret != 0):
         logging.error("Can't rebase the manifest: %s", err)
-        update_manifest_mail(branch, 'manifest', recipient)
+        update_manifest_mail(branch, OPT.manifest, recipient)
         return STATUS_UPDATE_MANIFEST
     #Push the updated manifest
     if (skip_review):
         dst_push = 'heads'
     else:
         dst_push = 'for'
-    if OPT.amss_manifest:
-        cmd = [GIT, 'push',
-               'ssh://%s@%s:29418/platform/amssmanifest' %
-               (gituser, GERRIT_URL), 'HEAD:refs/%s/%s' % (dst_push, branch)]
-    else:
-        cmd = [GIT, 'push',
-               'ssh://%s@%s:29418/platform/manifest' %
-               (gituser, GERRIT_URL), 'HEAD:refs/%s/%s' % (dst_push, branch)]
+    cmd = [GIT, 'push',
+           'ssh://%s@%s:29418/%s' % (gituser, GERRIT_URL, OPT.manifest),
+           'HEAD:refs/%s/%s' % (dst_push, branch,)]
 
     _out, err, ret = execmd(cmd, 300)
     if (ret != 0):
