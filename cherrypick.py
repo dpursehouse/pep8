@@ -87,7 +87,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.3.46'
+__version__ = '0.3.47'
 
 REPO = 'repo'
 GIT = 'git'
@@ -129,6 +129,9 @@ MAX_PUSH_ATTEMPTS = 3
 
 # Mail server to use when sending notifications
 SMTP_MAIL_SERVER = "smtpem1.sonyericsson.net"
+
+# Default email address for sender when sending notification mails
+DEFAULT_MAIL_SENDER = "DL-WW-CM@sonymobile.com"
 
 # Mail notification when cherry pick fails
 CHERRY_PICK_FAILED_NOTIFICATION_MAIL =  \
@@ -443,7 +446,7 @@ def option_parser():
     opt_parser.add_option('--mail-sender',
                      dest='mail_sender',
                      help='Mail sender address for mail notification.',
-                     action="store", default=None)
+                     action="store", default=DEFAULT_MAIL_SENDER)
     opt_parser.add_option('--exclude-git',
                      dest='exclude_git',
                      help='List of gits to be excluded (comma separated)',
@@ -1441,9 +1444,6 @@ def main():
         if not OPT.target_branch:
             cherry_pick_exit(STATUS_ARGS, "Must pass target (-t) branch name")
         config_parser()
-    if not OPT.mail_sender:
-        cherry_pick_exit(STATUS_ARGS,
-                         "Must pass mail sender (--mail-sender) address")
 
     if not OPT.target_branch_include:
         OPT.target_branch_include = DEFAULT_TARGET_BRANCH_INCLUDES
