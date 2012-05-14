@@ -3,8 +3,8 @@
 '''
 Find cherry pick candidates in source branch(es) by processing the git log of
 each base branch and target branch. From the log, list of DMSs will be checked
-with DMS tag server and commits with correct DMS tag (--dms-tags) will be
-considered. Exclusion filters which are mentioned in --exlude-git,--exclude-dms
+with DMS tag server and commits with correct DMS tag will be considered.
+Exclusion filters which are mentioned in --exlude-git,--exclude-dms
 and --exclude-commit will be excluded. Then the potential commits will be
 pushed to Gerrit for review. As a byproduct a .csv file will be created with
 the commit list and a _result.csv file with the result of each cherry pick
@@ -57,7 +57,6 @@ Example:
          [edream4.0-release]
          dry_run = True
          base_branches = esea-ginger-dev,master,esea-ginger-dev-2.6.32
-         dms_tags = 4.0 CAF,Fix ASAP
 
     And want to set verbose flag from command line
     $%prog --config config.cfg -t edream4.0-release -v
@@ -70,16 +69,19 @@ import optparse
 import os
 import re
 import signal
+import StringIO
 import subprocess
-import sys
 import tempfile
 import threading
 import time
 import xml.dom.minidom
 
 
+from branch_policies import BranchPolicies
+from branch_policies import BranchPolicyError, CherrypickPolicyError
 from cherry_status import CherrypickStatusServer, CherrypickStatusError
 from cherry_status import DEFAULT_STATUS_SERVER
+from cm_server import CMServer, CMServerError, CredentialsError
 from dmsutil import DMSTagServer, DMSTagServerError
 from find_reviewers import FindReviewers, AddReviewersError
 from gerrit import GerritSshConnection, GerritSshConfigError, GerritQueryError
@@ -87,7 +89,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.3.52'
+__version__ = '0.4.0'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -99,6 +101,8 @@ OPT = None
 dst_manifest = None
 manifest_change_required = False
 upd_project_list = []
+dms_tags = []
+cmserver = None
 
 #Error codes
 STATUS_OK = 0
@@ -115,6 +119,7 @@ STATUS_USER_ABORTED = 10
 STATUS_RM_MANIFEST_DIR = 11
 STATUS_CLONE_MANIFEST = 12
 STATUS_UPDATE_MANIFEST = 13
+STATUS_CM_SERVER = 14
 
 # The default value of the command line option to select which
 # branches in the target manifest can be cherry picked to.
@@ -386,7 +391,7 @@ def option_parser():
     Option parser
     """
     usage = ("%prog -s SOURCE_BRANCH -t TARGET_BRANCH [--config CONF_FILE |" +
-             " -d DMS_TAGS --mail-sender SENDER_ADDRESS [options]]")
+             " --mail-sender SENDER_ADDRESS [options]]")
     opt_parser = optparse.OptionParser(usage=usage,
                                        version='%prog ' + __version__)
     opt_parser.add_option('-c', '--config',
@@ -427,10 +432,6 @@ def option_parser():
                                "The first use of this option will append the " \
                                "new expression onto the default value (%s)." % \
                                ", ".join(DEFAULT_TARGET_BRANCH_EXCLUDES))
-    opt_parser.add_option('-d', '--dms-tags',
-                     dest='dms_tags',
-                     help='DMS tags (comma separated)',
-                     action="store", default=None)
     opt_parser.add_option('-r', '--reviewers',
                      dest='reviewers',
                      help='default reviewers (comma separated)',
@@ -535,7 +536,8 @@ def cherry_pick_exit(exit_code, message=None):
               STATUS_USER_ABORTED: "Aborted by user",
               STATUS_RM_MANIFEST_DIR: "Failed to remove /manifest directory",
               STATUS_CLONE_MANIFEST: "Failed to clone the manifest git",
-              STATUS_UPDATE_MANIFEST: "Failed to update the manifest"
+              STATUS_UPDATE_MANIFEST: "Failed to update the manifest",
+              STATUS_CM_SERVER: "CM server error"
               }
     msg = reason.get(exit_code)
     if message:
@@ -969,6 +971,7 @@ def dms_get_fix_for(commit_list):
     Collect DMS status from DMS server. Collect only the commits match with
     OPT.tag_list
     """
+    global dms_tags
     commit_tag_list = []
     if not commit_list:
         return commit_tag_list
@@ -983,8 +986,7 @@ def dms_get_fix_for(commit_list):
             logging.info("DMS tag request (%s) for %d issue(s): %s",
                          OPT.dms_tag_server, len(dmss), ','.join(dmss))
             server = DMSTagServer(OPT.dms_tag_server, timeout=120)
-            tags = OPT.dms_tags.split(',')
-            tags_dmss = server.dms_for_tags(dmss, tags, OPT.target_branch)
+            tags_dmss = server.dms_for_tags(dmss, dms_tags, OPT.target_branch)
             if tags_dmss:
                 for cmt in commit_list:
                     if cmt.dms in tags_dmss:
@@ -1431,13 +1433,12 @@ def main():
     """
     global manifest_change_required
     global OPT_PARSER, OPT
+    global dms_tags
+    global cmserver
     OPT_PARSER = option_parser()
     OPT = OPT_PARSER.parse_args()[0]
 
     logging.basicConfig(format='%(message)s', level=logging.ERROR)
-
-    if len(sys.argv) < 2:
-        OPT_PARSER.error("Insufficient arguments")
 
     if not OPT.source_branch:
         cherry_pick_exit(STATUS_ARGS, "Must pass source (-s) branch name")
@@ -1448,21 +1449,37 @@ def main():
     if OPT.config_file:
         config_parser()
 
-    # DMS tags must be specified, otherwise cherrypick script will
-    # try to cherrypick everything
-    if not OPT.dms_tags:
-        cherry_pick_exit(STATUS_ARGS, "Must specify DMS tags")
-    else:
-        # Handle the case that a string like " , " is passed as --dms-tags
-        tags = [tag for tag in OPT.dms_tags.strip().split(',') if tag]
-        if not tags:
-            cherry_pick_exit(STATUS_ARGS, "Must specify DMS tags")
+    if OPT.verbose:
+        logging.getLogger().setLevel(logging.INFO)
+
+    info_msg = "Cherrypick.py " + __version__
+    if OPT.dry_run:
+        info_msg += " (dry run)"
+    logging.info(info_msg)
+
+    # Get DMS tags from the CM server
+    try:
+        logging.info("Get branch config from CM server...")
+        cmserver = CMServer()
+        data = cmserver.get_branch_config(OPT.manifest)
+        if not data:
+            cherry_pick_exit(STATUS_CM_SERVER, "Empty branch config")
+        branch_config = BranchPolicies(StringIO.StringIO(data))
+        dms_tags = branch_config.get_branch_tagnames(OPT.target_branch)
+        if not dms_tags:
+            cherry_pick_exit(STATUS_ARGS, "Config must specify DMS tags")
+        logging.info("DMS tags: %s", ", ".join(dms_tags))
+    except BranchPolicyError, e:
+        cherry_pick_exit(STATUS_CM_SERVER, "Branch Policy Error: %s" % e)
+    except CherrypickPolicyError, e:
+        cherry_pick_exit(STATUS_CM_SERVER, "Cherrypick Policy Error: %s" % e)
+    except CMServerError, e:
+        cherry_pick_exit(STATUS_CM_SERVER, "CM Server Error: %s" % e)
+    except CredentialsError, e:
+        cherry_pick_exit(STATUS_CM_SERVER, "Credentials Error: %s" % e)
 
     if not OPT.target_branch_include:
         OPT.target_branch_include = DEFAULT_TARGET_BRANCH_INCLUDES
-
-    if OPT.verbose:
-        logging.getLogger().setLevel(logging.INFO)
 
     args = ["%s = %s" %
             (key, value) for key, value in OPT.__dict__.iteritems()]
@@ -1473,11 +1490,6 @@ def main():
         cherry_pick_exit(STATUS_REPO, 'repo is not installed.  Use "repo ' \
                                       'init -u url" to install it.')
 
-    info_msg = "Cherrypick.py " + __version__
-    if OPT.dry_run:
-        info_msg += " (dry run)"
-
-    logging.info(info_msg)
     if OPT.cwd:
         OPT.cwd = os.path.abspath(OPT.cwd)
         os.chdir(OPT.cwd)
