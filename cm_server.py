@@ -103,6 +103,19 @@ class CherrypickStatus(object):
             self.verify = verify
             self.dirty = True
 
+    def set_dms(self, dms):
+        ''' Update dms value with `dms` if it has changed and
+        set the state to dirty.
+        '''
+        if dms:
+            dmslist = dms.split('-')
+            if dmslist and self.dms != dmslist:
+                self.dms = dmslist
+                self.dirty = True
+        elif self.dms:
+            self.dms = []
+            self.dirty = True
+
     def is_dirty(self):
         ''' Check if the cherry pick is dirty, i.e. has been updated.
         Return True if so, otherwise False.
