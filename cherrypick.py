@@ -89,7 +89,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.4.2'
+__version__ = '0.4.3'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -489,8 +489,8 @@ def option_parser():
     #debug options
     opt_group = opt_parser.add_option_group('Debug options')
     opt_group.add_option('-v', '--verbose',
-                     dest="verbose", action="store_true", default=False,
-                     help="Verbose")
+                     dest="verbose", default=0, action="count",
+                     help="Verbose logging")
     opt_group.add_option('--no-rm-projectlist',
                      dest='no_rm_projectlist',
                      help='Do not remove .repo/project.list',
@@ -1456,7 +1456,8 @@ def main():
     OPT_PARSER = option_parser()
     OPT = OPT_PARSER.parse_args()[0]
 
-    logging.basicConfig(format='%(message)s', level=logging.ERROR)
+    logging.basicConfig(format='[%(levelname)s] %(message)s',
+                        level=logging.WARNING)
 
     if not OPT.source_branch:
         cherry_pick_exit(STATUS_ARGS, "Must pass source (-s) branch name")
@@ -1467,8 +1468,12 @@ def main():
     if OPT.config_file:
         config_parser()
 
-    if OPT.verbose:
-        logging.getLogger().setLevel(logging.INFO)
+    if (OPT.verbose > 1):
+        level = logging.DEBUG
+    elif (OPT.verbose > 0):
+        level = logging.INFO
+
+    logging.getLogger().setLevel(level)
 
     info_msg = "Cherrypick.py " + __version__
     if OPT.dry_run:
