@@ -3,6 +3,7 @@
 
 from base64 import encodestring
 import json
+import logging
 import netrc
 from os.path import expanduser, isfile
 import urllib
@@ -224,6 +225,7 @@ class CMServer(object):
             url = urljoin('http://' + self._server, path)
             if data:
                 url = urljoin(url, "?" + data)
+            logging.debug("URL: %s", url)
             request = urllib2.Request(url)
             request.add_header("Authorization", "Basic %s" % self._auth)
             return urllib2.urlopen(request)
