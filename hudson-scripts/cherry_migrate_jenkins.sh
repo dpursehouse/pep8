@@ -14,7 +14,7 @@ migrate ginger-fuji edream6.0-fuji-r2-release
 EXIT_STATUS=`expr $EXIT_STATUS + $?`
 migrate ginger-fuji edream6.0-fuji-r2-row-release
 EXIT_STATUS=`expr $EXIT_STATUS + $?`
-migrate ginger-ste edream6.0-riogrande-release
+migrate ginger-ste edream6.0-riogrande-plus-release
 EXIT_STATUS=`expr $EXIT_STATUS + $?`
 migrate edream6.0-riogrande-release edream6.0-riogrande-plus-release
 EXIT_STATUS=`expr $EXIT_STATUS + $?`
