@@ -11,7 +11,6 @@ import semcutil
 
 VALID_CODE_REVIEW = ["-2", "-1", "0"]
 VALID_VERIFY = ["-1", "0"]
-DEFAULT_CONFIG_FILE = 'etc/dms_policy.xml'
 
 
 def _get_element(node, element_name):
@@ -260,7 +259,6 @@ def _main():
                            "if no tags are found for the branch else " + \
                            "fails with fatal error.")
     parser.add_option("-p", "--policy_file", dest="policy_file",
-                      default=DEFAULT_CONFIG_FILE,
                       help="Path to the branch policy file.")
     (options, args) = parser.parse_args()
     if len(args) != 1:
@@ -268,6 +266,8 @@ def _main():
         parser.error("Incorrect number of arguments")
     if options.print_tags:
         branch = args[0]
+        if not options.policy_file:
+            parser.error("Policy file must be specified.")
         try:
             config = BranchPolicies(options.policy_file)
         except (ExpatError, BranchPolicyError), err:
