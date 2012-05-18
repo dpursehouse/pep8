@@ -6,9 +6,7 @@ each base branch and target branch. From the log, list of DMSs will be checked
 with DMS tag server and commits with correct DMS tag will be considered.
 Exclusion filters which are mentioned in --exlude-git,--exclude-dms
 and --exclude-commit will be excluded. Then the potential commits will be
-pushed to Gerrit for review. As a byproduct a .csv file will be created with
-the commit list and a _result.csv file with the result of each cherry pick
-execution.
+pushed to Gerrit for review.
 
 During each cherry pick, commit id will be checked in Gerrit commit message,
 and cherry pick of this commit will be skipped if corresponding commit is found
@@ -18,9 +16,7 @@ Email will be sent to corresponding persons for each cherry-pick failure with
 reason and Gerrit URL. And in dry-run mode, email will be sent only to
 executor.
 
-It is possible to simulate the whole process by using the --dry-run option and
-possible to create only the cherry pick list and skip the push to Gerrit
-action with the -n(--no-push-to-gerrit) option.
+It is possible to simulate the whole process by using the --dry-run option.
 
 repo envirionment must be initialized in working directory before you run this
 script.
@@ -36,13 +32,7 @@ Example:
  2. To simulate the whole execution without actual push to Gerrit
     add --dry-run option
     $%prog -b ginger-mogami -t edream4.0-release -d "4.0 CAF" --dry-run
- 3. To create only the csv file with potential cherry pick commit list
-    add --no-push-to-gerrit option
-    $%prog -b ginger-mogami -t edream4.0-release -d "4.0 CAF" \
-    --no-push-to-gerrit
- 4. To push the commits from already created csv file
-    $%prog -t edream4.0-release -f <csv_file_name>.csv
- 5. To add default reviewers with each cherry pick commit add
+ 3. To add default reviewers with each cherry pick commit add
     -r <reviewers email addresses> option
     $%prog -b ginger-mogami -t edream4.0-release -d "4.0 CAF"
     -r "xx@sonyericsson.com,yy@sonyericsson.com"
@@ -75,7 +65,7 @@ from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 from semcutil import enum
 
-__version__ = '0.4.9'
+__version__ = '0.4.10'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -97,7 +87,6 @@ ERROR_CODE = enum('STATUS_OK',
                   'STATUS_DMS_SRV',
                   'STATUS_MANIFEST',
                   'STATUS_ARGS',
-                  'STATUS_FILE',
                   'STATUS_GIT_USR',
                   'STATUS_GERRIT_ERR',
                   'STATUS_RM_PROJECTLIST',
@@ -490,15 +479,6 @@ def option_parser():
                      help='Skip Gerrit review of manifest changes',
                      action="store_true",
                      default=False)
-    opt_group.add_option('-n', '--no-push-to-gerrit',
-                     dest='no_push_to_gerrit',
-                     help='Do not cherry pick and push to Gerrit',
-                     action="store_true", default=False)
-    opt_group.add_option('-f', '--csv-file',
-                     dest='csv_file',
-                     help='load the cherry pick list from csv file and push ' +
-                     'to gerrit',
-                     metavar="FILE")
     opt_group.add_option('--dry-run',
                      dest='dry_run',
                      help='Do not push to Gerrit',
@@ -522,7 +502,6 @@ def cherry_pick_exit(exit_code, message=None):
       ERROR_CODE.STATUS_DMS_SRV: "DMS tag server is not reachable",
       ERROR_CODE.STATUS_MANIFEST: "Manifest file error",
       ERROR_CODE.STATUS_ARGS: "Using wrong arguments",
-      ERROR_CODE.STATUS_FILE: "File error",
       ERROR_CODE.STATUS_GIT_USR: "Git config error",
       ERROR_CODE.STATUS_GERRIT_ERR: "Gerrit server is not reachable",
       ERROR_CODE.STATUS_RM_PROJECTLIST: "Failed to remove .repo/project.list",
@@ -1020,9 +999,8 @@ def create_cherry_pick_list(commit_tag_list):
     unique_commit_tag_list = [v for v in commit_dict.values()]
 
     os.chdir(OPT.cwd)
-    log_to_file('\n'.join(str_list(unique_commit_tag_list)),
-                file_name="%s_cherrypick.csv" % (target_branch),
-                info="Cherries", echo=True)
+    logging.info("Cherries:")
+    logging.info('\n'.join(str_list(unique_commit_tag_list)))
     return unique_commit_tag_list
 
 
@@ -1250,12 +1228,10 @@ def cherry_pick(unique_commit_list, target_branch):
     # Report the result if any cherry pick done
     if cherrypick_result:
         cherrypick_result.sort()
-        infomsg = "New cherries picked"
+        infomsg = "New cherries picked:"
         if OPT.dry_run:
             infomsg += " (dry run)"
-        log_to_file('\n'.join(cherrypick_result),
-                    file_name="%s_cherrypick_result.csv" % (target_branch),
-                    info=infomsg, echo=True)
+        logging.info('\n'.join(cherrypick_result))
     else:
         logging.info("No new cherries")
     return ret_err
@@ -1484,38 +1460,13 @@ def main():
     if not OPT.no_repo_sync:
         repo_sync()
 
-    if  OPT.csv_file:
-        commit_list = []
-        if OPT.target_branch == None:
-            cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
-                             "Must pass target (-t) branch name")
-        try:
-            csv = open(OPT.csv_file, 'r')
-            unique_commit_list = csv.read().splitlines()
-        except IOError, err:
-            logging.error(err)
-            cherry_pick_exit(ERROR_CODE.STATUS_FILE)
-        for commit in unique_commit_list:
-            prts = commit.split(',')
-            if len(prts) < 5:
-                logging.error('Not enough parameters in %s', commit)
-                continue
-            else:
-                cmt = Commit(target=prts[0], path=prts[1], name=prts[2],
-                             commit=prts[3], dms=prts[4])
-                commit_list.append(cmt)
-        if commit_list:
-            status_code = cherry_pick(commit_list, OPT.target_branch)
-        cherry_pick_exit(status_code)
-
     commit_list = get_dms_list(OPT.target_branch)
     if not commit_list:
         cherry_pick_exit(ERROR_CODE.STATUS_OK, "Nothing is found to process")
 
     commit_tag_list = dms_get_fix_for(commit_list)
     unique_commit_list = create_cherry_pick_list(commit_tag_list)
-    if not OPT.no_push_to_gerrit:
-        status_code = cherry_pick(unique_commit_list, OPT.target_branch)
+    status_code = cherry_pick(unique_commit_list, OPT.target_branch)
     if (not OPT.dry_run and manifest_change_required):
         status_manifest = update_manifest(OPT.target_branch, OPT.skip_review)
         if (status_manifest != ERROR_CODE.STATUS_OK):
