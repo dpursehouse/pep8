@@ -10,11 +10,6 @@ pushed to Gerrit for review. As a byproduct a .csv file will be created with
 the commit list and a _result.csv file with the result of each cherry pick
 execution.
 
-Possible to use configuration file(--config) to set the argument values.
-Config file has higher priority on default command line parameter values
-(e.g. cwd) and command line parameter has higher priority than config file
-values for others.
-
 During each cherry pick, commit id will be checked in Gerrit commit message,
 and cherry pick of this commit will be skipped if corresponding commit is found
 in open or abandoned state.
@@ -51,16 +46,6 @@ Example:
     -r <reviewers email addresses> option
     $%prog -b ginger-mogami -t edream4.0-release -d "4.0 CAF"
     -r "xx@sonyericsson.com,yy@sonyericsson.com"
- 6. To use configuration file use --config <file_name> option
-     Suppose you have configuration file config.cfg and content is following:
-
-         [edream4.0-release]
-         dry_run = True
-         base_branches = esea-ginger-dev,master,esea-ginger-dev-2.6.32
-
-    And want to set verbose flag from command line
-    $%prog --config config.cfg -t edream4.0-release -v
-
 '''
 
 import errno
@@ -89,7 +74,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.4.7'
+__version__ = '0.4.8'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -401,14 +386,10 @@ def option_parser():
     """
     Option parser
     """
-    usage = ("%prog -s SOURCE_BRANCH -t TARGET_BRANCH [--config CONF_FILE |" +
+    usage = ("%prog -s SOURCE_BRANCH -t TARGET_BRANCH [" +
              " --mail-sender SENDER_ADDRESS [options]]")
     opt_parser = optparse.OptionParser(usage=usage,
                                        version='%prog ' + __version__)
-    opt_parser.add_option('-c', '--config',
-                     dest='config_file',
-                     help='Configuration file name.',
-                     action="store", default=None, metavar="FILE")
     opt_parser.add_option('-b', '--base-branches',
                      dest='base_branches',
                      help='base branches (comma separated), default is all.',
@@ -1412,43 +1393,6 @@ def email(subject, body, recipient):
         logging.error('%s\n%s', subject, body)
 
 
-def config_parser():
-    """
-    Parse config file and load the values into OPT option parser. Config file
-    has higher priority on default command line parameter values(e.g. cwd) and
-    command line parameter has higher priority than config file values for
-    others.
-    """
-    import ConfigParser
-    config = ConfigParser.SafeConfigParser()
-    try:
-        config.read(OPT.config_file)
-        items = dict(config.items(OPT.target_branch))
-    except ConfigParser.NoSectionError, exp:
-        cherry_pick_exit(STATUS_FILE, "No branch configuration in config " \
-                                      "file: %s" % exp)
-    except ConfigParser.ParsingError, exp:
-        cherry_pick_exit(STATUS_FILE, "%s file parsing error: %s" % \
-                                      (OPT.config_file, exp))
-    except ConfigParser.Error, exp:
-        cherry_pick_exit(STATUS_FILE, "Config File error: %s" % exp)
-
-    for key, value in OPT.__dict__.iteritems():
-        if key in items:
-            if value:  # handle default values here and give priority to config
-                if key == 'cwd':
-                    OPT.__dict__[key] = items[key]
-            else:      # cmd line parameter has higher priority on non-defaults
-                if items[key].lower() == 'true':
-                    OPT.__dict__[key] = True
-                elif items[key].lower() == 'false':
-                    OPT.__dict__[key] = False
-                elif items[key].lower() == 'none':
-                    OPT.__dict__[key] = None
-                else:
-                    OPT.__dict__[key] = items[key]
-
-
 def main():
     """
     Cherry pick main function
@@ -1468,9 +1412,6 @@ def main():
 
     if not OPT.target_branch:
         cherry_pick_exit(STATUS_ARGS, "Must pass target (-t) branch name")
-
-    if OPT.config_file:
-        config_parser()
 
     if (OPT.verbose > 1):
         level = logging.DEBUG
