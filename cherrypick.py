@@ -89,7 +89,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.4.5'
+__version__ = '0.4.6'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -450,7 +450,7 @@ def option_parser():
     opt_parser.add_option('-w', '--work-dir',
                      dest='cwd',
                      help='working directory, default is current directory',
-                     action="store", default=os.getcwd())
+                     action="store", default=None)
     opt_parser.add_option('--dms-tag-server',
                      dest='dms_tag_server',
                      help='IP address or name of DMS tag server',
@@ -851,7 +851,7 @@ def update_manifest(branch, skip_review):
         dst_push = 'for'
     cmd = [GIT, 'push',
            'ssh://%s@%s:29418/%s' % (gituser, GERRIT_URL, OPT.manifest),
-           'HEAD:refs/%s/%s' % (dst_push, branch,)]
+           'HEAD:refs/%s/%s' % (dst_push, branch)]
 
     _out, err, ret = execmd(cmd, 300)
     if (ret != 0):
@@ -1484,6 +1484,16 @@ def main():
         info_msg += " (dry run)"
     logging.info(info_msg)
 
+    if not OPT.cwd:
+        OPT.cwd = os.getcwd()
+        logging.info("--work-dir not specified, using current dir: %s", OPT.cwd)
+    OPT.cwd = os.path.abspath(OPT.cwd)
+
+    if not os.path.exists(os.path.join(OPT.cwd, '.repo')):
+        cherry_pick_exit(STATUS_REPO, 'repo is not installed in %s. ' \
+                                      'Use "repo init -u url" to install '
+                                      'it.' % OPT.cwd)
+
     # Get DMS tags and cherrypick policy from the CM server
     try:
         logging.info("Get DMS tags and cherry pick policy from CM server...")
@@ -1518,10 +1528,6 @@ def main():
             (key, value) for key, value in OPT.__dict__.iteritems()]
     logging.info("Arguments are:\n%s\n", "\n".join(args))
     status_code = STATUS_OK
-
-    if not os.path.exists(OPT.cwd + '/.repo'):
-        cherry_pick_exit(STATUS_REPO, 'repo is not installed.  Use "repo ' \
-                                      'init -u url" to install it.')
 
     if OPT.cwd:
         OPT.cwd = os.path.abspath(OPT.cwd)
