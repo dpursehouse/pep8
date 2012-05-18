@@ -89,7 +89,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.4.6'
+__version__ = '0.4.7'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -240,7 +240,7 @@ class Gerrit(object):
                 (commit.name, commit.target, commit.commit,
                  commit.name, commit.target, commit.commit)
         try:
-            logging.info("Check for existing change in Gerrit: %s", query)
+            logging.info("Check for existing change in Gerrit...")
             results = self.gerrit.query(query)
             logging.info("Found %d matches", len(results))
             if len(results):
