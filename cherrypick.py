@@ -89,7 +89,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.4.4'
+__version__ = '0.4.5'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -131,6 +131,9 @@ DEFAULT_TARGET_BRANCH_EXCLUDES = [r"^rel-", r"^maint-", "refs/tags/"]
 
 #Gerrit server URL
 GERRIT_URL = "review.sonyericsson.net"
+
+# Default server to use for DMS tag status
+DEFAULT_DMS_TAG_SERVER = "android-cm-web.sonyericsson.net"
 
 # Number of times to attempt git push of the cherry picked change
 MAX_PUSH_ATTEMPTS = 3
@@ -451,7 +454,7 @@ def option_parser():
     opt_parser.add_option('--dms-tag-server',
                      dest='dms_tag_server',
                      help='IP address or name of DMS tag server',
-                     action="store", default=None)
+                     action="store", default=DEFAULT_DMS_TAG_SERVER)
     opt_parser.add_option('--status-server',
                      dest='status_server',
                      help='IP address or name of status server',
@@ -995,16 +998,15 @@ def dms_get_fix_for(commit_list):
         return commit_tag_list
 
     try:
-        if OPT.dms_tag_server:
-            logging.info("DMS tag request (%s) for %d issue(s): %s",
-                         OPT.dms_tag_server, len(dmss), ','.join(dmss))
-            server = DMSTagServer(OPT.dms_tag_server, timeout=120)
-            tags_dmss = server.dms_for_tags(dmss, dms_tags, OPT.target_branch)
-            if tags_dmss:
-                for cmt in commit_list:
-                    if cmt.dms in tags_dmss:
-                        commit_tag_list.append(cmt)
-            return commit_tag_list
+        logging.info("DMS tag request (%s) for %d issue(s): %s",
+                     OPT.dms_tag_server, len(dmss), ','.join(dmss))
+        server = DMSTagServer(OPT.dms_tag_server, timeout=120)
+        tags_dmss = server.dms_for_tags(dmss, dms_tags, OPT.target_branch)
+        if tags_dmss:
+            for cmt in commit_list:
+                if cmt.dms in tags_dmss:
+                    commit_tag_list.append(cmt)
+        return commit_tag_list
     except DMSTagServerError, e:
         # Report the error and quit.
         logging.error('DMS tag server error: %s', e)
