@@ -18,14 +18,15 @@ executor.
 
 It is possible to simulate the whole process by using the --dry-run option.
 
-repo envirionment must be initialized in working directory before you run this
-script.
+repo envirionment must be initialized and synched in working directory before
+you run this script.
 
 Example:
  To find out the potential commits for cherry pick from base ginger-mogami to
  target edream4.0-release with DMS tag "4.0 CAF":
- Initialize repo first
+ Initialize and synch repo first
  $repo init -u git://review/platform/manifest.git -b ginger-mogami
+ $repo sync
 
  1. To find out the potential commits and push to Gerrit for review
     $%prog -b ginger-mogami -t edream4.0-release -d "4.0 CAF"
@@ -38,7 +39,6 @@ Example:
     -r "xx@sonyericsson.com,yy@sonyericsson.com"
 '''
 
-import errno
 import logging
 import optparse
 import os
@@ -65,12 +65,11 @@ from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 from semcutil import enum
 
-__version__ = '0.4.11'
+__version__ = '0.4.12'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
 
-REPO = 'repo'
 GIT = 'git'
 OPT_PARSER = None
 OPT = None
@@ -89,7 +88,6 @@ ERROR_CODE = enum('STATUS_OK',
                   'STATUS_ARGS',
                   'STATUS_GIT_USR',
                   'STATUS_GERRIT_ERR',
-                  'STATUS_RM_PROJECTLIST',
                   'STATUS_USER_ABORTED',
                   'STATUS_RM_MANIFEST_DIR',
                   'STATUS_CLONE_MANIFEST',
@@ -465,15 +463,6 @@ def option_parser():
     opt_group.add_option('-v', '--verbose',
                      dest="verbose", default=0, action="count",
                      help="Verbose logging")
-    opt_group.add_option('--no-rm-projectlist',
-                     dest='no_rm_projectlist',
-                     help='Do not remove .repo/project.list',
-                     action="store_true",
-                     default=False)
-    opt_group.add_option('--no-repo-sync',
-                     dest='no_repo_sync',
-                     help='Do not repo sync', action="store_true",
-                     default=False)
     opt_group.add_option('--manifest-review',
                      dest='manifest_review',
                      help='Submit manifest changes to Gerrit review',
@@ -504,7 +493,6 @@ def cherry_pick_exit(exit_code, message=None):
       ERROR_CODE.STATUS_ARGS: "Using wrong arguments",
       ERROR_CODE.STATUS_GIT_USR: "Git config error",
       ERROR_CODE.STATUS_GERRIT_ERR: "Gerrit server is not reachable",
-      ERROR_CODE.STATUS_RM_PROJECTLIST: "Failed to remove .repo/project.list",
       ERROR_CODE.STATUS_USER_ABORTED: "Aborted by user",
       ERROR_CODE.STATUS_RM_MANIFEST_DIR: "Failed to remove /manifest directory",
       ERROR_CODE.STATUS_CLONE_MANIFEST: "Failed to clone the manifest git",
@@ -557,26 +545,6 @@ def parse_base_and_target_manifest(target_branch):
         cherry_pick_exit(ERROR_CODE.STATUS_MANIFEST,
                          "Failed to parse target manifest: %s" % err)
     return base_proj_rev, dst_proj_rev
-
-
-def repo_sync():
-    """
-    Repo sync
-    """
-    os.chdir(OPT.cwd)
-    if not OPT.no_rm_projectlist:
-        logging.info("Removing .repo/project.list")
-        try:
-            os.remove('.repo/project.list')
-        except os.error, err:
-            if err.errno != errno.ENOENT:
-                cherry_pick_exit(ERROR_CODE.STATUS_RM_PROJECTLIST,
-                                 "Error removing .repo/project.list: %s" % err)
-    logging.info("Repo sync")
-    result, err, ret = execmd([REPO, 'sync', '-j5'], 3600)
-    log_to_file(result, file_name='repo_sync.log')
-    if ret != 0:
-        cherry_pick_exit(ERROR_CODE.STATUS_REPO, "Repo sync error %s" % err)
 
 
 def get_dms_list(target_branch):
@@ -1381,8 +1349,14 @@ def main():
     OPT_PARSER = option_parser()
     OPT = OPT_PARSER.parse_args()[0]
 
+    level = logging.WARNING
     logging.basicConfig(format='[%(levelname)s] %(message)s',
-                        level=logging.WARNING)
+                        level=level)
+    if (OPT.verbose > 1):
+        level = logging.DEBUG
+    elif (OPT.verbose > 0):
+        level = logging.INFO
+    logging.getLogger().setLevel(level)
 
     if not OPT.source_branch:
         cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
@@ -1391,13 +1365,6 @@ def main():
     if not OPT.target_branch:
         cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
                          "Must pass target (-t) branch name")
-
-    if (OPT.verbose > 1):
-        level = logging.DEBUG
-    elif (OPT.verbose > 0):
-        level = logging.INFO
-
-    logging.getLogger().setLevel(level)
 
     info_msg = "Cherrypick.py " + __version__
     if OPT.dry_run:
@@ -1456,9 +1423,6 @@ def main():
     if OPT.cwd:
         OPT.cwd = os.path.abspath(OPT.cwd)
         os.chdir(OPT.cwd)
-
-    if not OPT.no_repo_sync:
-        repo_sync()
 
     commit_list = get_dms_list(OPT.target_branch)
     if not commit_list:
