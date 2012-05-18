@@ -65,7 +65,7 @@ from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 from semcutil import enum
 
-__version__ = '0.4.10'
+__version__ = '0.4.11'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -474,9 +474,9 @@ def option_parser():
                      dest='no_repo_sync',
                      help='Do not repo sync', action="store_true",
                      default=False)
-    opt_group.add_option('--skip-review',
-                     dest='skip_review',
-                     help='Skip Gerrit review of manifest changes',
+    opt_group.add_option('--manifest-review',
+                     dest='manifest_review',
+                     help='Submit manifest changes to Gerrit review',
                      action="store_true",
                      default=False)
     opt_group.add_option('--dry-run',
@@ -751,7 +751,7 @@ def clone_manifest_git(branch):
         cherry_pick_exit(ERROR_CODE.STATUS_CLONE_MANIFEST, err)
 
 
-def update_manifest(branch, skip_review):
+def update_manifest(branch, manifest_review):
     """
     Uploads the manifest changes upon rebase
     """
@@ -806,10 +806,10 @@ def update_manifest(branch, skip_review):
         update_manifest_mail(branch, OPT.manifest, recipient)
         return ERROR_CODE.STATUS_UPDATE_MANIFEST
     #Push the updated manifest
-    if (skip_review):
-        dst_push = 'heads'
-    else:
+    if (manifest_review):
         dst_push = 'for'
+    else:
+        dst_push = 'heads'
     cmd = [GIT, 'push',
            'ssh://%s@%s:29418/%s' % (gituser, GERRIT_URL, OPT.manifest),
            'HEAD:refs/%s/%s' % (dst_push, branch)]
@@ -818,16 +818,16 @@ def update_manifest(branch, skip_review):
     if (ret != 0):
         logging.error(err)
         return ERROR_CODE.STATUS_UPDATE_MANIFEST
-    elif skip_review:
-        email('[Cherrypick] [%s] Manifest updated' % branch,
-              'Hello,\n\nThe manifest file of %s was updated and merged. '
-              'Updated project(s):\n%s\n\nCherry-picker\nVersion: %s' %
-              (branch, proj_list, __version__), recipient)
-    else:
+    elif manifest_review:
         email('[Cherrypick] [%s] Manifest updated' % branch,
               'Hello,\n\nThe manifest file of %s was updated and uploaded '
               'for review. Updated project(s):\n%s\n\nCherry-picker' \
               '\nVersion: %s' % (branch, proj_list, __version__), recipient)
+    else:
+        email('[Cherrypick] [%s] Manifest updated' % branch,
+              'Hello,\n\nThe manifest file of %s was updated and merged. '
+              'Updated project(s):\n%s\n\nCherry-picker\nVersion: %s' %
+              (branch, proj_list, __version__), recipient)
     return ERROR_CODE.STATUS_OK
 
 
@@ -987,7 +987,6 @@ def create_cherry_pick_list(commit_tag_list):
     """
     Make unique list and save it to file
     """
-    target_branch = OPT.target_branch
     #make single commit for multiple dms
     commit_dict = {}
     for cmt in commit_tag_list:
@@ -1231,6 +1230,7 @@ def cherry_pick(unique_commit_list, target_branch):
         infomsg = "New cherries picked:"
         if OPT.dry_run:
             infomsg += " (dry run)"
+        logging.info(infomsg)
         logging.info('\n'.join(cherrypick_result))
     else:
         logging.info("No new cherries")
@@ -1468,7 +1468,8 @@ def main():
     unique_commit_list = create_cherry_pick_list(commit_tag_list)
     status_code = cherry_pick(unique_commit_list, OPT.target_branch)
     if (not OPT.dry_run and manifest_change_required):
-        status_manifest = update_manifest(OPT.target_branch, OPT.skip_review)
+        status_manifest = update_manifest(OPT.target_branch,
+                                          OPT.manifest_review)
         if (status_manifest != ERROR_CODE.STATUS_OK):
             logging.error("Failed to update the manifest")
 
