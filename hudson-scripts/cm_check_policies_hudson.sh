@@ -3,7 +3,7 @@
 for m in "$@"
 do
     python cm_tools/report_change_impact.py \
-        --verbose \
+        -vv \
         --change $GERRIT_CHANGE_NUMBER \
         --project $GERRIT_PROJECT \
         --patchset $GERRIT_PATCHSET_NUMBER \

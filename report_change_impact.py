@@ -267,8 +267,8 @@ def _main():
                           "the SSH client will decide the username based " \
                           "on $LOGNAME and its own configuration file " \
                           "(if present).")
-    parser.add_option("-v", "--verbose", dest="verbose", default=False,
-                      action="store_true", help="Verbose mode.")
+    parser.add_option("-v", "--verbose", dest="verbose", default=0,
+                      action="count", help="Verbose logging.")
     parser.add_option("", "--dry-run", dest="dry_run", action="store_true",
                       help="Do everything except actually add the note " \
                           "to the affected change.")
@@ -354,10 +354,14 @@ def _main():
     if not options.revision:
         semcutil.fatal(1, "Patchset revision missing. Use --revision option.")
 
-    if options.verbose:
-        logging.basicConfig(format='%(message)s', level=logging.INFO)
-    else:
-        logging.basicConfig(format='%(message)s', level=logging.ERROR)
+    logging.basicConfig(format='[%(levelname)s] %(message)s',
+                        level=logging.WARNING)
+
+    if (options.verbose > 1):
+        level = logging.DEBUG
+    elif (options.verbose > 0):
+        level = logging.INFO
+    logging.getLogger().setLevel(level)
 
     # Use default patterns unless the user has specified replacement
     # patterns explicitly.
