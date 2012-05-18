@@ -213,6 +213,7 @@ class CMServer(object):
         # Get username and password from .netrc and generate authentication
         # token to be passed in HTTP headers when communicating with the server.
         user, pwd = get_credentials_from_netrc(self._server)
+        logging.debug("Username: %s", user if user else "None")
         self._auth = encodestring("%s:%s" % (user, pwd)).replace('\n', '')
 
     def _open_url(self, path, data=None):
