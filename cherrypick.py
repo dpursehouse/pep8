@@ -73,8 +73,9 @@ from gerrit import GerritSshConnection, GerritSshConfigError, GerritQueryError
 import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
+from semcutil import enum
 
-__version__ = '0.4.8'
+__version__ = '0.4.9'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -90,21 +91,21 @@ dms_tags = []
 cmserver = None
 
 #Error codes
-STATUS_OK = 0
-STATUS_CHERRYPICK_FAILED = 1
-STATUS_REPO = 2
-STATUS_DMS_SRV = 3
-STATUS_MANIFEST = 4
-STATUS_ARGS = 5
-STATUS_FILE = 6
-STATUS_GIT_USR = 7
-STATUS_GERRIT_ERR = 8
-STATUS_RM_PROJECTLIST = 9
-STATUS_USER_ABORTED = 10
-STATUS_RM_MANIFEST_DIR = 11
-STATUS_CLONE_MANIFEST = 12
-STATUS_UPDATE_MANIFEST = 13
-STATUS_CM_SERVER = 14
+ERROR_CODE = enum('STATUS_OK',
+                  'STATUS_CHERRYPICK_FAILED',
+                  'STATUS_REPO',
+                  'STATUS_DMS_SRV',
+                  'STATUS_MANIFEST',
+                  'STATUS_ARGS',
+                  'STATUS_FILE',
+                  'STATUS_GIT_USR',
+                  'STATUS_GERRIT_ERR',
+                  'STATUS_RM_PROJECTLIST',
+                  'STATUS_USER_ABORTED',
+                  'STATUS_RM_MANIFEST_DIR',
+                  'STATUS_CLONE_MANIFEST',
+                  'STATUS_UPDATE_MANIFEST',
+                  'STATUS_CM_SERVER')
 
 # The default value of the command line option to select which
 # branches in the target manifest can be cherry picked to.
@@ -366,11 +367,11 @@ def get_manifest_str(commit_ref):
     finally:
         os.chdir(current_path)
     if ret != 0:
-        cherry_pick_exit(STATUS_MANIFEST,
+        cherry_pick_exit(ERROR_CODE.STATUS_MANIFEST,
                          "Can't read the manifest file for %s:\n%s" %
                             (commit_ref, err))
     if ret1 != 0:
-        cherry_pick_exit(STATUS_MANIFEST,
+        cherry_pick_exit(ERROR_CODE.STATUS_MANIFEST,
                          "Can't get the last manifest change SHA1:\n%s" % err1)
     return manifest_str, sha1
 
@@ -515,26 +516,26 @@ def cherry_pick_exit(exit_code, message=None):
     Exit this script with exit code and message
     """
     reason = {
-              STATUS_OK: "Cherry pick completed",
-              STATUS_CHERRYPICK_FAILED: "Some or all cherry picks failed",
-              STATUS_REPO: "Repo error",
-              STATUS_DMS_SRV: "DMS tag server is not reachable",
-              STATUS_MANIFEST: "Manifest file error",
-              STATUS_ARGS: "Using wrong arguments",
-              STATUS_FILE: "File error",
-              STATUS_GIT_USR: "Git config error",
-              STATUS_GERRIT_ERR: "Gerrit server is not reachable",
-              STATUS_RM_PROJECTLIST: "Failed to remove .repo/project.list",
-              STATUS_USER_ABORTED: "Aborted by user",
-              STATUS_RM_MANIFEST_DIR: "Failed to remove /manifest directory",
-              STATUS_CLONE_MANIFEST: "Failed to clone the manifest git",
-              STATUS_UPDATE_MANIFEST: "Failed to update the manifest",
-              STATUS_CM_SERVER: "CM server error"
-              }
+      ERROR_CODE.STATUS_OK: "Cherry pick completed",
+      ERROR_CODE.STATUS_CHERRYPICK_FAILED: "Some or all cherry picks failed",
+      ERROR_CODE.STATUS_REPO: "Repo error",
+      ERROR_CODE.STATUS_DMS_SRV: "DMS tag server is not reachable",
+      ERROR_CODE.STATUS_MANIFEST: "Manifest file error",
+      ERROR_CODE.STATUS_ARGS: "Using wrong arguments",
+      ERROR_CODE.STATUS_FILE: "File error",
+      ERROR_CODE.STATUS_GIT_USR: "Git config error",
+      ERROR_CODE.STATUS_GERRIT_ERR: "Gerrit server is not reachable",
+      ERROR_CODE.STATUS_RM_PROJECTLIST: "Failed to remove .repo/project.list",
+      ERROR_CODE.STATUS_USER_ABORTED: "Aborted by user",
+      ERROR_CODE.STATUS_RM_MANIFEST_DIR: "Failed to remove /manifest directory",
+      ERROR_CODE.STATUS_CLONE_MANIFEST: "Failed to clone the manifest git",
+      ERROR_CODE.STATUS_UPDATE_MANIFEST: "Failed to update the manifest",
+      ERROR_CODE.STATUS_CM_SERVER: "CM server error"
+      }
     msg = reason.get(exit_code)
     if message:
         msg += '\n' + message
-    if exit_code != STATUS_OK:
+    if exit_code != ERROR_CODE.STATUS_OK:
         logging.error(msg)
     else:
         logging.info(msg)
@@ -561,7 +562,7 @@ def parse_base_and_target_manifest(target_branch):
             else:                  # otherwise consider all
                 base_proj_rev[name] = rev + ',' + path
     except (KeyError, xml.parsers.expat.ExpatError, ValueError), err:
-        cherry_pick_exit(STATUS_MANIFEST,
+        cherry_pick_exit(ERROR_CODE.STATUS_MANIFEST,
                          "Failed to parse base manifest: %s" % err)
     #parse target manifest
     try:
@@ -574,7 +575,7 @@ def parse_base_and_target_manifest(target_branch):
             rev = dst_manifest.get_def_rev() if rev == '' else rev
             dst_proj_rev[node.getAttribute('path')] = rev
     except (KeyError, xml.parsers.expat.ExpatError, ValueError), err:
-        cherry_pick_exit(STATUS_MANIFEST,
+        cherry_pick_exit(ERROR_CODE.STATUS_MANIFEST,
                          "Failed to parse target manifest: %s" % err)
     return base_proj_rev, dst_proj_rev
 
@@ -590,13 +591,13 @@ def repo_sync():
             os.remove('.repo/project.list')
         except os.error, err:
             if err.errno != errno.ENOENT:
-                cherry_pick_exit(STATUS_RM_PROJECTLIST,
+                cherry_pick_exit(ERROR_CODE.STATUS_RM_PROJECTLIST,
                                  "Error removing .repo/project.list: %s" % err)
     logging.info("Repo sync")
     result, err, ret = execmd([REPO, 'sync', '-j5'], 3600)
     log_to_file(result, file_name='repo_sync.log')
     if ret != 0:
-        cherry_pick_exit(STATUS_REPO, "Repo sync error %s" % err)
+        cherry_pick_exit(ERROR_CODE.STATUS_REPO, "Repo sync error %s" % err)
 
 
 def get_dms_list(target_branch):
@@ -760,7 +761,7 @@ def clone_manifest_git(branch):
     logging.info("Removing the old manifest clone directory")
     ret = execmd(['rm', '-f', '-r', 'manifest'])[2]
     if (ret != 0):
-        cherry_pick_exit(STATUS_RM_MANIFEST_DIR)
+        cherry_pick_exit(ERROR_CODE.STATUS_RM_MANIFEST_DIR)
     logging.info("Cloning the manifest git of branch %s", branch)
     _out, err, ret = execmd([GIT, 'clone',
                         'git://%s/%s' % (GERRIT_URL, OPT.manifest),
@@ -768,7 +769,7 @@ def clone_manifest_git(branch):
                         '-b', branch], 300)
 
     if (ret != 0):
-        cherry_pick_exit(STATUS_CLONE_MANIFEST, err)
+        cherry_pick_exit(ERROR_CODE.STATUS_CLONE_MANIFEST, err)
 
 
 def update_manifest(branch, skip_review):
@@ -790,20 +791,20 @@ def update_manifest(branch, skip_review):
                              dst_manifest.get_base_sha1()])
     if (ret != 0):
         logging.error(err)
-        return STATUS_UPDATE_MANIFEST
+        return ERROR_CODE.STATUS_UPDATE_MANIFEST
     _out, err, ret = execmd([GIT, 'checkout', 'manifest-change'])
     if (ret != 0):
         logging.error(err)
-        return STATUS_UPDATE_MANIFEST
+        return ERROR_CODE.STATUS_UPDATE_MANIFEST
     try:
         dst_manifest.write_xmldata_to_file('default.xml')
     except IOError, err:
         logging.error(err)
-        return STATUS_UPDATE_MANIFEST
+        return ERROR_CODE.STATUS_UPDATE_MANIFEST
     _out, err, ret = execmd([GIT, 'add', 'default.xml'])
     if (ret != 0):
         logging.error(err)
-        return STATUS_UPDATE_MANIFEST
+        return ERROR_CODE.STATUS_UPDATE_MANIFEST
     proj_list = ''
     for upl in upd_project_list:
         proj_list += '    ' + upl + '\n'
@@ -814,17 +815,17 @@ def update_manifest(branch, skip_review):
     _out, err, ret = execmd([GIT, 'commit', '-m', commit_msg])
     if (ret != 0):
         logging.error(err)
-        return STATUS_UPDATE_MANIFEST
+        return ERROR_CODE.STATUS_UPDATE_MANIFEST
     #Rebase the manifest git
     _out, err, ret = execmd([GIT, 'fetch'], 300)
     if (ret != 0):
         logging.error(err)
-        return STATUS_UPDATE_MANIFEST
+        return ERROR_CODE.STATUS_UPDATE_MANIFEST
     _out, err, ret = execmd([GIT, 'rebase', 'origin/' + branch], 300)
     if (ret != 0):
         logging.error("Can't rebase the manifest: %s", err)
         update_manifest_mail(branch, OPT.manifest, recipient)
-        return STATUS_UPDATE_MANIFEST
+        return ERROR_CODE.STATUS_UPDATE_MANIFEST
     #Push the updated manifest
     if (skip_review):
         dst_push = 'heads'
@@ -837,7 +838,7 @@ def update_manifest(branch, skip_review):
     _out, err, ret = execmd(cmd, 300)
     if (ret != 0):
         logging.error(err)
-        return STATUS_UPDATE_MANIFEST
+        return ERROR_CODE.STATUS_UPDATE_MANIFEST
     elif skip_review:
         email('[Cherrypick] [%s] Manifest updated' % branch,
               'Hello,\n\nThe manifest file of %s was updated and merged. '
@@ -848,7 +849,7 @@ def update_manifest(branch, skip_review):
               'Hello,\n\nThe manifest file of %s was updated and uploaded '
               'for review. Updated project(s):\n%s\n\nCherry-picker' \
               '\nVersion: %s' % (branch, proj_list, __version__), recipient)
-    return STATUS_OK
+    return ERROR_CODE.STATUS_OK
 
 
 def create_branch(target_branch, b_commit_list, t_commit_list, git_name, sha1):
@@ -999,7 +1000,7 @@ def dms_get_fix_for(commit_list):
                 (OPT.dms_tag_server, e, OPT.target_branch,
                 cherry_info, __version__)
         email(subject, body, recipient)
-        cherry_pick_exit(STATUS_DMS_SRV,
+        cherry_pick_exit(ERROR_CODE.STATUS_DMS_SRV,
                          'DMS Tag Server Error. Aborting.')
 
 
@@ -1039,7 +1040,7 @@ def get_git_user():
         if not gituser:
             message = "user.email is not configured for git yet.\n" \
                       "Please run this after git configuration is done."
-            cherry_pick_exit(STATUS_GIT_USR, message)
+            cherry_pick_exit(ERROR_CODE.STATUS_GIT_USR, message)
     return gituser
 
 
@@ -1054,7 +1055,7 @@ def cherry_pick(unique_commit_list, target_branch):
     7. Move out from topic branch
     8. delete topic-cherrypick branch
     """
-    ret_err = STATUS_OK
+    ret_err = ERROR_CODE.STATUS_OK
     gituser = get_git_user()
 
     #keep the result here
@@ -1067,7 +1068,7 @@ def cherry_pick(unique_commit_list, target_branch):
     try:
         gerrit = Gerrit(gerrit_user=gituser)
     except GerritError, e:
-        cherry_pick_exit(STATUS_GERRIT_ERR, "Gerrit error: %s" % e)
+        cherry_pick_exit(ERROR_CODE.STATUS_GERRIT_ERR, "Gerrit error: %s" % e)
 
     for cmt in unique_commit_list:
         # Check if the commit has already been uploaded to Gerrit
@@ -1223,7 +1224,7 @@ def cherry_pick(unique_commit_list, target_branch):
         else:
             match = re.search('https?://%s' % GERRIT_URL, pick_result)
         if not match:
-            ret_err = STATUS_CHERRYPICK_FAILED
+            ret_err = ERROR_CODE.STATUS_CHERRYPICK_FAILED
 
         cherrypick_result.append(str(cmt) + ',' + pick_result)
         if not OPT.dry_run:
@@ -1307,7 +1308,7 @@ def execmd(cmd, timeout=30):
         kill_process_after_timeout(process.pid)
         watchdog.cancel()
         print
-        cherry_pick_exit(STATUS_USER_ABORTED)
+        cherry_pick_exit(ERROR_CODE.STATUS_USER_ABORTED)
 
 
 def log_to_file(contents, file_name=None, info=None, echo=False):
@@ -1408,10 +1409,12 @@ def main():
                         level=logging.WARNING)
 
     if not OPT.source_branch:
-        cherry_pick_exit(STATUS_ARGS, "Must pass source (-s) branch name")
+        cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
+                         "Must pass source (-s) branch name")
 
     if not OPT.target_branch:
-        cherry_pick_exit(STATUS_ARGS, "Must pass target (-t) branch name")
+        cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
+                         "Must pass target (-t) branch name")
 
     if (OPT.verbose > 1):
         level = logging.DEBUG
@@ -1431,9 +1434,9 @@ def main():
     OPT.cwd = os.path.abspath(OPT.cwd)
 
     if not os.path.exists(os.path.join(OPT.cwd, '.repo')):
-        cherry_pick_exit(STATUS_REPO, 'repo is not installed in %s. ' \
-                                      'Use "repo init -u url" to install '
-                                      'it.' % OPT.cwd)
+        cherry_pick_exit(ERROR_CODE.STATUS_REPO,
+                         'repo is not installed in %s. Use "repo init -u ' \
+                         'url" to install it.' % OPT.cwd)
 
     # Get DMS tags and cherrypick policy from the CM server
     try:
@@ -1441,26 +1444,30 @@ def main():
         cmserver = CMServer()
         data = cmserver.get_branch_config(OPT.manifest)
         if not data:
-            cherry_pick_exit(STATUS_CM_SERVER, "Empty branch config")
+            cherry_pick_exit(ERROR_CODE.STATUS_CM_SERVER, "Empty branch config")
         branch_config = BranchPolicies(StringIO.StringIO(data))
         dms_tags = branch_config.get_branch_tagnames(OPT.target_branch)
         if not dms_tags:
-            cherry_pick_exit(STATUS_ARGS, "Config must specify DMS tags")
+            cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
+                             "Config must specify DMS tags")
         logging.info("DMS tags: %s", ", ".join(dms_tags))
         cherry_policy = branch_config.get_cherrypick_policy(OPT.source_branch,
                                                             OPT.target_branch)
         if not cherry_policy:
-            cherry_pick_exit(STATUS_ARGS, "No cherrypick policy: %s to %s" % \
-                                          (OPT.source_branch,
-                                           OPT.target_branch))
+            cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
+                             "No cherrypick policy: %s to %s" % \
+                             (OPT.source_branch, OPT.target_branch))
     except BranchPolicyError, e:
-        cherry_pick_exit(STATUS_CM_SERVER, "Branch Policy Error: %s" % e)
+        cherry_pick_exit(ERROR_CODE.STATUS_CM_SERVER,
+                         "Branch Policy Error: %s" % e)
     except CherrypickPolicyError, e:
-        cherry_pick_exit(STATUS_CM_SERVER, "Cherrypick Policy Error: %s" % e)
+        cherry_pick_exit(ERROR_CODE.STATUS_CM_SERVER,
+                         "Cherrypick Policy Error: %s" % e)
     except CMServerError, e:
-        cherry_pick_exit(STATUS_CM_SERVER, "CM Server Error: %s" % e)
+        cherry_pick_exit(ERROR_CODE.STATUS_CM_SERVER, "CM Server Error: %s" % e)
     except CredentialsError, e:
-        cherry_pick_exit(STATUS_CM_SERVER, "Credentials Error: %s" % e)
+        cherry_pick_exit(ERROR_CODE.STATUS_CM_SERVER,
+                         "Credentials Error: %s" % e)
 
     if not OPT.target_branch_include:
         OPT.target_branch_include = DEFAULT_TARGET_BRANCH_INCLUDES
@@ -1468,7 +1475,7 @@ def main():
     args = ["%s = %s" %
             (key, value) for key, value in OPT.__dict__.iteritems()]
     logging.info("Arguments are:\n%s\n", "\n".join(args))
-    status_code = STATUS_OK
+    status_code = ERROR_CODE.STATUS_OK
 
     if OPT.cwd:
         OPT.cwd = os.path.abspath(OPT.cwd)
@@ -1480,13 +1487,14 @@ def main():
     if  OPT.csv_file:
         commit_list = []
         if OPT.target_branch == None:
-            cherry_pick_exit(STATUS_ARGS, "Must pass target (-t) branch name")
+            cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
+                             "Must pass target (-t) branch name")
         try:
             csv = open(OPT.csv_file, 'r')
             unique_commit_list = csv.read().splitlines()
         except IOError, err:
             logging.error(err)
-            cherry_pick_exit(STATUS_FILE)
+            cherry_pick_exit(ERROR_CODE.STATUS_FILE)
         for commit in unique_commit_list:
             prts = commit.split(',')
             if len(prts) < 5:
@@ -1502,7 +1510,7 @@ def main():
 
     commit_list = get_dms_list(OPT.target_branch)
     if not commit_list:
-        cherry_pick_exit(STATUS_OK, "Nothing is found to process")
+        cherry_pick_exit(ERROR_CODE.STATUS_OK, "Nothing is found to process")
 
     commit_tag_list = dms_get_fix_for(commit_list)
     unique_commit_list = create_cherry_pick_list(commit_tag_list)
@@ -1510,7 +1518,7 @@ def main():
         status_code = cherry_pick(unique_commit_list, OPT.target_branch)
     if (not OPT.dry_run and manifest_change_required):
         status_manifest = update_manifest(OPT.target_branch, OPT.skip_review)
-        if (status_manifest != STATUS_OK):
+        if (status_manifest != ERROR_CODE.STATUS_OK):
             logging.error("Failed to update the manifest")
 
     cherry_pick_exit(status_code)
