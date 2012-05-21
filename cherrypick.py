@@ -89,7 +89,7 @@ import git
 from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 
-__version__ = '0.4.3'
+__version__ = '0.4.4'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -246,8 +246,8 @@ class Gerrit(object):
                 cherry.project = commit.name
                 cherry.branch = commit.target
                 cherry.set_dms(commit.dms)
-                if 'change' in results[0] and 'status' in results[0]:
-                    cherry.set_change_nr(int(results[0]['change']))
+                if 'number' in results[0] and 'status' in results[0]:
+                    cherry.set_change_nr(int(results[0]['number']))
                     cherry.set_status(results[0]['status'])
                     return cherry
             return None
@@ -730,6 +730,8 @@ def get_dms_list(target_branch):
                                  cmt.name, cmt.commit)
                 else:
                     b_commit_list.append(cmt)
+        else:
+            b_commit_list = b_commit_list_full
 
         #read merge base to target branch log
         t_commit_list = collect_fix_dms(target_revision, mergebase,
