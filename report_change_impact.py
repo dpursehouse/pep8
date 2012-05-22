@@ -354,9 +354,9 @@ def _main():
     if not options.revision:
         semcutil.fatal(1, "Patchset revision missing. Use --revision option.")
 
+    level = logging.WARNING
     logging.basicConfig(format='[%(levelname)s] %(message)s',
-                        level=logging.WARNING)
-
+                        level=level)
     if (options.verbose > 1):
         level = logging.DEBUG
     elif (options.verbose > 0):

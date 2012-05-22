@@ -161,9 +161,18 @@ def _main():
     parser.add_option("", "--server", dest="server",
                       help="IP address or name of the CM server.",
                       action="store", default=DEFAULT_SERVER)
+    parser.add_option("-v", "--verbose", dest="verbose", default=0,
+                      action="count", help="Verbose logging.")
     (options, _args) = parser.parse_args()
 
-    logging.basicConfig(format='%(message)s', level=logging.INFO)
+    level = logging.WARNING
+    logging.basicConfig(format='[%(levelname)s] %(message)s',
+                        level=level)
+    if (options.verbose > 1):
+        level = logging.DEBUG
+    elif (options.verbose > 0):
+        level = logging.INFO
+    logging.getLogger().setLevel(level)
 
     try:
         if not options.source:
