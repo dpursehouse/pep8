@@ -4,9 +4,6 @@
 Find cherry pick candidates in source branch(es) by processing the git log of
 each base branch and target branch. From the log, list of DMSs will be checked
 with DMS tag server and commits with correct DMS tag will be considered.
-Exclusion filters which are mentioned in --exlude-git,--exclude-dms
-and --exclude-commit will be excluded. Then the potential commits will be
-pushed to Gerrit for review.
 
 During each cherry pick, commit id will be checked in Gerrit commit message,
 and cherry pick of this commit will be skipped if corresponding commit is found
@@ -63,7 +60,7 @@ from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 from semcutil import enum
 
-__version__ = '0.4.17'
+__version__ = '0.4.18'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -76,6 +73,7 @@ manifest_change_required = False
 upd_project_list = []
 dms_tags = []
 cmserver = None
+cherry_policy = None
 
 #Error codes
 ERROR_CODE = enum('STATUS_OK',
@@ -426,30 +424,6 @@ def option_parser():
     opt_parser.add_option('-s', '--source-branch',
                      dest='source_branch',
                      help='source branch')
-    opt_parser.add_option("-i", "--include-target-branch",
-                          dest="target_branch_include",
-                          action="append", metavar="REGEXP",
-                          default=[],
-                          help="A regular expression that will be matched " \
-                               "against the branches of the gits found in " \
-                               "the target manifest to include them in the " \
-                               "cherry pick.  This option can be used " \
-                               "multiple times to add more expressions. The " \
-                               "first use of this option will clear the " \
-                               "default value (%s) before appending the new " \
-                               "expression." % \
-                               ", ".join(DEFAULT_TARGET_BRANCH_INCLUDES))
-    opt_parser.add_option("-e", "--exclude-target-branch",
-                          dest="target_branch_exclude",
-                          action="append", metavar="REGEXP",
-                          default=DEFAULT_TARGET_BRANCH_EXCLUDES,
-                          help="Same as --include-git-branch but for " \
-                               "excluding branches on gits found in the " \
-                               "target manifest. This option can also be " \
-                               "used multiple times to add more expressions. " \
-                               "The first use of this option will append the " \
-                               "new expression onto the default value (%s)." % \
-                               ", ".join(DEFAULT_TARGET_BRANCH_EXCLUDES))
     opt_parser.add_option('-r', '--reviewers',
                      dest='reviewers',
                      help='default reviewers (comma separated)',
@@ -474,23 +448,6 @@ def option_parser():
                      dest='mail_sender',
                      help='Mail sender address for mail notification.',
                      action="store", default=DEFAULT_MAIL_SENDER)
-    opt_parser.add_option('--exclude-git',
-                     dest='exclude_git',
-                     help='List of gits to be excluded (comma separated)',
-                     default=None,)
-    opt_parser.add_option('--exclude-commit',
-                     dest='exclude_commit',
-                     help='List of commits to be excluded (comma separated)',
-                     default=None,)
-    opt_parser.add_option('--exclude-dms',
-                     dest='exclude_dms',
-                     help='List of DMSs to be excluded (comma separated)',
-                     default=None,)
-    opt_parser.add_option('--include-git',
-                     dest='include_git',
-                     help='List of gits to be included (comma separated)' +
-                     '--exclude-git will be ignored.',
-                     default=None,)
     opt_parser.add_option('-m', '--manifest',
                      dest='manifest',
                      help='Specify which manifest to use.',
@@ -591,6 +548,9 @@ def get_dms_list(target_branch):
     from MERGE_BASE to  TARGET_BRANCH. Return the DMSs list which are not in
     TARGET_BRANCH.
     """
+    global cherry_policy
+    global cmserver
+
     #Parse base and target manifest file
     base_proj_rev, dst_proj_rev = parse_base_and_target_manifest(target_branch)
 
@@ -602,7 +562,6 @@ def get_dms_list(target_branch):
 
     old_cherries = None
     try:
-        global cmserver
         logging.info("Get old cherries from CM server...")
         old_cherries = cmserver.get_old_cherrypicks(OPT.manifest,
                                                     OPT.source_branch,
@@ -614,16 +573,28 @@ def get_dms_list(target_branch):
     except (CMServerError, CherrypickStatusError), e:
         logging.error("Error getting old cherry data: %s ", e)
 
+    if cherry_policy.include_target_revision:
+        include_target_revision = cherry_policy.include_target_revision
+    else:
+        include_target_revision = DEFAULT_TARGET_BRANCH_INCLUDES
+
+    exclude_target_revision = DEFAULT_TARGET_BRANCH_EXCLUDES + \
+                              cherry_policy.exclude_target_revision
+
+    matcher = IncludeExcludeMatcher(include_target_revision,
+                                    exclude_target_revision)
+
     for name, rev_path in base_proj_rev.iteritems():
         target_revision = None
         target_is_sha1 = False
         path = rev_path.split(',')[1]
         base_rev = rev_path.split(',')[0]
-        if OPT.include_git:
-            if name not in OPT.include_git.split(','):
+        if cherry_policy.include_component:
+            if name not in cherry_policy.include_component:
                 logging.info("%s: pass: git is not included", name)
                 continue
-        elif OPT.exclude_git and name in OPT.exclude_git.split(','):
+        elif (cherry_policy.exclude_component and
+              name in cherry_policy.exclude_component):
             logging.info("%s: pass: git is excluded", name)
             continue
 
@@ -660,8 +631,6 @@ def get_dms_list(target_branch):
             target_is_sha1 = True
             logging.info("%s: target revision is a sha-1", name)
         else:
-            matcher = IncludeExcludeMatcher(OPT.target_branch_include,
-                                            OPT.target_branch_exclude)
             if (matcher.match(t_revision)):
                 target_revision = 'origin/' + t_revision
                 logging.info("%s: target branch is %s", name, t_revision)
@@ -920,6 +889,7 @@ def collect_fix_dms(branch, commit_begin, project, log_file):
     Collect FIX=DMSxxxxxxx and commit id from the logs.
     return the list of commits.
     """
+    global cherry_policy
     commit_list = []
     git_log = execmd([GIT, 'log', '--pretty=fuller',
                       commit_begin + '..' + branch])[0]
@@ -936,10 +906,11 @@ def collect_fix_dms(branch, commit_begin, project, log_file):
         elif re.match(r'^FIX=DMS[0-9]+$', log_str.strip()):  # "FIX=DMSxxxxx"
             dms_str = log_str.split('=')
             dms_id = dms_str[1].strip()     # DMSxxxxxxx
-            if (OPT.exclude_commit and
-                commit_id in OPT.exclude_commit.split(',')):
+            if (cherry_policy.exclude_source_revision and
+                commit_id in cherry_policy.exclude_source_revision):
                 continue                    # exclude commit
-            if OPT.exclude_dms and dms_id in OPT.exclude_dms.split(','):
+            if (cherry_policy.exclude_dms and
+                dms_id in cherry_policy.exclude_dms):
                 continue                    # exclude dms
             rev, path, name = project.split(',')
             cmt = Commit(target=rev, path=path, name=name, dms=dms_id,
@@ -1385,6 +1356,7 @@ def main():
     global OPT_PARSER, OPT
     global dms_tags
     global cmserver
+    global cherry_policy
     OPT_PARSER = option_parser()
     OPT = OPT_PARSER.parse_args()[0]
 
@@ -1431,6 +1403,20 @@ def main():
             cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
                              "No cherrypick policy: %s to %s" % \
                              (OPT.source_branch, OPT.target_branch))
+        logging.info("Include target revisions: [%s]",
+                     ", ".join(cherry_policy.include_target_revision))
+        logging.info("Exclude target revisions: [%s]",
+                     ", ".join(cherry_policy.exclude_target_revision))
+        logging.info("Include source revisions: [%s]",
+                     ", ".join(cherry_policy.include_source_revision))
+        logging.info("Exclude source revisions: [%s]",
+                     ", ".join(cherry_policy.exclude_source_revision))
+        logging.info("Include components: [%s]",
+                     ", ".join(cherry_policy.include_component))
+        logging.info("Exclude components: [%s]",
+                     ", ".join(cherry_policy.exclude_component))
+        logging.info("Exclude DMS: [%s]",
+                     ", ".join(cherry_policy.exclude_dms))
         dms_tags = branch_config.get_branch_tagnames(OPT.target_branch)
         if not dms_tags:
             cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
@@ -1447,9 +1433,6 @@ def main():
     except CredentialsError, e:
         cherry_pick_exit(ERROR_CODE.STATUS_CM_SERVER,
                          "Credentials Error: %s" % e)
-
-    if not OPT.target_branch_include:
-        OPT.target_branch_include = DEFAULT_TARGET_BRANCH_INCLUDES
 
     args = ["%s = %s" %
             (key, value) for key, value in OPT.__dict__.iteritems()]
