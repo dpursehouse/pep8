@@ -92,22 +92,26 @@ def _update_status_from_gerrit(gerrit, cherry):
     return cherry
 
 
-def _update_cherrypicks(server, manifest, source, target, dry_run):
+def _update_cherrypicks(server, manifest, source, target, dry_run, full):
     ''' Connect to the `server` and get the list of cherry picks for the
     `source` and `target` combination.  For each cherry pick, find the current
     status from Gerrit and then update on the status server if the status has
     changed.  If `dry_run` is True, don't actually update the status on the
-    server.
+    server.  If `full` is True, update all items, otherwise only update those
+    in "NEW" state.
     Skip any cherry picks with error status.
     Raise GerritQueryError if the gerrit query returns an error.
     Return total cherry picks processed, total skipped, total
-    updated, and total errors occurred.
+    updated, total no update needed, and total errors occurred.
     '''
+    logging.info("Getting cherrypick data from server...")
     cherries = server.get_old_cherrypicks(manifest, source, target)
     total = len(cherries)
+    logging.info("Retrieved %d cherrypicks from server", total)
 
     errors = 0
     skipped = 0
+    no_update = 0
     updated = 0
 
     if total:
@@ -115,9 +119,20 @@ def _update_cherrypicks(server, manifest, source, target, dry_run):
         for cherry in cherries:
             try:
                 # No need to update the status if it's already merged
-                if cherry.status != "MERGED":
-                    cherry = _update_status_from_gerrit(gerrit, cherry)
+                if cherry.status == "MERGED":
+                    logging.info("Skipping (merged): %s,%s",
+                                 cherry.project, cherry.sha1)
+                    skipped += 1
+                    continue
 
+                # Only update new ones when not in full mode
+                if not full and cherry.status != "NEW":
+                    logging.info("Skipping (not new): %s,%s",
+                                 cherry.project, cherry.sha1)
+                    skipped += 1
+                    continue
+
+                cherry = _update_status_from_gerrit(gerrit, cherry)
                 if cherry.is_dirty():
                     logging.info("Updating: %s", str(cherry))
                     if not dry_run:
@@ -127,9 +142,9 @@ def _update_cherrypicks(server, manifest, source, target, dry_run):
                                                         cherry)
                     updated += 1
                 else:
-                    logging.info("Skipping: %s,%s",
+                    logging.info("No update found: %s,%s",
                                  cherry.project, cherry.sha1)
-                    skipped += 1
+                    no_update += 1
             except CherrypickStatusError, e:
                 errors += 1
                 logging.error("Cherry pick status error: %s", e)
@@ -143,26 +158,30 @@ def _update_cherrypicks(server, manifest, source, target, dry_run):
                 errors += 1
                 logging.error("Gerrit query execution error: %s", e)
 
-    return total, skipped, updated, errors
+    return total, skipped, updated, no_update, errors
 
 
 def _main():
     usage = "usage: %prog --source SOURCE --target TARGET [options]"
     parser = optparse.OptionParser(usage=usage)
-    parser.add_option("", "--source", action="store", default=None,
+    parser.add_option("-s", "--source", action="store", default=None,
                       dest="source", help="Source branch.")
-    parser.add_option("", "--target", action="store", default=None,
+    parser.add_option("-t", "--target", action="store", default=None,
                       dest="target", help="Target branch.")
-    parser.add_option("", "--manifest", action="store",
+    parser.add_option("-m", "--manifest", action="store",
                       default="platform/manifest",
                       dest="manifest", help="Manifest git name.")
-    parser.add_option("", "--dry-run", dest="dry_run", action="store_true",
+    parser.add_option("-n", "--dry-run", dest="dry_run", action="store_true",
                       help="Do everything except actually update the status.")
     parser.add_option("", "--server", dest="server",
                       help="IP address or name of the CM server.",
                       action="store", default=DEFAULT_SERVER)
     parser.add_option("-v", "--verbose", dest="verbose", default=0,
                       action="count", help="Verbose logging.")
+    parser.add_option("-f", "--full", dest="full",
+                      help="True: Update all items.  False (default): Update" \
+                           "only items in NEW state.",
+                      action="store_true", default=False)
     (options, _args) = parser.parse_args()
 
     level = logging.WARNING
@@ -180,19 +199,24 @@ def _main():
         if not options.target:
             parser.error("Must specify --target")
 
+        logging.info("Operation mode: %s",
+                     "Update all cherrypicks" if options.full else \
+                     "Update only new cherrypicks")
+
         server = CMServer(options.server)
         logging.info("Updating status for %s -> %s on manifest %s",
                      options.source, options.target, options.manifest)
 
-        total, skipped, updated, errors = _update_cherrypicks(server,
-                                                              options.manifest,
-                                                              options.source,
-                                                              options.target,
-                                                              options.dry_run)
-        logging.info("\nProcessed %d cherry picks\n" +
-                     "Updated: %d\n" +
-                     "Skipped: %d\n" +
-                     "Errors: %d\n", total, updated, skipped, errors)
+        total, skipped, updated, no_update, errors = \
+            _update_cherrypicks(server, options.manifest,
+                                options.source, options.target,
+                                options.dry_run, options.full)
+        logging.info("\nTotal cherry picks: %4d\n" +
+                     "Updated:            %4d\n" +
+                     "No update found:    %4d\n" +
+                     "Skipped:            %4d\n" +
+                     "Errors:             %4d\n",
+                     total, updated, no_update, skipped, errors)
         return errors
     except CherrypickStatusError, e:
         fatal(1, "Cherry pick status error: %s" % e)
