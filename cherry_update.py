@@ -6,10 +6,13 @@ branches.
 
 import logging
 import optparse
+import StringIO
 import sys
 
+from branch_policies import BranchPolicies, BranchPolicyError
+from branch_policies import CherrypickPolicyError
 from cm_server import CMServer, CherrypickStatusError, CMServerError
-from cm_server import DEFAULT_SERVER
+from cm_server import DEFAULT_SERVER, CredentialsError
 from gerrit import GerritSshConnection, GerritSshConfigError, GerritQueryError
 from processes import ChildExecutionError
 from semcutil import fatal
@@ -92,7 +95,8 @@ def _update_status_from_gerrit(gerrit, cherry):
     return cherry
 
 
-def _update_cherrypicks(server, manifest, source, target, dry_run, full):
+def _update_cherrypicks(gerrit, server, manifest, source, target,
+                        dry_run, full):
     ''' Connect to the `server` and get the list of cherry picks for the
     `source` and `target` combination.  For each cherry pick, find the current
     status from Gerrit and then update on the status server if the status has
@@ -104,72 +108,85 @@ def _update_cherrypicks(server, manifest, source, target, dry_run, full):
     Return total cherry picks processed, total skipped, total
     updated, total no update needed, and total errors occurred.
     '''
-    logging.info("Getting cherrypick data from server...")
-    cherries = server.get_old_cherrypicks(manifest, source, target)
-    total = len(cherries)
-    logging.info("Retrieved %d cherrypicks from server", total)
-
+    total = 0
     errors = 0
     skipped = 0
     no_update = 0
     updated = 0
 
-    if total:
-        gerrit = GerritSshConnection(GERRIT_URL)
-        for cherry in cherries:
-            try:
-                # No need to update the status if it's already merged
-                if cherry.status == "MERGED":
-                    logging.info("Skipping (merged): %s,%s",
-                                 cherry.project, cherry.sha1)
-                    skipped += 1
-                    continue
+    logging.info("Updating status for %s %s to %s", manifest, source, target)
+    logging.info("Getting cherrypick data from server...")
 
-                # Only update new ones when not in full mode
-                if not full and cherry.status != "NEW":
-                    logging.info("Skipping (not new): %s,%s",
-                                 cherry.project, cherry.sha1)
-                    skipped += 1
-                    continue
+    try:
+        cherries = server.get_old_cherrypicks(manifest, source, target)
+        total = len(cherries)
+        logging.info("Retrieved %d cherrypicks from server", total)
+    except CMServerError, e:
+        logging.error("CM server error: %s", e)
+        errors = 1
 
-                cherry = _update_status_from_gerrit(gerrit, cherry)
-                if cherry.is_dirty():
-                    logging.info("Updating: %s", str(cherry))
-                    if not dry_run:
-                        server.update_cherrypick_status(manifest,
-                                                        source,
-                                                        target,
-                                                        cherry)
-                    updated += 1
-                else:
-                    logging.info("No update found: %s,%s",
-                                 cherry.project, cherry.sha1)
-                    no_update += 1
-            except CherrypickStatusError, e:
-                errors += 1
-                logging.error("Cherry pick status error: %s", e)
-            except CMServerError, e:
-                errors += 1
-                logging.error("CM server error: %s", e)
-            except GerritQueryError, e:
-                errors += 1
-                logging.error("Gerrit query error: %s", e)
-            except ChildExecutionError, e:
-                errors += 1
-                logging.error("Gerrit query execution error: %s", e)
+    for cherry in cherries:
+        try:
+            # No need to update the status if it's already merged
+            if cherry.status == "MERGED":
+                logging.info("Skipping (merged): %s,%s",
+                             cherry.project, cherry.sha1)
+                skipped += 1
+                continue
+
+            # Only update new ones when not in full mode
+            if not full and cherry.status != "NEW":
+                logging.info("Skipping (not new): %s,%s",
+                             cherry.project, cherry.sha1)
+                skipped += 1
+                continue
+
+            cherry = _update_status_from_gerrit(gerrit, cherry)
+            if cherry.is_dirty():
+                logging.info("Updating: %s", str(cherry))
+                if not dry_run:
+                    server.update_cherrypick_status(manifest,
+                                                    source,
+                                                    target,
+                                                    cherry)
+                updated += 1
+            else:
+                logging.info("No update found: %s,%s",
+                             cherry.project, cherry.sha1)
+                no_update += 1
+        except CherrypickStatusError, e:
+            errors += 1
+            logging.error("Cherry pick status error: %s", e)
+        except CMServerError, e:
+            errors += 1
+            logging.error("CM server error: %s", e)
+        except GerritQueryError, e:
+            errors += 1
+            logging.error("Gerrit query error: %s", e)
+        except ChildExecutionError, e:
+            errors += 1
+            logging.error("Gerrit query execution error: %s", e)
+
+    logging.info("\nTotal cherry picks: %4d\n" +
+                 "Updated:            %4d\n" +
+                 "No update found:    %4d\n" +
+                 "Skipped:            %4d\n" +
+                 "Errors:             %4d\n",
+                 total, updated, no_update, skipped, errors)
 
     return total, skipped, updated, no_update, errors
 
 
 def _main():
-    usage = "usage: %prog --source SOURCE --target TARGET [options]"
+    usage = "usage: %prog [--source SOURCE --target TARGET --manifest " \
+            "MANIFEST] [options]"
     parser = optparse.OptionParser(usage=usage)
     parser.add_option("-s", "--source", action="store", default=None,
                       dest="source", help="Source branch.")
     parser.add_option("-t", "--target", action="store", default=None,
                       dest="target", help="Target branch.")
     parser.add_option("-m", "--manifest", action="store",
-                      default="platform/manifest",
+                      default=None,
                       dest="manifest", help="Manifest git name.")
     parser.add_option("-n", "--dry-run", dest="dry_run", action="store_true",
                       help="Do everything except actually update the status.")
@@ -193,37 +210,73 @@ def _main():
         level = logging.INFO
     logging.getLogger().setLevel(level)
 
+    # If any of the --source, --target, or --manifest options are given then
+    # all the others must also be given
+    if options.source or options.target or options.manifest:
+        if None in [options.source, options.target, options.manifest]:
+            parser.error("Must specify --source and --target and --manifest")
+
+    logging.info("Operation mode: %s | %s",
+                 "Manual" if options.source else "Auto",
+                 "Update all cherrypicks" if options.full else \
+                 "Update only new cherrypicks")
+
     try:
-        if not options.source:
-            parser.error("Must specify --source")
-        if not options.target:
-            parser.error("Must specify --target")
-
-        logging.info("Operation mode: %s",
-                     "Update all cherrypicks" if options.full else \
-                     "Update only new cherrypicks")
-
+        gerrit = GerritSshConnection(GERRIT_URL)
         server = CMServer(options.server)
-        logging.info("Updating status for %s -> %s on manifest %s",
-                     options.source, options.target, options.manifest)
-
-        total, skipped, updated, no_update, errors = \
-            _update_cherrypicks(server, options.manifest,
-                                options.source, options.target,
-                                options.dry_run, options.full)
-        logging.info("\nTotal cherry picks: %4d\n" +
-                     "Updated:            %4d\n" +
-                     "No update found:    %4d\n" +
-                     "Skipped:            %4d\n" +
-                     "Errors:             %4d\n",
-                     total, updated, no_update, skipped, errors)
-        return errors
-    except CherrypickStatusError, e:
-        fatal(1, "Cherry pick status error: %s" % e)
-    except CMServerError, e:
+    except (CMServerError, CredentialsError), e:
         fatal(1, "CM server error: %s" % e)
     except GerritSshConfigError, e:
         fatal(1, "Gerrit SSH error: %s" % e)
+
+    total_errors = 0
+    if options.source:
+        _total, _skipped, _updated, _no_update, total_errors = \
+            _update_cherrypicks(gerrit, server,
+                                options.manifest,
+                                options.source, options.target,
+                                options.dry_run, options.full)
+    else:
+        total_total = 0
+        total_updated = 0
+        total_no_update = 0
+        total_skipped = 0
+        for manifest in ["platform/manifest", "platform/amssmanifest"]:
+            logging.info("Getting branch config for %s", manifest)
+            try:
+                data = server.get_branch_config(manifest)
+                config = BranchPolicies(StringIO.StringIO(data))
+                for branch in config.branches:
+                    target = branch['name']
+                    for policy in branch["cherrypick"]:
+                        source = policy.source
+                        total, skipped, updated, no_update, errors = \
+                            _update_cherrypicks(gerrit, server,
+                                                manifest, source, target,
+                                                options.dry_run, options.full)
+
+                        total_total += total
+                        total_updated += updated
+                        total_no_update += no_update
+                        total_skipped += skipped
+                        total_errors += errors
+
+            except CMServerError, e:
+                logging.error("CM server error: %s", e)
+            except BranchPolicyError, e:
+                logging.error("Branch policy error: %s", e)
+            except CherrypickPolicyError, e:
+                logging.error("Cherrypick policy error: %s", e)
+
+        logging.info("\nOverall total cherry picks: %4d\n" +
+                     "Updated:                    %4d\n" +
+                     "No update found:            %4d\n" +
+                     "Skipped:                    %4d\n" +
+                     "Errors:                     %4d\n",
+                     total_total, total_updated, total_no_update,
+                     total_skipped, total_errors)
+
+    return total_errors
 
 if __name__ == "__main__":
     try:
