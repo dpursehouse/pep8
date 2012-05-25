@@ -22,11 +22,10 @@ changes being inspected. """
 import logging
 import optparse
 import os
-import StringIO
 import sys
 from xml.parsers.expat import ExpatError
 
-from branch_policies import BranchPolicies, BranchPolicyError
+from branch_policies import BranchPolicyError
 from cm_server import CMServer, CMServerError
 from commit_message import CommitMessage
 from dmsutil import DMSTagServer, DMSTagServerError
@@ -453,8 +452,7 @@ def _main():
     logging.info("Getting branch configuration from CM server...")
     try:
         server = CMServer()
-        branch_config = server.get_branch_config(options.manifest_name)
-        config = BranchPolicies(StringIO.StringIO(branch_config))
+        config = server.get_branch_config(options.manifest_name)
     except (BranchPolicyError, CMServerError, ExpatError, IOError), err:
         semcutil.fatal(2, "Error getting branch configuration for %s: %s" % \
                           (options.manifest_name, err))

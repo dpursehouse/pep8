@@ -5,10 +5,12 @@ from base64 import encodestring
 import logging
 import netrc
 from os.path import expanduser, isfile
+from StringIO import StringIO
 import urllib
 import urllib2
 from urlparse import urljoin
 
+from branch_policies import BranchPolicies
 from cherry_status import CherrypickStatus, CherrypickStatusError
 from retry import retry
 
@@ -144,12 +146,14 @@ class CMServer(object):
     def get_branch_config(self, manifest_name):
         ''' Get the branch configurations for the branches on the manifest
         specified by `manifest_name`.
-        Return the config XML as returned from the server.
-        Raise some form of CMServerError if anything goes wrong.
+        Return a BranchPolicies object encapsulating the config returned from
+        the server.
+        Raise some form of CMServerError, BranchPolicyError, or
+        CherrypickPolicyError if anything goes wrong.
         '''
         path = GET_BRANCH_CONFIG % {'manifest': urllib.quote(manifest_name)}
         result = self._open_url(path)
-        return result.read()
+        return BranchPolicies(StringIO(result.read()))
 
     @retry(CMServerInternalError, tries=2)
     def get_old_cherrypicks(self, manifest_name, source, target):

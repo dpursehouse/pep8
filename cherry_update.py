@@ -6,11 +6,9 @@ branches.
 
 import logging
 import optparse
-import StringIO
 import sys
 
-from branch_policies import BranchPolicies, BranchPolicyError
-from branch_policies import CherrypickPolicyError
+from branch_policies import BranchPolicyError, CherrypickPolicyError
 from cherry_status import CherrypickStatusError
 from cm_server import CMServer, CMServerError
 from cm_server import DEFAULT_SERVER, CredentialsError
@@ -245,8 +243,7 @@ def _main():
         for manifest in ["platform/manifest", "platform/amssmanifest"]:
             logging.info("Getting branch config for %s", manifest)
             try:
-                data = server.get_branch_config(manifest)
-                config = BranchPolicies(StringIO.StringIO(data))
+                config = server.get_branch_config(manifest)
                 for branch in config.branches:
                     target = branch['name']
                     for policy in branch["cherrypick"]:

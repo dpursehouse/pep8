@@ -44,7 +44,6 @@ import optparse
 import os
 import re
 import signal
-import StringIO
 import subprocess
 import tempfile
 import threading
@@ -52,7 +51,6 @@ import time
 import xml.dom.minidom
 
 
-from branch_policies import BranchPolicies
 from branch_policies import BranchPolicyError, CherrypickPolicyError
 from cherry_status import CherrypickStatus, CherrypickStatusError
 from cm_server import CMServer, CMServerError, CredentialsError
@@ -65,7 +63,7 @@ from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 from semcutil import enum
 
-__version__ = '0.4.13'
+__version__ = '0.4.14'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -1385,10 +1383,7 @@ def main():
     try:
         logging.info("Get DMS tags and cherry pick policy from CM server...")
         cmserver = CMServer()
-        data = cmserver.get_branch_config(OPT.manifest)
-        if not data:
-            cherry_pick_exit(ERROR_CODE.STATUS_CM_SERVER, "Empty branch config")
-        branch_config = BranchPolicies(StringIO.StringIO(data))
+        branch_config = cmserver.get_branch_config(OPT.manifest)
         dms_tags = branch_config.get_branch_tagnames(OPT.target_branch)
         if not dms_tags:
             cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
