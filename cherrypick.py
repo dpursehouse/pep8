@@ -63,7 +63,7 @@ from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 from semcutil import enum
 
-__version__ = '0.4.14'
+__version__ = '0.4.15'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -1384,17 +1384,17 @@ def main():
         logging.info("Get DMS tags and cherry pick policy from CM server...")
         cmserver = CMServer()
         branch_config = cmserver.get_branch_config(OPT.manifest)
-        dms_tags = branch_config.get_branch_tagnames(OPT.target_branch)
-        if not dms_tags:
-            cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
-                             "Config must specify DMS tags")
-        logging.info("DMS tags: %s", ", ".join(dms_tags))
         cherry_policy = branch_config.get_cherrypick_policy(OPT.source_branch,
                                                             OPT.target_branch)
         if not cherry_policy:
             cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
                              "No cherrypick policy: %s to %s" % \
                              (OPT.source_branch, OPT.target_branch))
+        dms_tags = branch_config.get_branch_tagnames(OPT.target_branch)
+        if not dms_tags:
+            cherry_pick_exit(ERROR_CODE.STATUS_ARGS,
+                             "Config must specify DMS tags")
+        logging.info("DMS tags: %s", ", ".join(dms_tags))
     except BranchPolicyError, e:
         cherry_pick_exit(ERROR_CODE.STATUS_CM_SERVER,
                          "Branch Policy Error: %s" % e)
