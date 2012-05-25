@@ -54,8 +54,8 @@ import xml.dom.minidom
 
 from branch_policies import BranchPolicies
 from branch_policies import BranchPolicyError, CherrypickPolicyError
+from cherry_status import CherrypickStatus, CherrypickStatusError
 from cm_server import CMServer, CMServerError, CredentialsError
-from cm_server import CherrypickStatus, CherrypickStatusError
 from cm_server import DEFAULT_SERVER
 from dmsutil import DMSTagServer, DMSTagServerError
 from find_reviewers import FindReviewers, AddReviewersError
@@ -65,7 +65,7 @@ from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 from semcutil import enum
 
-__version__ = '0.4.12'
+__version__ = '0.4.13'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911

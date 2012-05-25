@@ -4,7 +4,7 @@
 import os
 import unittest
 
-from cm_server import CherrypickStatus
+from cherry_status import CherrypickStatus
 
 
 class TestCherrypickStatus(unittest.TestCase):

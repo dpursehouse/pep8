@@ -6,7 +6,7 @@ import sys
 import unittest
 
 from cherry_update import _calculate_score
-from cm_server import CherrypickStatusError
+from cherry_status import CherrypickStatusError
 
 
 class TestCalculateScore(unittest.TestCase):

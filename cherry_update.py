@@ -11,7 +11,8 @@ import sys
 
 from branch_policies import BranchPolicies, BranchPolicyError
 from branch_policies import CherrypickPolicyError
-from cm_server import CMServer, CherrypickStatusError, CMServerError
+from cherry_status import CherrypickStatusError
+from cm_server import CMServer, CMServerError
 from cm_server import DEFAULT_SERVER, CredentialsError
 from gerrit import GerritSshConnection, GerritSshConfigError, GerritQueryError
 from processes import ChildExecutionError
