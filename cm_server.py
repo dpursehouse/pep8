@@ -17,9 +17,6 @@ DEFAULT_SERVER = "cmweb.sonyericsson.net"
 UPDATE_CHERRYPICK_STATUS = "/harvest/cherry/%(manifest)s/%(target)s/" \
                            "%(source)s/%(sha1)s/update/"
 
-# URL for cherrypick status query (legacy)
-GET_CHERRYPICK_STATUS_LEGACY = "/cherrypick/query.php?target=%(target)s"
-
 # URL for cherrypick status query
 GET_CHERRYPICK_STATUS = "/harvest/cherries/manifest/%(manifest)s/" \
                         "target/%(target)s/source/%(source)s/format/json/"
@@ -242,15 +239,6 @@ class CMServer(object):
         path = GET_BRANCH_CONFIG % {'manifest': urllib.quote(manifest_name)}
         result = self._open_url(path)
         return result.read()
-
-    def get_old_cherrypicks_legacy(self, target):
-        ''' Get the list of existing cherry picks for `target` branch.
-        Return a list of cherry picks.
-        Raise CMServerError if anything goes wrong.
-        '''
-        path = GET_CHERRYPICK_STATUS_LEGACY % {'target': urllib.quote(target)}
-        result = self._open_url(path)
-        return result.read().rstrip().split('\n')
 
     def get_old_cherrypicks(self, manifest_name, source, target):
         ''' Get the list of existing cherry picks for `source` and `target`
