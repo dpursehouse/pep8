@@ -124,48 +124,48 @@ def _update_cherrypicks(gerrit, server, manifest, source, target,
     except CMServerError, e:
         logging.error("CM server error: %s", e)
         errors = 1
+    else:
+        for cherry in cherries:
+            try:
+                # No need to update the status if it's already merged
+                if cherry.status == "MERGED":
+                    logging.info("Skipping (merged): %s,%s",
+                                 cherry.project, cherry.sha1)
+                    skipped += 1
+                    continue
 
-    for cherry in cherries:
-        try:
-            # No need to update the status if it's already merged
-            if cherry.status == "MERGED":
-                logging.info("Skipping (merged): %s,%s",
-                             cherry.project, cherry.sha1)
-                skipped += 1
-                continue
+                # Only update new ones when not in full mode
+                if not full and cherry.status != "NEW":
+                    logging.info("Skipping (not new): %s,%s",
+                                 cherry.project, cherry.sha1)
+                    skipped += 1
+                    continue
 
-            # Only update new ones when not in full mode
-            if not full and cherry.status != "NEW":
-                logging.info("Skipping (not new): %s,%s",
-                             cherry.project, cherry.sha1)
-                skipped += 1
-                continue
-
-            cherry = _update_status_from_gerrit(gerrit, cherry)
-            if cherry.is_dirty():
-                logging.info("Updating: %s", str(cherry))
-                if not dry_run:
-                    server.update_cherrypick_status(manifest,
-                                                    source,
-                                                    target,
-                                                    cherry)
-                updated += 1
-            else:
-                logging.info("No update found: %s,%s",
-                             cherry.project, cherry.sha1)
-                no_update += 1
-        except CherrypickStatusError, e:
-            errors += 1
-            logging.error("Cherry pick status error: %s", e)
-        except CMServerError, e:
-            errors += 1
-            logging.error("CM server error: %s", e)
-        except GerritQueryError, e:
-            errors += 1
-            logging.error("Gerrit query error: %s", e)
-        except ChildExecutionError, e:
-            errors += 1
-            logging.error("Gerrit query execution error: %s", e)
+                cherry = _update_status_from_gerrit(gerrit, cherry)
+                if cherry.is_dirty():
+                    logging.info("Updating: %s", str(cherry))
+                    if not dry_run:
+                        server.update_cherrypick_status(manifest,
+                                                        source,
+                                                        target,
+                                                        cherry)
+                    updated += 1
+                else:
+                    logging.info("No update found: %s,%s",
+                                 cherry.project, cherry.sha1)
+                    no_update += 1
+            except CherrypickStatusError, e:
+                errors += 1
+                logging.error("Cherry pick status error: %s", e)
+            except CMServerError, e:
+                errors += 1
+                logging.error("CM server error: %s", e)
+            except GerritQueryError, e:
+                errors += 1
+                logging.error("Gerrit query error: %s", e)
+            except ChildExecutionError, e:
+                errors += 1
+                logging.error("Gerrit query execution error: %s", e)
 
     logging.info("\nTotal cherry picks: %4d\n" +
                  "Updated:            %4d\n" +
