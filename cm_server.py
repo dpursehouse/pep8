@@ -151,9 +151,28 @@ class CherrypickStatus(object):
         '''
         return self.dirty
 
+    @staticmethod
+    def cherries_from_json(data):
+        ''' Parse `data` as JSON data and return a list of CherrypickStatus
+        objects.
+        Raise CherrypickStatusError if the data is malformed.
+        '''
+        cherries = []
+        json_data = json.loads(data)
+        for entry in json_data:
+            if not "model" in entry:
+                raise CherrypickStatusError("Invalid status data format")
+            if not "fields" in entry:
+                raise CherrypickStatusError("Invalid status data format")
+            if entry["model"] == "harvest.cherry":
+                cherry = CherrypickStatus()
+                cherry.from_json(entry["fields"])
+                cherries.append(cherry)
+        return cherries
+
     def from_json(self, json_data):
-        ''' Initialise the class with `json_data` from the server.
-        Raise CherrypickStatusError if anything goes wrong.
+        ''' Initialise the class with `json_data`.
+        Raise CherrypickStatusError if the data is malformed.
         '''
         if not "commit" in json_data:
             raise CherrypickStatusError("commit missing in json data:\n%s" % \
@@ -292,25 +311,13 @@ class CMServer(object):
         Raise some form of CMServerError or CherrypickStatusError if anything
         goes wrong.
         '''
-        cherries = []
         try:
             path = GET_CHERRYPICK_STATUS % \
                    {'manifest': urllib.quote(manifest_name),
                     'target': urllib.quote(target),
                     'source': urllib.quote(source)}
-            result = self._open_url(path)
-            data = result.read()
-            json_data = json.loads(data)
-            for entry in json_data:
-                if not "model" in entry:
-                    raise CherrypickStatusError("Invalid status data format")
-                if not "fields" in entry:
-                    raise CherrypickStatusError("Invalid status data format")
-                if entry["model"] == "harvest.cherry":
-                    cherry = CherrypickStatus()
-                    cherry.from_json(entry["fields"])
-                    cherries.append(cherry)
-            return cherries
+            data = self._open_url(path).read()
+            return CherrypickStatus.cherries_from_json(data)
         except ValueError, err:
             raise CherrypickStatusError("Error in JSON data: %s" % err)
 
