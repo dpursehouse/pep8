@@ -10,6 +10,8 @@ import urllib
 import urllib2
 from urlparse import urljoin
 
+from retry import retry
+
 # Default address of the server
 DEFAULT_SERVER = "cmweb.sonyericsson.net"
 
@@ -31,6 +33,35 @@ DEFAULT_NETRC_FILE = expanduser("~/.netrc")
 class CMServerError(Exception):
     ''' Raised when something goes wrong when accessing the server.
     '''
+
+
+class CMServerAuthenticationError(CMServerError):
+    ''' Raised when the server returns 401 Unauthorized.
+    '''
+    def __init__(self):
+        super(CMServerAuthenticationError, self).__init__(
+            "Authentication Error")
+
+
+class CMServerPermissionError(CMServerError):
+    ''' Raised when the server returns 403 Forbidden.
+    '''
+    def __init__(self):
+        super(CMServerPermissionError, self).__init__("Permission Error")
+
+
+class CMServerResourceNotFoundError(CMServerError):
+    ''' Raised when the server returns 404 Not Found.
+    '''
+    def __init__(self):
+        super(CMServerResourceNotFoundError, self).__init__("Not Found")
+
+
+class CMServerInternalError(CMServerError):
+    ''' Raised when the server returns 500 Internal Server Error.
+    '''
+    def __init__(self):
+        super(CMServerInternalError, self).__init__("Internal Error")
 
 
 class CherrypickStatusError(Exception):
@@ -201,8 +232,16 @@ class CMServer(object):
     ''' Encapsulate access to the CM server.
     '''
 
+    # Error codes that are expected.  Map the error codes to the corresponding
+    # exception class names.
+    ERROR_CODES = {401: "CMServerAuthenticationError",
+                   403: "CMServerPermissionError",
+                   404: "CMServerResourceNotFoundError",
+                   500: "CMServerInternalError"}
+
     def __init__(self, server=DEFAULT_SERVER):
         ''' Initialise self with the `server` address.
+        Raise CredentialsError if an error occurs when parsing the .netrc file.
         '''
         self._server = server
         self._auth = ""
@@ -217,7 +256,7 @@ class CMServer(object):
         ''' Open the URL on the server specified by `path`, optionally with
         data given in `data`, and return a file-like object representing
         the opened URL.
-        Raise CMServerError if anything goes wrong.
+        Raise some form of CMServerError if anything goes wrong.
         '''
         try:
             url = urljoin('http://' + self._server, path)
@@ -227,24 +266,31 @@ class CMServer(object):
             request = urllib2.Request(url)
             request.add_header("Authorization", "Basic %s" % self._auth)
             return urllib2.urlopen(request)
-        except urllib2.URLError, e:
-            raise CMServerError("Connection error: %s" % e)
+        except urllib2.URLError, error:
+            if isinstance(error, urllib2.HTTPError):
+                if error.code in self.ERROR_CODES:
+                    raise globals()[self.ERROR_CODES[error.code]]()
 
+            raise CMServerError("Unexpected error: %s" % error)
+
+    @retry(CMServerInternalError, tries=2)
     def get_branch_config(self, manifest_name):
         ''' Get the branch configurations for the branches on the manifest
         specified by `manifest_name`.
         Return the config XML as returned from the server.
-        Raise CMServerError if anything goes wrong.
+        Raise some form of CMServerError if anything goes wrong.
         '''
         path = GET_BRANCH_CONFIG % {'manifest': urllib.quote(manifest_name)}
         result = self._open_url(path)
         return result.read()
 
+    @retry(CMServerInternalError, tries=2)
     def get_old_cherrypicks(self, manifest_name, source, target):
         ''' Get the list of existing cherry picks for `source` and `target`
         branch combination on the manifest specified by `manifest_name`.
         Return a list of CherrypickStatus objects.
-        Raise CMServerError or CherrypickStatusError if anything goes wrong.
+        Raise some form of CMServerError or CherrypickStatusError if anything
+        goes wrong.
         '''
         cherries = []
         try:
@@ -268,10 +314,11 @@ class CMServer(object):
         except ValueError, err:
             raise CherrypickStatusError("Error in JSON data: %s" % err)
 
+    @retry(CMServerInternalError, tries=2)
     def update_cherrypick_status(self, manifest_name, source, target, status):
         ''' Update cherrypick `status` for `source` and `target` branch
         combination on the manifest specified by `manifest_name`.
-        Raise CMServerError if anything goes wrong.
+        Raise some form of CMServerError if anything goes wrong.
         '''
         path = UPDATE_CHERRYPICK_STATUS % \
                {'manifest': urllib.quote(manifest_name),
