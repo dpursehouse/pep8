@@ -63,7 +63,7 @@ from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 from semcutil import enum
 
-__version__ = '0.4.16'
+__version__ = '0.4.17'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -158,6 +158,46 @@ Unable to verify DMS status for target branch %s, for the following commit(s).
 
 Thanks,
 Cherry-picker.
+Version: %s
+"""
+
+CHERRYPICK_REVISION_UPDATE_COMMIT_MSG = \
+"""
+Auto cherry-pick change
+
+Update revision(s) to branch:
+%s
+
+Project(s):
+%s
+"""
+
+MANIFEST_UPDATED_UPLOADED_MSG = \
+"""
+Hello,
+
+The manifest file of %s was updated and uploaded
+for review.
+
+Updated project(s):
+%s
+
+Gerrit link: %s
+
+Cherry-picker
+Version: %s
+"""
+
+MANIFEST_UPDATED_MERGED_MSG = \
+"""
+Hello,
+
+The manifest file of %s was updated and merged.
+
+Updated project(s):
+%s
+
+Cherry-picker
 Version: %s
 """
 
@@ -753,10 +793,7 @@ def update_manifest(branch, manifest_review):
     proj_list = ''
     for upl in upd_project_list:
         proj_list += '    ' + upl + '\n'
-    commit_msg = 'Auto cherry-pick change\n\n' \
-                 'Update revision(s) to branch:\n' \
-                 '    ' + branch + '\n\n' \
-                 'Project(s):\n' + proj_list
+    commit_msg = CHERRYPICK_REVISION_UPDATE_COMMIT_MSG % (branch, proj_list)
     _out, err, ret = execmd([GIT, 'commit', '-m', commit_msg])
     if (ret != 0):
         logging.error(err)
@@ -785,15 +822,19 @@ def update_manifest(branch, manifest_review):
         logging.error(err)
         return ERROR_CODE.STATUS_UPDATE_MANIFEST
     elif manifest_review:
+        match = re.search('https?://%s/([0-9]+)' % GERRIT_URL, err)
+        if match:
+            gerrit_url = match.group(0)
+        else:
+            gerrit_url = 'Failed to get the Gerrit url'
         email('[Cherrypick] [%s] Manifest updated' % branch,
-              'Hello,\n\nThe manifest file of %s was updated and uploaded '
-              'for review. Updated project(s):\n%s\n\nCherry-picker' \
-              '\nVersion: %s' % (branch, proj_list, __version__), recipient)
+              MANIFEST_UPDATED_UPLOADED_MSG % (branch, proj_list, gerrit_url,
+                                               __version__),
+              recipient)
     else:
         email('[Cherrypick] [%s] Manifest updated' % branch,
-              'Hello,\n\nThe manifest file of %s was updated and merged. '
-              'Updated project(s):\n%s\n\nCherry-picker\nVersion: %s' %
-              (branch, proj_list, __version__), recipient)
+              MANIFEST_UPDATED_MERGED_MSG % (branch, proj_list, __version__),
+              recipient)
     return ERROR_CODE.STATUS_OK
 
 
