@@ -376,7 +376,6 @@ def process_req(working_dir, channel, address, user, password):
                     # index for the field names.  Later use this index to get
                     # the field values.
                     columns = header.split(':')
-                    fixfor_index = columns.index(' fix_for ')
                     deliver_to_index = columns.index(' Delivery.deliver_to ')
                     deliverytag_index = columns.index(' Delivery.fix_for ')
                     decision_index = columns.index(' Delivery.decisionStatus ')
@@ -389,22 +388,16 @@ def process_req(working_dir, channel, address, user, password):
                         deliverytag_in_qry = fields[deliverytag_index].strip()
                         decision_in_qry = fields[decision_index].strip()
                         deliver_to_in_qry = fields[deliver_to_index].strip()
-                        fixfor_in_qry = fields[fixfor_index].strip()
-                        # Select the DMS issues that match one of the below
+                        # Select the DMS issues that match the below
                         # criteria:
-                        # 1. The new type of issues should have Delivery records
-                        #    and `Delivery.deliver_to` should match the
-                        #    `target_branch` and `Delivery.fix_for` should match
-                        #    one of the provided `tag_list`.
-                        # 2. The old type of issues should NOT have the Delivery
-                        #    records and the `fix_for` should match one of the
-                        #    provided `tag_list`
+                        #  The new type of issues should have Delivery records
+                        #  and `Delivery.deliver_to` should match the
+                        #  `target_branch` and `Delivery.fix_for` should match
+                        #  one of the provided `tag_list`.
                         if (delivery_in_qry != "" and
                                 deliver_to_in_qry == deliver_to and
                                 string.lower(decision_in_qry) == "accepted" and
-                                deliverytag_in_qry in tag_list) or \
-                                (delivery_in_qry == "" and
-                                fixfor_in_qry in tag_list):
+                                deliverytag_in_qry in tag_list):
                             dms_list.append(line.split(':')[0].strip())
                     dms_list.sort()
                     send_data = ','.join(dms_list)
