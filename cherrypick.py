@@ -63,7 +63,7 @@ from include_exclude_matcher import IncludeExcludeMatcher
 from processes import ChildExecutionError
 from semcutil import enum
 
-__version__ = '0.4.15'
+__version__ = '0.4.16'
 
 # Disable pylint messages
 # pylint: disable-msg=C0103,W0602,W0603,W0703,R0911
@@ -892,7 +892,7 @@ def collect_fix_dms(branch, commit_begin, project, log_file):
             author_date = log_str
         elif re.match(r'CommitDate:', log_str):  # get title 2 lines below it
             title = git_log_list[git_log_list.index(log_str) + 2].strip()
-        elif re.match(r'^\s*?FIX\s*=\s*DMS[0-9]+', log_str):  # "FIX=DMSxxxxx"
+        elif re.match(r'^FIX=DMS[0-9]+$', log_str.strip()):  # "FIX=DMSxxxxx"
             dms_str = log_str.split('=')
             dms_id = dms_str[1].strip()     # DMSxxxxxxx
             if (OPT.exclude_commit and
