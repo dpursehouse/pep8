@@ -36,7 +36,7 @@ if [ -d .repo ]; then
     rm -rf .repo/project.list
 else
     time repo init -u \
-    git://review.sonyericsson.net/platform/manifest.git -b \
+    git://review.sonyericsson.net/$CHERRYPICK_MANIFEST -b \
     $CHERRYPICK_SOURCE
 fi
 
