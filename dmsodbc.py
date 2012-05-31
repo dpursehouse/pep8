@@ -1,12 +1,13 @@
 """ Class and support methods to interface with DMS over ODBC. """
 
+import sys
+
 try:
     import pyodbc
 except ImportError:
     # If pyodbc cannot be imported, it means it is not installed.
-    # This will be raised as an error later when the user calls one
-    # of the methods on the DMSODBC class.
-    pass
+    # Use DMS Tag Server instead.
+    from dmsutil import DMSTagServer, DMSTagServerError
 
 from cm_server import get_credentials_from_netrc, CredentialsError
 
@@ -91,8 +92,12 @@ class DMSODBC(object):
         credentials from the .netrc file, or if the login credentials for
         the given `server` were not found in the .netrc file.
         '''
-        self.connection = None
+        # Don't need to initialise internal data unless we're using
+        # the pyodbc module
+        if not 'pyodbc' in sys.modules:
+            return
 
+        self.connection = None
         # If either the username or the password is not specified, attempt
         # to get them from the .netrc file
         if (not username) or (not password):
@@ -131,11 +136,17 @@ class DMSODBC(object):
         ''' Return a list of `dmss` and titles in format "ID Title".
         Raise DMSODBCError if any error occurs.
         '''
-        issues_list = []
-
         # Remove duplicates from the input list
         unique_dmss = list(set(dmss))
 
+        # Fall back to DMS Tag Server if ODBC not available
+        if not 'pyodbc' in sys.modules:
+            try:
+                return DMSTagServer().dms_with_title(unique_dmss)
+            except DMSTagServerError, e:
+                raise DMSODBCError("Fallback to DMS Tag Server failed: %s" % e)
+
+        issues_list = []
         if unique_dmss:
             dms_query = _build_sql_or_query("I.id", unique_dmss)
             try:
@@ -152,8 +163,6 @@ class DMSODBC(object):
         the `tags` for `target_branch`.
         Raise DMSODBCError if any error occurs.
         '''
-        tagged_dms = []
-
         if not target_branch:
             raise DMSODBCError("Target branch must be specified")
 
@@ -161,6 +170,16 @@ class DMSODBC(object):
         unique_dmss = list(set(dmss))
         unique_tags = list(set(tags))
 
+        # Fall back to DMS Tag Server if ODBC not available
+        if not 'pyodbc' in sys.modules:
+            try:
+                return DMSTagServer().dms_for_tags(unique_dmss,
+                                                   unique_tags,
+                                                   target_branch)
+            except DMSTagServerError, e:
+                raise DMSODBCError("Fallback to DMS Tag Server failed: %s" % e)
+
+        tagged_dms = []
         if unique_dmss and unique_tags:
             dms_query = _build_sql_or_query("I.id", unique_dmss)
             tags_query = _build_sql_or_query("D.fix_for", unique_tags)
