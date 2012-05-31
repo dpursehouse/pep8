@@ -128,10 +128,10 @@ class DMSODBC(object):
         return cursor
 
     def dms_with_title(self, dmss):
-        ''' Return a set in the form {DMS: Title}.
+        ''' Return a list of `dmss` and titles in format "ID Title".
         Raise DMSODBCError if any error occurs.
         '''
-        issues = {}
+        issues_list = []
 
         # Remove duplicates from the input list
         unique_dmss = list(set(dmss))
@@ -143,10 +143,9 @@ class DMSODBC(object):
                 result = self._get_cursor().execute(query)
             except pyodbc.Error, err:
                 raise DMSODBCError("ODBC driver error: %s" % err)
-            for row in result:
-                issues[row.id] = row.title
+            issues_list = ["%s %s" % (row.id, row.title) for row in result]
 
-        return issues
+        return issues_list
 
     def dms_for_tags(self, dmss, tags, target_branch):
         ''' Return a list of the `dmss` which are tagged with at least one of
