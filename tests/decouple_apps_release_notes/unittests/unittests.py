@@ -8,13 +8,12 @@ from processes import run_cmd, ChildExecutionError, ChildRuntimeError
 import unittest
 
 from decoupled.decoupled_apps_release_notes import DecoupledApp
-from dmsutil import DMSTagServerError
+from dmsodbc import DMSODBCError
 from gerrit import GerritSshConnection
 
 TEMP_DIR = "/tmp/decoupled_unittest"
 GIT_PATH = "git://review.sonyericsson.net/platform/vendor/semc/packages/" + \
     "apps/conversations"
-DMS_SERVER = "android-cm-web.sonyericsson.net"
 GERRIT_SERVER = "review.sonyericsson.net"
 _SUMMARY = '''ics-fuji-r2 bring up.
 
@@ -45,27 +44,24 @@ class TestDecoupledApp(unittest.TestCase):
         run_cmd(command)
 
     def test_initialize_data(self):
-        decoupled = DecoupledApp(TEMP_DIR, DMS_SERVER, GERRIT_SERVER, TAG,
-                                 PRE_TAG)
+        decoupled = DecoupledApp(TEMP_DIR, GERRIT_SERVER, TAG, PRE_TAG)
         self.assertEqual(decoupled.tag_time,
                          "Thu Mar 1 09:09:22 2012 +0800")
         self.assertEqual(decoupled.tag_message, _SUMMARY)
 
     def test_get_base_branch(self):
-        decoupled = DecoupledApp(TEMP_DIR, DMS_SERVER, GERRIT_SERVER, TAG,
-                                 PRE_TAG)
+        decoupled = DecoupledApp(TEMP_DIR, GERRIT_SERVER, TAG, PRE_TAG)
         conn_obj = GerritSshConnection(GERRIT_SERVER)
         base_branch = decoupled.get_base_branch(conn_obj)
         self.assertEqual(base_branch, "master")
 
     def test_get_dms_info(self):
-        decoupled = DecoupledApp(TEMP_DIR, DMS_SERVER, GERRIT_SERVER, TAG,
-                                 PRE_TAG)
+        decoupled = DecoupledApp(TEMP_DIR, GERRIT_SERVER, TAG, PRE_TAG)
         try:
             self.assertEqual('\n'.join([dms.strip() \
                 for dms in decoupled.get_dms_info()]),  _DMS.strip())
-        except DMSTagServerError:
-            print "There's problem with dms tag server."
+        except DMSODBCError:
+            print "There's problem with dms tag query."
 
 if __name__ == '__main__':
     unittest.main()

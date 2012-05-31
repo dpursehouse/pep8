@@ -19,7 +19,6 @@ from wiki import semcwikitools
 
 WIKI = "https://wiki.sonyericsson.net/wiki_androiki/api.php"
 GERRIT_SERVER = "review.sonyericsson.net"
-DMS_TAG_SERVER = 'android-cm-web.sonyericsson.net'
 
 logging.basicConfig(filename="release_info.log",
                     format="%(message)s",
@@ -102,7 +101,7 @@ class WikiReleaseNotesOutput(decp.ReleaseNotesOutput):
 
 def _main():
     usage = ("Usage: %prog <-a app_name> <-t tag> <-d git_path> "
-             "[-g gerrit_server] [-u user_name] [-s dms_tag_server] "
+             "[-g gerrit_server] [-u user_name] "
              "[--dry-run] [-w wiki] [--name-space name_space]")
     parser = OptionParser(usage=usage)
     parser.add_option("-a", "--app", dest="app_name",
@@ -119,9 +118,6 @@ def _main():
                          help="Specify the gerrit server")
     parser.add_option("-u", "--user-name", dest="user_name",
                          help="Override the user name in gerrit module")
-    parser.add_option("-s", "--dms-tag-server", dest="dms_server",
-                         default=DMS_TAG_SERVER,
-                         help="Specify the dms tag server")
     parser.add_option("--dry-run", dest="dry_run",
                          action="store_true", default=False,
                          help="Specify update wiki or not")
@@ -140,7 +136,7 @@ def _main():
         parser.print_help()
         fatal(1, "Please specify application, tag and git_path!")
     try:
-        decoupled_app = decp.DecoupledApp(options.git_path, options.dms_server,
+        decoupled_app = decp.DecoupledApp(options.git_path,
                                           options.gerrit_server, options.tag,
                                           options.pre_tag)
         data_dict = decoupled_app.generate_data()

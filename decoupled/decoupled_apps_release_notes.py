@@ -11,7 +11,7 @@ if cm_tools not in sys.path:
     sys.path.insert(0, cm_tools)
 
 import debrevision
-from dmsutil import DMSTagServer, DMSTagServerError
+from dmsodbc import DMSODBC, DMSODBCError
 from gerrit import GerritSshConfigError, GerritSshConnection, GerritQueryError
 from git import GitRepository
 import map_tag_branch
@@ -34,9 +34,8 @@ class DecoupledApp:
     It may raise ChildExecutionError when git command execution failed.
     '''
 
-    def __init__(self, git_path, dms_server, gerrit_server, tag, pre_tag=None):
+    def __init__(self, git_path, gerrit_server, tag, pre_tag=None):
         self.git_path = git_path
-        self.dms_server = dms_server
         self.gerrit_server = gerrit_server
         self.tag = tag
         self.pre_tag = pre_tag
@@ -54,12 +53,11 @@ class DecoupledApp:
 
     def get_dms_info(self):
         '''Get the dms information.
-        It may raise DMSTagServerError if getting dms with title via dms server
-        failed.
+        It may raise DMSODBCError if getting dms with title failed.
         '''
         dms_list = []
         log_lines = self.full_log.split("\n")
-        dms_server = DMSTagServer(self.dms_server)
+        dms_server = DMSODBC()
         for line in log_lines:
             if re.match(r'^\s*?FIX\s*=\s*DMS[0-9]+', line):
                 dms_list.append(line.split("=")[1].strip())
@@ -88,7 +86,7 @@ class DecoupledApp:
             data_dict['Base Branch'] = self.get_base_branch(conn_obj)
             data_dict['Integrated Issues'] = self.get_dms_info()
         except (ChildExecutionError, GerritQueryError, GerritSshConfigError,
-            DMSTagServerError), error:
+            DMSODBCError), error:
             raise DataGenerationError(self.tag, error)
         data_dict['Official Releases Delivered in'] = ''
         data_dict['Release Details'] = self.full_log
