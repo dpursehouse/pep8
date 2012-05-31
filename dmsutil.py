@@ -14,6 +14,9 @@ BUFFER_LEN = 1024
 # Maximum number of DMS sent to the server per request
 MAX_DMS_PER_REQUEST = 100
 
+# Default server address
+DEFAULT_SERVER = "android-cm-web.sonyericsson.net"
+
 
 def split_to_block(dmss):
     ''' Generator function to split the list of `dmss` into blocks of
@@ -36,7 +39,7 @@ class DMSTagServer(object):
     '''
     This is interface to send request to dms_tag_server.py to get dms for tags.
     '''
-    def __init__(self, server, port=55655, timeout=30):
+    def __init__(self, server=DEFAULT_SERVER, port=55655, timeout=30):
         '''
         Constructor
         '''
