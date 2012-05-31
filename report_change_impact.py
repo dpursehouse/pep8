@@ -28,7 +28,7 @@ from xml.parsers.expat import ExpatError
 from branch_policies import BranchPolicyError
 from cm_server import CMServer, CMServerError
 from commit_message import CommitMessage
-from dmsutil import DMSTagServer, DMSTagServerError
+from dmsodbc import DMSODBC, DMSODBCError
 import gerrit
 from include_exclude_matcher import IncludeExcludeMatcher
 import manifest
@@ -52,9 +52,6 @@ DEFAULT_MANIFEST_REF_INCLUDES = [r"^refs/remotes/origin/"]
 
 # The default URL of the Gerrit server
 DEFAULT_GERRIT_SERVER = "review.sonyericsson.net"
-
-# The name of the host that runs the specialized DMS tag server.
-DMS_TAG_SERVER_HOSTNAME = "android-cm-web.sonyericsson.net"
 
 # Default value (kB) to use when checking commit size.
 DEFAULT_MAX_COMMIT_SIZE = 0
@@ -159,22 +156,22 @@ def _find_commit_size_script():
     raise Exception("Could not find %s" % _COMMIT_SIZE_SCRIPT)
 
 
-@retry(DMSTagServerError, tries=3, backoff=2, delay=10)
+@retry(DMSODBCError, tries=3, backoff=2, delay=10)
 def _get_tagged_issues(issues, tags, target_branch):
     """Retrieves the subset of `issues` that have at least one of
     `tags` set in their "Fix For" field.
     Returns a list of issues.  If an issue does not have one of the
     tags, it is omitted from the list.
-    Raises DMSTagServerError if any error occurs when retrieving tags
-    from the DMS tag server.
+    Raises DMSODBCError if any error occurs when retrieving tags
+    from the DMS server.
     """
-    # If the tag list is empty, we don't need to check with the tag
+    # If the tag list is empty, we don't need to check with the
     # server.  Just return the same issue list.
     if not tags:
         return issues
 
-    # Get the list of tagged issues from the tag server.
-    server_conn = DMSTagServer(DMS_TAG_SERVER_HOSTNAME)
+    # Get the list of tagged issues from the server.
+    server_conn = DMSODBC()
     return server_conn.dms_for_tags(issues, tags, target_branch)
 
 
@@ -216,8 +213,8 @@ def _get_dms_violations(config, dmslist, affected_manifests):
 
             try:
                 tagged_issues = _get_tagged_issues(dmslist, tagnames, branch)
-            except DMSTagServerError, e:
-                semcutil.fatal(1, "DMS tag server error: %s" % e)
+            except DMSODBCError, e:
+                semcutil.fatal(1, "DMS error: %s" % e)
 
             # Find any DMS issues that are not tagged with the
             # required tag(s) for this branch.
