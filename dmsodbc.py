@@ -1,15 +1,17 @@
 """ Class and support methods to interface with DMS over ODBC. """
 
+import logging
 import sys
 
 try:
     import pyodbc
 except ImportError:
     # If pyodbc cannot be imported, it means it is not installed.
-    # Use DMS Tag Server instead.
-    from dmsutil import DMSTagServer, DMSTagServerError
+    # DMS Tag Server will be used instead.
+    logging.warning("Failed to import pyodbc")
 
 from cm_server import get_credentials_from_netrc, CredentialsError
+from dmsutil import DMSTagServer, DMSTagServerError
 
 
 # SQL query to check which of the given DMS are tagged with the
@@ -88,34 +90,41 @@ class DMSODBC(object):
                 driver=ODBC_DRIVER, server=ODBC_SERVER,
                 database=ODBC_DATABASE, schema=ODBC_SCHEMA):
         ''' Initialise the ODBC connection with the given parameters.
-        Raise DMSODBCError if there is an error getting the server login
-        credentials from the .netrc file, or if the login credentials for
-        the given `server` were not found in the .netrc file.
         '''
-        # Don't need to initialise internal data unless we're using
-        # the pyodbc module
+        self.connection = None
+        self.parameters = None
+        self.username = username
+        self.password = password
+
+        # Only initialise parameters if pyodbc is available
         if not 'pyodbc' in sys.modules:
+            logging.warning("ODBC connection will not be used")
             return
 
-        self.connection = None
         # If either the username or the password is not specified, attempt
         # to get them from the .netrc file
-        if (not username) or (not password):
+        if not (self.username and self.password):
+            logging.warning("Username/password not specified; attempting to " \
+                            "get from .netrc")
             try:
-                username, password = get_credentials_from_netrc(server)
-                if (not username) or (not password):
-                    raise DMSODBCError("Unable to get login credentials for " \
-                                       "%s from .netrc file." % server)
+                self.username, self.password = \
+                    get_credentials_from_netrc(server)
+                if not (self.username and self.password):
+                    logging.warning("Username/password not found in .netrc")
             except CredentialsError, err:
-                raise DMSODBCError("Error getting login credentials for %s " \
-                                   "from .netrc file: %s" % (server, err))
+                logging.error("Error getting login credentials for %s " \
+                              "from .netrc file: %s", server, err)
 
-        self.parameters = ODBC_PARAMETERS % {"driver": driver,
-                                             "server": server,
-                                             "database": database,
-                                             "username": username,
-                                             "password": password,
-                                             "schema": schema}
+        # Only initialise parameters if the username and password are available.
+        if not (self.username and self.password):
+            logging.warning("ODBC connection will not be used")
+        else:
+            self.parameters = ODBC_PARAMETERS % {"driver": driver,
+                                                 "server": server,
+                                                 "database": database,
+                                                 "username": username,
+                                                 "password": password,
+                                                 "schema": schema}
 
     def _get_cursor(self):
         ''' Connect to ODBC if not already connected, and get the cursor.
@@ -140,7 +149,7 @@ class DMSODBC(object):
         unique_dmss = list(set(dmss))
 
         # Fall back to DMS Tag Server if ODBC not available
-        if not 'pyodbc' in sys.modules:
+        if not self.parameters:
             try:
                 return DMSTagServer().dms_with_title(unique_dmss)
             except DMSTagServerError, e:
@@ -171,7 +180,7 @@ class DMSODBC(object):
         unique_tags = list(set(tags))
 
         # Fall back to DMS Tag Server if ODBC not available
-        if not 'pyodbc' in sys.modules:
+        if not self.parameters:
             try:
                 return DMSTagServer().dms_for_tags(unique_dmss,
                                                    unique_tags,
