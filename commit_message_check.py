@@ -81,6 +81,8 @@ EXCLUDED_SUBJECTS = ["Merge ",
                      "DO NOT SUBMIT",
                      "DON\'T SUBMIT"]
 
+EXCLUDED_LINES = ["Squashed-with: "]
+
 
 def is_excluded_subject(subject):
     '''
@@ -88,6 +90,16 @@ def is_excluded_subject(subject):
     '''
     for text in EXCLUDED_SUBJECTS:
         if subject.startswith(text):
+            return True
+    return False
+
+
+def is_excluded_line(line):
+    '''
+    Check if `line` should be excluded.
+    '''
+    for text in EXCLUDED_LINES:
+        if line.startswith(text):
             return True
     return False
 
@@ -159,6 +171,8 @@ class CommitMessageChecker(object):
         '''
         Check the content of a line.
         '''
+        if is_excluded_line(line):
+            return
 
         # Check for invalid tag DMS=DMS00123456
         dmspattern = re.compile('(DMS=DMS\d{6,8})+', re.IGNORECASE)

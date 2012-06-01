@@ -10,6 +10,8 @@ import commit_message_check
 
 _LINE_VALID = "This is a valid line"
 _LINE_VALID_MAX = "X" * commit_message_check.MAX_LINE_LENGTH
+_LINE_VALID_EXCLUDED = "Squashed-with: " + \
+                       "X" * commit_message_check.MAX_LINE_LENGTH
 _LINE_INVALID_LONG = "X" * (commit_message_check.MAX_LINE_LENGTH + 1)
 _LINE_INVALID_NON_UTF8 = "This is not UTF-8".encode('utf-16')
 _LINE_INVALID_TAG = "DMS=DMS00123456"
@@ -61,6 +63,14 @@ class TestCheckLine(unittest.TestCase):
         """
         c = commit_message_check.CommitMessageChecker()
         c.check_line(_LINE_VALID_MAX, 1)
+        self.assertEquals(c.errors, [])
+
+    def test_valid_excluded(self):
+        """Tests that the method behaves correctly when a line
+        is passed that is too long but is prefixed with excluded text.
+        """
+        c = commit_message_check.CommitMessageChecker()
+        c.check_line(_LINE_VALID_EXCLUDED, 1)
         self.assertEquals(c.errors, [])
 
     def test_invalid_too_long(self):
