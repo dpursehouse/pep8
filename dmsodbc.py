@@ -122,8 +122,8 @@ class DMSODBC(object):
             self.parameters = ODBC_PARAMETERS % {"driver": driver,
                                                  "server": server,
                                                  "database": database,
-                                                 "username": username,
-                                                 "password": password,
+                                                 "username": self.username,
+                                                 "password": self.password,
                                                  "schema": schema}
 
     def _get_cursor(self):
