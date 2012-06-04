@@ -75,21 +75,21 @@ Please check the commit message guideline:
 https://wiki.sonyericsson.net/androiki/Commit_messages
 """
 
-EXCLUDED_SUBJECTS = ["Merge ",
-                     "Revert ",
-                     "DO NOT MERGE",
-                     "DO NOT SUBMIT",
-                     "DON\'T SUBMIT"]
+EXCLUDED_SUBJECT_PATTERNS = [re.compile(r'^Merge '),
+                             re.compile(r'^Revert '),
+                             re.compile(r'^DO NOT MERGE'),
+                             re.compile(r'^DO NOT SUBMIT'),
+                             re.compile(r'^DON\'T SUBMIT')]
 
-EXCLUDED_LINES = ["Squashed-with: "]
+EXCLUDED_LINE_PATTERNS = [re.compile(r'^Squashed-with: ')]
 
 
 def is_excluded_subject(subject):
     '''
     Check if `subject` should be excluded.
     '''
-    for text in EXCLUDED_SUBJECTS:
-        if subject.startswith(text):
+    for pattern in EXCLUDED_SUBJECT_PATTERNS:
+        if re.match(pattern, subject):
             return True
     return False
 
@@ -98,8 +98,8 @@ def is_excluded_line(line):
     '''
     Check if `line` should be excluded.
     '''
-    for text in EXCLUDED_LINES:
-        if line.startswith(text):
+    for pattern in EXCLUDED_LINE_PATTERNS:
+        if re.match(pattern, line):
             return True
     return False
 
