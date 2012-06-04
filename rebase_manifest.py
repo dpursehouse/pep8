@@ -155,6 +155,8 @@ class UpdateMerge:
         self.gerrit_handler = Gerrit(self.options.gerrit_user)
         self.revision_field = "XB-SEMC-Manifest-Revision"
         self.branch_field = "XB-SEMC-Manifest-Branch"
+        self.amss_revision_field = "Modem-Manifest-Revision"
+        self.amss_branch_field = "Modem-Manifest-Branch"
         self.log = log.logger
         self.reviewers = []
 
@@ -253,10 +255,16 @@ class UpdateMerge:
                 raise UpdateMergeError("Failed to get modem package for label "
                                        "%s: %s" % (options.source_version,
                                                    err))
-            package_name = filter(lambda a: options.amss_version in a,
-                                  res.splitlines())
-            if len(package_name):
-                package_name = package_name[0].split()[0]
+            packages = filter(lambda a: options.amss_version in a,
+                              res.splitlines())
+            if len(packages):
+                package_name = packages[0].split()[0]
+            else:
+                self.log.critical("No package found with revision %s" %
+                                  options.amss_version)
+                self.clean_up()
+                raise UpdateMergeError("No package found with revision %s" %
+                                       options.amss_version)
             self.log.info("Downloading base static manifest")
             try:
                 getmanifest.get_file_from_package(options.source_version,
@@ -335,12 +343,20 @@ class UpdateMerge:
             self.target_projects)
 
         self.flag_manifest_rev = False
-        if self.flag_sw_ver and not options.amss_version:
+        if self.flag_sw_ver:
             try:
-                res = getmanifest.get_control_fields(options.source_version,
-                                                     repo_url=options.repo_url)
-                manifest_branch = res[self.branch_field]
-                manifest_revision = res[self.revision_field]
+                if not options.amss_version:
+                    res = getmanifest.get_control_fields(
+                        options.source_version, repo_url=options.repo_url)
+                    manifest_branch = res[self.branch_field]
+                    manifest_revision = res[self.revision_field]
+                else:
+                    res = getmanifest.get_control_fields(
+                        options.source_version,
+                        package_name,
+                        repo_url=options.repo_url)
+                    manifest_branch = res[self.amss_branch_field]
+                    manifest_revision = res[self.amss_revision_field]
                 self.flag_manifest_rev = True
             except getmanifest.GetManifestError, err:
                 self.log.error("Failed to copy manifest_revision %s" % err)
