@@ -102,7 +102,7 @@ MESSAGE_DMS_VIOLATION_PART_2 = \
 This report is based on a configuration listing valid tags for each
 branch, maintained by CM. If tags have been recently introduced this
 configuration may be out of date. Please send an email to
-DL-WW-Android-SW-CM and tell us about this.
+DL-WW-CM and tell us about this.
 
 If you think you have listed the DMS issue in the commit message but
 you're still getting this report, you might not be using the correct
