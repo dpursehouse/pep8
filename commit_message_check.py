@@ -43,25 +43,25 @@ ERRORS = {ERROR_CODE.DMS_IN_TITLE:
                "It is not recommended to list DMS in the subject line"],
           ERROR_CODE.MULTIPLE_LINES_IN_SUBJECT:
             [ERROR_SEVERITY.ERROR,
-               "Subject should be a single line, separated from the " \
+               "Subject should be a single line, separated from the "
                "message body by a blank line."],
           ERROR_CODE.SUBJECT_TOO_LONG:
             [ERROR_SEVERITY.ERROR,
-               "Subject should be limited to %d characters." % \
+               "Subject should be limited to %d characters." %
                MAX_SUBJECT_LENGTH],
           ERROR_CODE.DMS_WITHOUT_FIX_TAG:
             [ERROR_SEVERITY.WARNING,
                "DMS should be listed with FIX= tag"],
           ERROR_CODE.MULTIPLE_DMS_ON_LINE:
             [ERROR_SEVERITY.ERROR,
-               "DMS should be listed on a separate line, with no leading " \
+               "DMS should be listed on a separate line, with no leading "
                "whitespace or trailing text."],
           ERROR_CODE.INVALID_TAG_FORMAT:
             [ERROR_SEVERITY.ERROR,
                "Tag is formatted incorrectly."],
           ERROR_CODE.LINE_TOO_LONG:
             [ERROR_SEVERITY.ERROR,
-               "Length should be limited to %d characters." % \
+               "Length should be limited to %d characters." %
                MAX_LINE_LENGTH],
           ERROR_CODE.NON_UTF8_CHARS:
             [ERROR_SEVERITY.ERROR,
@@ -258,7 +258,7 @@ def get_commit_message(gerrit_handle, revision):
     '''
     results = gerrit_handle.query(revision)
     if not results:
-        raise CommitMessageCheckerError("Gerrit didn't find revision %s" % \
+        raise CommitMessageCheckerError("Gerrit didn't find revision %s" %
                                         revision)
     return CommitMessage(results[0]["commitMessage"])
 
@@ -271,32 +271,32 @@ def _main():
                       help="The URL to the Gerrit server.")
     parser.add_option("-u", "--gerrit-user", dest="gerrit_user",
                       default=None,
-                      help="The username that should be used when logging " \
-                           "into the Gerrit server with SSH. If omitted, " \
-                           "the SSH client will decide the username based " \
-                           "on $LOGNAME and its own configuration file " \
+                      help="The username that should be used when logging "
+                           "into the Gerrit server with SSH. If omitted, "
+                           "the SSH client will decide the username based "
+                           "on $LOGNAME and its own configuration file "
                            "(if present).")
     parser.add_option("-v", "--verbose", dest="verbose", default=False,
                       action="store_true", help="Verbose mode.")
     parser.add_option("", "--dry-run", dest="dry_run", action="store_true",
-                      help="Do everything except actually add the note " \
+                      help="Do everything except actually add the note "
                            "to the affected change.")
     parser.add_option("", "--change", dest="change_nr", type="int",
                       help="The change number to check.")
     parser.add_option("", "--patchset", dest="patchset_nr", type="int",
                       help="The patchset number.")
     parser.add_option("", "--project", dest="project",
-                      help="The name of the project on which the " \
+                      help="The name of the project on which the "
                            "change is uploaded.")
     parser.add_option("", "--revision", dest="revision",
                       help="The patchset revision.")
     parser.add_option("", "--exclude-git", dest="git_ex",
                       action="append", metavar="REGEXP",
-                      help="A regular expression that will be matched " \
-                           "against the name of the git to which the " \
-                           "change has been uploaded.  Gits that match " \
-                           "the pattern will be excluded from the check.  " \
-                           "This option can be used multiple times to add " \
+                      help="A regular expression that will be matched "
+                           "against the name of the git to which the "
+                           "change has been uploaded.  Gits that match "
+                           "the pattern will be excluded from the check.  "
+                           "This option can be used multiple times to add "
                            "more expressions. (default: <empty>).")
     (options, _args) = parser.parse_args()
 
@@ -345,7 +345,7 @@ def _main():
                     logging.info("Change %d is closed.  Not adding code review "
                                  "score.", options.change_nr)
                 elif options.patchset_nr != current_patchset:
-                    logging.info("Patchset %d has been replaced by patchset " \
+                    logging.info("Patchset %d has been replaced by patchset "
                                  "%d.  Not adding code review score.",
                                  options.patchset_nr, current_patchset)
                 else:
