@@ -1,4 +1,4 @@
-#!/bin/bash -ex
+#!/bin/bash -e
 
 EXIT_STATUS=0
 
@@ -24,6 +24,7 @@ do
             | tee -a $WORKSPACE/out/whitespace_log.txt
         WHITESPACE_STATUS=${PIPESTATUS[0]}
         if [ "$WHITESPACE_STATUS" -ne 0 ]; then
+            echo "Whitespace error"
             EXIT_STATUS=`expr $EXIT_STATUS + 1`
         fi
 
@@ -34,6 +35,7 @@ do
                 $PROJNAME/$FILENAME | tee -a $WORKSPACE/out/pep8_log.txt
             STATUS=${PIPESTATUS[0]}
             if [ "$STATUS" -ne 0 ]; then
+                echo "PEP-8 validation error"
                 EXIT_STATUS=`expr $EXIT_STATUS + 1`
             fi
         fi
@@ -46,6 +48,7 @@ if [ -d "$TESTDIR" ]; then
     make --directory $TESTDIR 2>&1 | tee -a $WORKSPACE/out/unit_test_log.txt
     UNIT_TEST_STATUS=${PIPESTATUS[0]}
     if [ "$UNIT_TEST_STATUS" -ne 0 ]; then
+        echo "Unit test failed"
         EXIT_STATUS=`expr $EXIT_STATUS + 1`
     fi
 fi
