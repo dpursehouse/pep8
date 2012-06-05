@@ -1,0 +1,10 @@
+Commit message subject
+
+Commit message body line 1
+Commit message body line 2
+
+Conflicts:
+
+	packages/SystemUI/src/com/android/systemui/statusbar/policy/NetworkController.java
+
+Commit message body line 3

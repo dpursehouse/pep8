@@ -35,7 +35,8 @@ ERROR_CODE = enum('DMS_IN_TITLE',
                   'MULTIPLE_DMS_ON_LINE',
                   'INVALID_TAG_FORMAT',
                   'LINE_TOO_LONG',
-                  'NON_UTF8_CHARS')
+                  'NON_UTF8_CHARS',
+                  'MULTIPLE_CONFLICTS_SECTIONS')
 
 # Error codes mapped to severity and message
 ERRORS = {ERROR_CODE.DMS_IN_TITLE:
@@ -65,8 +66,12 @@ ERRORS = {ERROR_CODE.DMS_IN_TITLE:
                MAX_LINE_LENGTH],
           ERROR_CODE.NON_UTF8_CHARS:
             [ERROR_SEVERITY.ERROR,
-               "Should not include non-UTF-8 characters."]}
+               "Should not include non-UTF-8 characters."],
+          ERROR_CODE.MULTIPLE_CONFLICTS_SECTIONS:
+            [ERROR_SEVERITY.WARNING,
+               "Multiple conflicts sections found."]}
 
+# Message submitted to Gerrit when the check fails
 FAIL_MESSAGE = """Commit message does not follow the guideline:
 
 %s
@@ -75,13 +80,19 @@ Please check the commit message guideline:
 https://wiki.sonyericsson.net/androiki/Commit_messages
 """
 
+# Subjects matching any of the following patterns will be excluded from the
+# check
 EXCLUDED_SUBJECT_PATTERNS = [re.compile(r'^Merge '),
                              re.compile(r'^Revert '),
                              re.compile(r'^DO NOT MERGE'),
                              re.compile(r'^DO NOT SUBMIT'),
                              re.compile(r'^DON\'T SUBMIT')]
 
+# Lines matching any of the following patterns will be excluded from the check
 EXCLUDED_LINE_PATTERNS = [re.compile(r'^Squashed-with: ')]
+
+# String marking the beginning of the conflicts section in the commit message
+CONFLICTS_MARKER = re.compile(r'^Conflicts:$')
 
 
 def is_excluded_subject(subject):
@@ -129,6 +140,9 @@ class CommitMessageChecker(object):
     def __init__(self, commit=None):
         self.commit = commit
         self.errors = []
+        self.conflicts_marker_found = False
+        self.in_conflicts_section = False
+        self.conflicts_section_processed = False
 
     def error(self, error_code, line_no=0):
         '''
@@ -142,9 +156,12 @@ class CommitMessageChecker(object):
 
     def reset(self):
         '''
-        Reset the checker, i.e. clear the list of errors.
+        Reset the checker.
         '''
         self.errors = []
+        self.conflicts_marker_found = False
+        self.in_conflicts_section = False
+        self.conflicts_section_processed = False
 
     def check_subject(self, subject):
         '''
@@ -174,29 +191,61 @@ class CommitMessageChecker(object):
         if is_excluded_line(line):
             return
 
-        # Check for invalid tag DMS=DMS00123456
-        dmspattern = re.compile('(DMS=DMS\d{6,8})+', re.IGNORECASE)
-        if re.search(dmspattern, line):
-            self.error(ERROR_CODE.DMS_WITHOUT_FIX_TAG, line_no)
+        # Check if we're entering or leaving the conflicts section
+        # of the commit message
+        if re.match(CONFLICTS_MARKER, line):
+            logging.debug("Found conflicts marker at line %d", line_no)
+            # Can only have one conflicts section
+            if self.conflicts_marker_found:
+                logging.debug("Multiple conflicts markers at line %d", line_no)
+                self.error(ERROR_CODE.MULTIPLE_CONFLICTS_SECTIONS, line_no)
+            else:
+                self.conflicts_marker_found = True
+        elif not line or line.startswith('\t'):
+            if (self.conflicts_marker_found and
+                    not self.conflicts_section_processed and
+                    not self.in_conflicts_section):
+                if not line:
+                    logging.debug("Found conflicts marker separator at line %d",
+                                  line_no)
+                if not self.in_conflicts_section:
+                    logging.debug("Enter conflicts section at line %d", line_no)
+                    self.in_conflicts_section = True
+                    return
+        elif self.in_conflicts_section and not line.startswith('\t'):
+            # In the conflicts section, each line must begin with a tab
+            logging.debug("Exit conflicts section at line %d", line_no)
+            self.in_conflicts_section = False
+            self.conflicts_section_processed = True
 
-        # Check for invalid FIX= tags in the message body
-        dmspattern = re.compile('(FIX.{1,3}?DMS\d{6,8})+', re.IGNORECASE)
-        dmslist = re.findall(dmspattern, line)
-        if len(dmslist):
-            dmspattern = re.compile('^FIX.{1,3}?DMS\d{6,8}$', re.IGNORECASE)
-            if not re.match(dmspattern, line):
-                self.error(ERROR_CODE.MULTIPLE_DMS_ON_LINE, line_no)
-            for dms in dmslist:
-                if not re.match('FIX=DMS\d{6,8}', dms):
-                    self.error(ERROR_CODE.INVALID_TAG_FORMAT, line_no)
+        # Only check rest of commit message when not in conflicts section
+        if self.in_conflicts_section:
+            logging.debug("Ignore line inside conflicts section at line %d",
+                          line_no)
+        else:
+            # Check for invalid tag DMS=DMS00123456
+            dmspattern = re.compile('(DMS=DMS\d{6,8})+', re.IGNORECASE)
+            if re.search(dmspattern, line):
+                self.error(ERROR_CODE.DMS_WITHOUT_FIX_TAG, line_no)
 
-        # Check line length
-        if len(line) > MAX_LINE_LENGTH:
-            self.error(ERROR_CODE.LINE_TOO_LONG, line_no)
+            # Check for invalid FIX= tags in the message body
+            dmspattern = re.compile('(FIX.{1,3}?DMS\d{6,8})+', re.IGNORECASE)
+            dmslist = re.findall(dmspattern, line)
+            if len(dmslist):
+                dmspattern = re.compile('^FIX.{1,3}?DMS\d{6,8}$', re.IGNORECASE)
+                if not re.match(dmspattern, line):
+                    self.error(ERROR_CODE.MULTIPLE_DMS_ON_LINE, line_no)
+                for dms in dmslist:
+                    if not re.match('FIX=DMS\d{6,8}', dms):
+                        self.error(ERROR_CODE.INVALID_TAG_FORMAT, line_no)
 
-        # Check for non-UTF8 characters
-        if not is_utf8_string(line):
-            self.error(ERROR_CODE.NON_UTF8_CHARS, line_no)
+            # Check line length
+            if len(line) > MAX_LINE_LENGTH:
+                self.error(ERROR_CODE.LINE_TOO_LONG, line_no)
+
+            # Check for non-UTF8 characters
+            if not is_utf8_string(line):
+                self.error(ERROR_CODE.NON_UTF8_CHARS, line_no)
 
     def check(self):
         '''
