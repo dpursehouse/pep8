@@ -36,7 +36,17 @@ ERROR_CODE = enum('DMS_IN_TITLE',
                   'INVALID_TAG_FORMAT',
                   'LINE_TOO_LONG',
                   'NON_UTF8_CHARS',
-                  'MULTIPLE_CONFLICTS_SECTIONS')
+                  'MULTIPLE_CONFLICTS_SECTIONS',
+                  'INVALID_CATEGORY_TAG',
+                  'INVALID_CATEGORY',
+                  'MULTIPLE_CATEGORIES',
+                  'MISSING_CATEGORY',
+                  'INVALID_FEATURE_TAG',
+                  'MULTIPLE_FEATURE_TAGS',
+                  'FEATURE_BEFORE_CATEGORY',
+                  'MISSING_FEATURE_ID',
+                  'FEATURE_ID_BUT_NO_CATEGORY',
+                  'FEATURE_ID_BUT_NOT_FEATURE_CATEGORY')
 
 # Error codes mapped to severity and message
 ERRORS = {ERROR_CODE.DMS_IN_TITLE:
@@ -69,7 +79,37 @@ ERRORS = {ERROR_CODE.DMS_IN_TITLE:
                "Should not include non-UTF-8 characters."],
           ERROR_CODE.MULTIPLE_CONFLICTS_SECTIONS:
             [ERROR_SEVERITY.WARNING,
-               "Multiple conflicts sections found."]}
+               "Multiple conflicts sections found."],
+          ERROR_CODE.INVALID_CATEGORY_TAG:
+            [ERROR_SEVERITY.ERROR,
+               "Category should be listed as 'Category: category'"],
+          ERROR_CODE.INVALID_CATEGORY:
+            [ERROR_SEVERITY.ERROR,
+               "Invalid category"],
+          ERROR_CODE.MULTIPLE_CATEGORIES:
+            [ERROR_SEVERITY.ERROR,
+               "Cannot specify more than one category"],
+          ERROR_CODE.MISSING_CATEGORY:
+            [ERROR_SEVERITY.ERROR,
+               "Valid category tag was not found"],
+          ERROR_CODE.INVALID_FEATURE_TAG:
+            [ERROR_SEVERITY.ERROR,
+               "Feature ID should be listed as 'Feature: FPNNNN'"],
+          ERROR_CODE.MULTIPLE_FEATURE_TAGS:
+            [ERROR_SEVERITY.ERROR,
+               "Cannot specify same feature ID more than once"],
+          ERROR_CODE.FEATURE_BEFORE_CATEGORY:
+            [ERROR_SEVERITY.WARNING,
+               "Feature ID should be specified after the 'Category:' line"],
+          ERROR_CODE.MISSING_FEATURE_ID:
+            [ERROR_SEVERITY.ERROR,
+               "Category is 'feature' but 'Feature:'  tag was not found"],
+          ERROR_CODE.FEATURE_ID_BUT_NO_CATEGORY:
+            [ERROR_SEVERITY.ERROR,
+               "'Feature:' tag cannot be used without a 'Category:' tag"],
+          ERROR_CODE.FEATURE_ID_BUT_NOT_FEATURE_CATEGORY:
+            [ERROR_SEVERITY.ERROR,
+               "'Feature:' tag can only be used when category is 'feature'"]}
 
 # Message submitted to Gerrit when the check fails
 FAIL_MESSAGE = """Commit message does not follow the guideline:
@@ -93,6 +133,18 @@ EXCLUDED_LINE_PATTERNS = [re.compile(r'^Squashed-with: ')]
 
 # String marking the beginning of the conflicts section in the commit message
 CONFLICTS_MARKER = re.compile(r'^Conflicts:$')
+
+# Category tag patterns
+CATEGORY_MARKER = re.compile(r'^Category:')
+CATEGORY_TAG = re.compile(r'^Category: ([a-z]+)$')
+
+# Feature tag patterns
+FEATURE_MARKER = re.compile(r'^Feature:')
+FEATURE_TAG = re.compile(r'^Feature: (FP[0-9]{4,6})$')
+
+# List of valid category tags
+VALID_CATEGORIES = ["integration", "configuration", "development", "bugfix",
+                    "feature", "revert", "other"]
 
 
 def is_excluded_subject(subject):
@@ -137,12 +189,15 @@ class CommitMessageChecker(object):
     are according to the guideline.
     """
 
-    def __init__(self, commit=None):
+    def __init__(self, commit=None, require_category=False):
         self.commit = commit
+        self.require_category = require_category
         self.errors = []
         self.conflicts_marker_found = False
         self.in_conflicts_section = False
         self.conflicts_section_processed = False
+        self.category = None
+        self.feature_id = []
 
     def error(self, error_code, line_no=0):
         '''
@@ -162,6 +217,8 @@ class CommitMessageChecker(object):
         self.conflicts_marker_found = False
         self.in_conflicts_section = False
         self.conflicts_section_processed = False
+        self.category = None
+        self.feature_id = []
 
     def check_subject(self, subject):
         '''
@@ -191,9 +248,36 @@ class CommitMessageChecker(object):
         if is_excluded_line(line):
             return
 
+        # Check if this line is a category tag
+        if re.match(CATEGORY_MARKER, line):
+            match = re.match(CATEGORY_TAG, line)
+            if not match:
+                self.error(ERROR_CODE.INVALID_CATEGORY_TAG, line_no)
+            else:
+                if self.category:
+                    self.error(ERROR_CODE.MULTIPLE_CATEGORIES, line_no)
+                else:
+                    category = match.group(1)
+                    if category in VALID_CATEGORIES:
+                        self.category = category
+                    else:
+                        self.error(ERROR_CODE.INVALID_CATEGORY, line_no)
+        # Check if this line is a feature tag
+        elif re.match(FEATURE_MARKER, line):
+            match = re.match(FEATURE_TAG, line)
+            if not match:
+                self.error(ERROR_CODE.INVALID_FEATURE_TAG, line_no)
+            else:
+                feature_id = match.group(1)
+                if feature_id in self.feature_id:
+                    self.error(ERROR_CODE.MULTIPLE_FEATURE_TAGS, line_no)
+                else:
+                    self.feature_id.append(feature_id)
+                    if not self.category:
+                        self.error(ERROR_CODE.FEATURE_BEFORE_CATEGORY, line_no)
         # Check if we're entering or leaving the conflicts section
         # of the commit message
-        if re.match(CONFLICTS_MARKER, line):
+        elif re.match(CONFLICTS_MARKER, line):
             logging.debug("Found conflicts marker at line %d", line_no)
             # Can only have one conflicts section
             if self.conflicts_marker_found:
@@ -273,6 +357,20 @@ class CommitMessageChecker(object):
                 line = line.rstrip()
                 self.check_line(line, line_no)
 
+            # Check that a category was specified, if mandatory
+            if self.require_category and not self.category:
+                self.error(ERROR_CODE.MISSING_CATEGORY)
+
+            # If feature ID is specified, the category must be "feature",
+            # and if the category is "feature" then a feature ID must also
+            # be specified.
+            if self.category == "feature" and not self.feature_id:
+                self.error(ERROR_CODE.MISSING_FEATURE_ID)
+            elif self.feature_id and not self.category:
+                self.error(ERROR_CODE.FEATURE_ID_BUT_NO_CATEGORY)
+            elif self.feature_id and not self.category == "feature":
+                self.error(ERROR_CODE.FEATURE_ID_BUT_NOT_FEATURE_CATEGORY)
+
         return self.errors
 
 
@@ -347,6 +445,9 @@ def _main():
                            "the pattern will be excluded from the check.  "
                            "This option can be used multiple times to add "
                            "more expressions. (default: <empty>).")
+    parser.add_option("", "--require-category", dest="require_category",
+                      action="store_true", default=False,
+                      help="Require commit category tag to be present.")
     (options, _args) = parser.parse_args()
 
     if options.verbose:
@@ -375,7 +476,7 @@ def _main():
         gerrit_handle = gerrit.GerritSshConnection(options.gerrit_url,
                                                    username=options.gerrit_user)
         message = get_commit_message(gerrit_handle, options.revision)
-        checker = CommitMessageChecker(message)
+        checker = CommitMessageChecker(message, options.require_category)
         results = checker.check()
         output, errors, warnings = format_results(results)
         logging.info(output)

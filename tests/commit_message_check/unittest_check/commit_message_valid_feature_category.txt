@@ -3,4 +3,7 @@ Commit message subject
 Commit message body line 1
 Commit message body line 2
 
-Category: development
+Category: feature
+Feature: FP1234
+Feature: FP12345
+Feature: FP123456

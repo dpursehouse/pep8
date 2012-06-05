@@ -1,0 +1,7 @@
+Commit message subject
+
+Commit message line 1
+
+Category: feature
+Feature: FP1234
+Feature: FP1234
