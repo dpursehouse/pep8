@@ -7,9 +7,7 @@ FIX=DMS00123456 FIX=DMS00123456
 fix=DMS00123456
 DMS=DMS00123456
 Conflicts:
-
 	packages/SystemUI/src/com/android/systemui/statusbar/policy/NetworkController.java
-
 This line is too long this line is too long this line is too long this line is too long
 
 fix=DMS00123456

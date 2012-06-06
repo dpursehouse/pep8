@@ -1,0 +1,11 @@
+Commit message subject
+
+Commit message line 1
+
+Conflicts:
+
+	packages/SystemUI/src/com/android/systemui/statusbar/policy/NetworkController.java
+
+Conflicts:
+
+	packages/SystemUI/src/com/android/systemui/statusbar/policy/NetworkController.java
