@@ -13,11 +13,12 @@ class TestCheck(unittest.TestCase):
     """Test that the check() method behaves correctly.
     """
 
-    def _error_found(self, error, errors):
+    def _error_count(self, error, errors):
+        count = 0
         for line, code in errors:
             if code is error:
-                return
-        self.assertTrue(False, msg="%d not found" % error)
+                count += 1
+        return count
 
     def get_checker(self, filename):
         """Open the file specified by `filename` and use its content to create
@@ -51,22 +52,22 @@ class TestCheck(unittest.TestCase):
         c = self.get_checker("commit_message_invalid.txt")
         c.commit.message += "\nnot utf-8".encode('utf-16')
         errors = c.check()
-        self._error_found(
-            commit_message_check.ERROR_CODE.DMS_IN_TITLE, errors)
-        self._error_found(
-            commit_message_check.ERROR_CODE.MULTIPLE_LINES_IN_SUBJECT, errors)
-        self._error_found(
-            commit_message_check.ERROR_CODE.SUBJECT_TOO_LONG, errors)
-        self._error_found(
-            commit_message_check.ERROR_CODE.DMS_WITHOUT_FIX_TAG, errors)
-        self._error_found(
-            commit_message_check.ERROR_CODE.MULTIPLE_DMS_ON_LINE, errors)
-        self._error_found(
-            commit_message_check.ERROR_CODE.INVALID_TAG_FORMAT, errors)
-        self._error_found(
-            commit_message_check.ERROR_CODE.LINE_TOO_LONG, errors)
-        self._error_found(
-            commit_message_check.ERROR_CODE.NON_UTF8_CHARS, errors)
+        self.assertEquals(1, self._error_count(
+            commit_message_check.ERROR_CODE.DMS_IN_TITLE, errors))
+        self.assertEquals(1, self._error_count(
+            commit_message_check.ERROR_CODE.MULTIPLE_LINES_IN_SUBJECT, errors))
+        self.assertEquals(1, self._error_count(
+            commit_message_check.ERROR_CODE.SUBJECT_TOO_LONG, errors))
+        self.assertEquals(1, self._error_count(
+            commit_message_check.ERROR_CODE.DMS_WITHOUT_FIX_TAG, errors))
+        self.assertEquals(2, self._error_count(
+            commit_message_check.ERROR_CODE.MULTIPLE_DMS_ON_LINE, errors))
+        self.assertEquals(1, self._error_count(
+            commit_message_check.ERROR_CODE.INVALID_TAG_FORMAT, errors))
+        self.assertEquals(1, self._error_count(
+            commit_message_check.ERROR_CODE.LINE_TOO_LONG, errors))
+        self.assertEquals(1, self._error_count(
+            commit_message_check.ERROR_CODE.NON_UTF8_CHARS, errors))
 
 
 if __name__ == '__main__':
