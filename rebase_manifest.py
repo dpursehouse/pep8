@@ -557,7 +557,7 @@ class UpdateMerge:
                 if self.options.flag_upload:
                     reviewers = []
                     if not self.options.no_reviewers or \
-                           (self.options.reviewers_on_conflict and \
+                           (self.options.reviewers_on_conflict and
                             flag_conflict):
                         try:
                             gerrit_handle = self.gerrit_handler.gerrit
@@ -828,7 +828,7 @@ class UpdateMerge:
             else:
                 self.log_list(self.merge_done)
 
-        if self.options.file_report and (manifest_changed or \
+        if self.options.file_report and (manifest_changed or
                                          len(self.merge_review)):
             try:
                 with open(self.options.file_report, "w") as fp:
@@ -915,8 +915,8 @@ def _main():
                                    "[--commit-message]")
     parser.add_option("-s", "--source-version", dest="source_version",
                       default=None,
-                      help="Official label for the base manifest version. " \
-                           "Manifest file path can also be given as source " \
+                      help="Official label for the base manifest version. "
+                           "Manifest file path can also be given as source "
                            "instead of label")
     parser.add_option("-t", "--target-branch", dest="target_branch",
                       default=None,
@@ -930,10 +930,10 @@ def _main():
     parser.add_option("-b", "--component-branch", dest="component_branch",
                       action="append", metavar="REGEXP",
                       default=None,
-                      help="A regular expression that will be matched " \
-                           "against the branches of the gits found in " \
-                           "the target manifest to include them in the " \
-                           "component rebase. This option can be used " \
+                      help="A regular expression that will be matched "
+                           "against the branches of the gits found in "
+                           "the target manifest to include them in the "
+                           "component rebase. This option can be used "
                            "multiple times to add more expressions.")
     parser.add_option("-a", "--component-all", action="store_true",
                       dest="flag_cmpnt_all", default=False,
@@ -951,31 +951,31 @@ def _main():
     parser.add_option("-x", "--exclude-git", dest="exclude_git",
                       action="append", metavar="REGEXP",
                       default=None,
-                      help="A regular expression that will be matched " \
-                           "against the gits found in the target " \
-                           "manifest to exclude them from the " \
-                           "rebase. This option can be used " \
+                      help="A regular expression that will be matched "
+                           "against the gits found in the target "
+                           "manifest to exclude them from the "
+                           "rebase. This option can be used "
                            "multiple times to add more expressions.")
     parser.add_option("-i", "--include-git", dest="include_git",
                       action="append", metavar="REGEXP",
                       default=None,
-                      help="A regular expression that will be matched " \
-                           "against the gits found in the target " \
-                           "manifest to include them in the " \
-                           "component rebase. This option can be used " \
+                      help="A regular expression that will be matched "
+                           "against the gits found in the target "
+                           "manifest to include them in the "
+                           "component rebase. This option can be used "
                            "multiple times to add more expressions.")
     parser.add_option("-w", "--workspace", dest="workspace",
                       default=".",
-                      help="Workspace to clone gits. Default " \
+                      help="Workspace to clone gits. Default "
                            "is current working directory")
     parser.add_option("-l", "--log-file", dest="log_file",
                       default=None,
-                      help="File name to log the result to file. " \
+                      help="File name to log the result to file. "
                            "Default output to terminal")
     parser.add_option("-f", "--file-report", dest="file_report",
                       default=None,
-                      help="File name to save the final report " \
-                           "of git and gerrit upload URLs. " \
+                      help="File name to save the final report "
+                           "of git and gerrit upload URLs. "
                            "Option can only be used along with -u/--upload.")
     parser.add_option("--gerrit-user", dest="gerrit_user",
                       default=None,
