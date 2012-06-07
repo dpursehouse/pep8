@@ -24,7 +24,7 @@ def report(oldSnap, newSnap):
 
 
 def main(argv=None):
-    if argv == None:
+    if argv is None:
         argv = sys.argv
 
     parser = OptionParser()
@@ -32,8 +32,8 @@ def main(argv=None):
     parser.add_option("-n", "--name", dest="name", help="New snapshot name")
     parser.add_option("-a", "--add", action="append", dest="add_packages",
                       help="Packages to add. Enter with <name>:<revision>")
-    parser.add_option("-d", "--dir", dest='package_dir',
-                        help="A directory containing package files")
+    parser.add_option("-d", "--dir", action="append", dest='package_dir',
+                        help="Directories containing package files")
     parser.add_option("-r", "--remove", action="append",
                       dest="remove_packages", help="Packages to remove")
     parser.add_option("-s", "--server", help="Repository server")
@@ -72,9 +72,10 @@ def main(argv=None):
         snap.name = options.name
 
     if options.package_dir:
-        for package_file in glob.glob(os.path.join(
-            options.package_dir, '*.xml')):
-            snap.add_from_file(package_file)
+        for package_dir in options.package_dir:
+            for package_file in glob.glob(os.path.join(
+                package_dir, '*.xml')):
+                snap.add_from_file(package_file)
 
     if options.add_packages:
         for item in options.add_packages:
