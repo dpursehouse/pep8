@@ -2,6 +2,7 @@
 """
 
 from base64 import encodestring
+from httplib import HTTPException
 import logging
 import netrc
 from os.path import expanduser, isfile
@@ -135,7 +136,7 @@ class CMServer(object):
             request = urllib2.Request(url)
             request.add_header("Authorization", "Basic %s" % self._auth)
             return urllib2.urlopen(request)
-        except urllib2.URLError, error:
+        except (HTTPException, urllib2.URLError), error:
             if isinstance(error, urllib2.HTTPError):
                 if error.code in self.ERROR_CODES:
                     raise globals()[self.ERROR_CODES[error.code]]()
