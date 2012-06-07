@@ -1,0 +1,6 @@
+Commit message subject
+
+Commit message line 1
+
+Category: development
+Category: bugfix
