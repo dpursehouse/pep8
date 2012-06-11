@@ -19,13 +19,15 @@ while IFS= read FILENAME;
 do
     # Exclude external modules
     if grep -v "^external/" <<<$FILENAME ; then
-        # Check for whitespace errors
-        $GIT_COMMAND diff --check HEAD~1.. -- $FILENAME \
-            | tee -a $WORKSPACE/out/whitespace_log.txt
-        WHITESPACE_STATUS=${PIPESTATUS[0]}
-        if [ "$WHITESPACE_STATUS" -ne 0 ]; then
-            echo "Whitespace error"
-            EXIT_STATUS=`expr $EXIT_STATUS + 1`
+        # Check for whitespace errors on all files except .rst
+        if grep -v ".rst$" <<<$FILENAME ; then
+            $GIT_COMMAND diff --check HEAD~1.. -- $FILENAME \
+                | tee -a $WORKSPACE/out/whitespace_log.txt
+            WHITESPACE_STATUS=${PIPESTATUS[0]}
+            if [ "$WHITESPACE_STATUS" -ne 0 ]; then
+                echo "Whitespace error"
+                EXIT_STATUS=`expr $EXIT_STATUS + 1`
+            fi
         fi
 
         # Run PEP-8 check on Python files
