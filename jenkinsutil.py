@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from time import gmtime
 import os
 import urllib2
-from urlparse import urlparse, urlunparse
+from urlparse import urlunparse
 
 # Suffix part of the api/xml url in python format
 NET_SCHEME = 'http'
@@ -13,16 +13,23 @@ API_PYTHON_URL_SUFFIX = 'api/python?depth=0'
 DEFAULT_JOB_ID = 'lastSuccessfulBuild'
 
 
-def get_apixml_dict(job, job_id=None, server=DEFAULT_SERVER):
+def get_apixml_dict(job=None, job_id=None, server=DEFAULT_SERVER):
     '''Constructs the Jenkins url with the given job name `job` and job id
-    `job_id` and fetches the api/xml for the url.
+    `job_id`, if given and fetches the api/xml for the url.  If job name and
+    job id are not given then name and url of all the configured jobs in the
+    provided server are returned.
     Returns - The constructed job url and a `dict` containing the api/xml
               data if successful.
     Raises - JenkinsError if it fails to fetch the data or the job is None.'''
+    path = ''
     if not job:
-        raise JenkinsError("Error: Job name can't be empty")
+        if job_id:
+            raise JenkinsError("Error: Job name can't be empty")
+        else:
+            path = os.path.join('view', "All")
+    else:
+        path = os.path.join('job', job)
 
-    path = os.path.join('job', job)
     if job_id:
         path = os.path.join(path, str(job_id))
 
@@ -30,12 +37,9 @@ def get_apixml_dict(job, job_id=None, server=DEFAULT_SERVER):
                           None, None, None])
     api_url = os.path.join(job_url, API_PYTHON_URL_SUFFIX)
     try:
-        response = urllib2.urlopen(api_url)
-        data = eval(response.read())
-    except urllib2.URLError, e:
-        raise JenkinsError("Error fetching api/xml: %s" % e)
-    except SyntaxError, e:
-        raise JenkinsError("Error parsing Jenkins data: %s" % e)
+        data = eval(get_url_contents(api_url))
+    except SyntaxError, error:
+        raise JenkinsError("Error parsing Jenkins data: %s" % error)
     return (job_url, data)
 
 
@@ -46,17 +50,55 @@ def get_url_contents(url):
     try:
         response = urllib2.urlopen(url)
         return response.read()
-    except urllib2.URLError, e:
-        raise JenkinsError("Error fetching url contents: %s" % e)
+    except urllib2.URLError, error:
+        raise JenkinsError("Error fetching url contents: %s" % error)
+
+
+class Jenkins(object):
+    '''Class to wrap the api/xml data of all jobs configured in a
+    Jenkins server'''
+    def __init__(self, server=DEFAULT_SERVER):
+        self.server = server
+        self.jobs = []
+        self.url = ""
+        self.data = {}
+        self._get_current_data()
+
+    def _get_current_data(self):
+        '''Fetches the data from Jenkins server.'''
+        (self.url, self.data) = get_apixml_dict(server=self.server)
+
+    def get_jobs(self, force_update=False):
+        '''Strips unwanted elements from api/xml data and returns a list of
+        job name and its url.  If `force_update` is True this will fetch the
+        latest data from the Jenkins server.
+        Returns - A list containing the job names and its url.
+        Raises - JenkinsError if it fails to fetch the data.'''
+        if not self.jobs or force_update:
+            self._get_current_data()
+            jenkins_jobs = self.data.get('jobs')
+            if jenkins_jobs:
+                jobs = []
+                for job in jenkins_jobs:
+                    item = {}
+                    url = job.get('url')
+                    name = job.get('name')
+                    if url and name:
+                        # Store only the valid data
+                        item['url'] = url
+                        item['name'] = name
+                        jobs.append(item)
+                self.jobs = jobs
+        return self.jobs
 
 
 class JenkinsError(Exception):
-    ''' JenkinsError is raised when something goes wrong fetching data
+    '''JenkinsError is raised when something goes wrong fetching data
     from Jenkins'''
 
 
 class JenkinsBuild(object):
-    ''' Class to wrap the api/xml data of a Jenkins build '''
+    '''Class to wrap the api/xml data of a Jenkins build'''
     def __init__(self, job, job_id=DEFAULT_JOB_ID, server=DEFAULT_SERVER):
         self.job = job
         self.job_id = job_id
@@ -93,9 +135,9 @@ class JenkinsBuild(object):
         The epoch time can be used by the 'avoid build' check to proceed with
         new build.'''
         if not self.timestamp:
-            t = self.data.get('timestamp')
-            if t:
-                start_time = str(t)
+            timestamp = self.data.get('timestamp')
+            if timestamp:
+                start_time = str(timestamp)
                 if start_time and len(start_time) > 10:
                     # If the timestamp is in milliseconds,
                     # convert it to seconds
@@ -104,8 +146,9 @@ class JenkinsBuild(object):
             elif epoch:
                 # If for some reason timestamp is not found in the data
                 # assign epoch time to let the avoid build check to proceed.
-                t = gmtime(0)
-                self.timestamp = datetime(t.tm_year, t.tm_mon, t.tm_mday)
+                timestamp = gmtime(0)
+                self.timestamp = datetime(timestamp.tm_year, timestamp.tm_mon,
+                                          timestamp.tm_mday)
         return self.timestamp
 
     def is_triggered_by_user(self):
@@ -132,7 +175,7 @@ class JenkinsBuild(object):
                   minutes else False.
         Raises - ValueError if `duration` is less than or equal to zero'''
         if duration <= 0:
-            raise ValueError('Duration should be a positive integer greater ' \
+            raise ValueError('Duration should be a positive integer greater '
                              'then zero.')
         if datetime.now() - self.get_build_timestamp(epoch=check_epoch) >= \
                 timedelta(minutes=duration):
@@ -141,7 +184,7 @@ class JenkinsBuild(object):
 
 
 class JenkinsJob(object):
-    ''' Class to wrap the api/xml data of a Jenkins job '''
+    '''Class to wrap the api/xml data of a Jenkins job'''
     def __init__(self, job, server=DEFAULT_SERVER):
         self.job = job
         self.server = server
