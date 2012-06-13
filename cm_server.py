@@ -36,35 +36,42 @@ DEFAULT_NETRC_FILE = expanduser("~/.netrc")
 class CMServerError(Exception):
     ''' Raised when something goes wrong when accessing the server.
     '''
+    def __init__(self, url, message):
+        super(CMServerError, self).__init__()
+        self.url = url
+        self.message = message
+
+    def __str__(self):
+        return "%s:\n%s" % (self.message, self.url)
 
 
 class CMServerAuthenticationError(CMServerError):
     ''' Raised when the server returns 401 Unauthorized.
     '''
-    def __init__(self):
-        super(CMServerAuthenticationError, self).__init__(
+    def __init__(self, url):
+        super(CMServerAuthenticationError, self).__init__(url,
             "Authentication Error")
 
 
 class CMServerPermissionError(CMServerError):
     ''' Raised when the server returns 403 Forbidden.
     '''
-    def __init__(self):
-        super(CMServerPermissionError, self).__init__("Permission Error")
+    def __init__(self, url):
+        super(CMServerPermissionError, self).__init__(url, "Permission Error")
 
 
 class CMServerResourceNotFoundError(CMServerError):
     ''' Raised when the server returns 404 Not Found.
     '''
-    def __init__(self):
-        super(CMServerResourceNotFoundError, self).__init__("Not Found")
+    def __init__(self, url):
+        super(CMServerResourceNotFoundError, self).__init__(url, "Not Found")
 
 
 class CMServerInternalError(CMServerError):
     ''' Raised when the server returns 500 Internal Server Error.
     '''
-    def __init__(self):
-        super(CMServerInternalError, self).__init__("Internal Error")
+    def __init__(self, url):
+        super(CMServerInternalError, self).__init__(url, "Internal Error")
 
 
 class CredentialsError(Exception):
@@ -132,16 +139,15 @@ class CMServer(object):
             url = urljoin('http://' + self._server, path)
             if data:
                 url = urljoin(url, "?" + data)
-            logging.debug("URL: %s", url)
             request = urllib2.Request(url)
             request.add_header("Authorization", "Basic %s" % self._auth)
             return urllib2.urlopen(request)
         except (HTTPException, urllib2.URLError), error:
             if isinstance(error, urllib2.HTTPError):
                 if error.code in self.ERROR_CODES:
-                    raise globals()[self.ERROR_CODES[error.code]]()
+                    raise globals()[self.ERROR_CODES[error.code]](url)
 
-            raise CMServerError("Unexpected error: %s" % error)
+            raise CMServerError(url, "Unexpected Error: %s" % error)
 
     @retry(CMServerInternalError, tries=2)
     def get_branch_config(self, manifest_name):
