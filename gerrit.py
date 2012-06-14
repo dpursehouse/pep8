@@ -57,6 +57,51 @@ def get_patchset_refspec(change_nr, patchset):
     return "refs/changes/%02d/%d/%d" % (infix, int(change_nr), int(patchset))
 
 
+def _get_config_from_alias(hostname):
+    """ Parses .ssh/config to find the first alias that points to and
+    returns the user name and ssh port defined in the alias.
+
+    Return a tuple of (username, port) either of which could be None.
+
+    If no config is found, return (None, None).
+    """
+
+    aliases = {}
+    current_alias = ""
+    appr_alias = ""
+    user = None
+    port = None
+
+    config_file = os.path.join(os.getenv("HOME"), ".ssh", "config")
+    try:
+        cfile = open(config_file)
+    except IOError:
+        return None, None
+
+    for line in cfile:
+        if line.strip():
+            tag, val = line.lstrip().split()
+            if not line[0].isspace():
+                if tag == "Host":
+                    current_alias = val
+                    aliases[current_alias] = {}
+                else:
+                    current_alias = ""
+            elif current_alias:
+                if tag in ["HostName", "Port", "User"]:
+                    aliases[current_alias][tag] = val
+                    if (tag == "HostName") and (val == hostname):
+                        appr_alias = current_alias
+    cfile.close()
+    if appr_alias:
+        if "User" in aliases[appr_alias]:
+            user = aliases[appr_alias]["User"]
+        if "Port" in aliases[appr_alias]:
+            port = aliases[appr_alias]["Port"]
+
+    return user, port
+
+
 class GerritQueryError(Exception):
     """GerritQueryError exceptions are raised when Gerrit returns an
     error for a posted query, typically indicating a syntax error in
@@ -80,9 +125,7 @@ class GerritSshConnection(object):
 
     def __init__(self, hostname, username=None):
         """Initializes a GerritSshConnection object to the server
-        identified by `hostname`. The actual hostname and port used
-        for the connection will be picked up from the configuration
-        URL.
+        identified by `hostname`.
 
         Will logon to the server as the user specified by
         `username`. If `username` is None, the localpart of the user's
@@ -99,7 +142,11 @@ class GerritSshConnection(object):
         """
 
         self.hostname = hostname
-        self.username = username or self._get_user_from_alias(hostname)
+        (alias_username, self.ssh_port) = _get_config_from_alias(hostname)
+
+        # If username is not specified, and was not found in the alias config,
+        # attempt to get it from git config file.
+        self.username = username or alias_username
         if not self.username:
             try:
                 _exitcode, out, _err = processes.run_cmd("git", "config",
@@ -115,64 +162,33 @@ class GerritSshConnection(object):
                 # Ignore and default to self.username = None
                 pass
 
-        # Fetch the Gerrit configuration URL to obtain the hostname
-        # and port to use for SSH connections.
-        config_url = GERRIT_SSH_INFO_URL_TEMPLATE % self.hostname
-        try:
-            sshinfo_response = urllib.urlopen(config_url)
-            if sshinfo_response.getcode() == 200:
-                host, port = sshinfo_response.readline().split(" ", 1)
-                self.ssh_hostname = host
-                self.ssh_port = int(port)
-            else:
-                raise GerritSshConfigError("Request to fetch '%s' returned "
-                                           "status code %d." %
-                                           (config_url,
-                                            sshinfo_response.getcode()))
-        except IOError, e:
-            raise GerritSshConfigError("Error occured when fetching '%s' "
-                                       "to determine the Gerrit "
-                                       "configuration: %s" %
-                                       (config_url, e.strerror))
-        except ValueError:
-            raise GerritSshConfigError("Gerrit's configuration URL '%s' "
-                                       "contained unexpected data." %
-                                       config_url)
-
-    def _get_user_from_alias(self, hostname):
-        """ Parses .ssh/config to find the first alias that points to and
-        returns the user name defined in the alias. If no alias is found,
-        return None. """
-
-        aliases = {}
-        current_alias = ""
-        appr_alias = ""
-
-        config_file = os.path.join(os.getenv("HOME"), ".ssh", "config")
-        try:
-            cfile = open(config_file)
-        except IOError:
-            return None
-
-        for line in cfile:
-            if line.strip():
-                tag, val = line.lstrip().split()
-                if not line[0].isspace():
-                    if tag == "Host":
-                        current_alias = val
-                        aliases[current_alias] = {}
-                    else:
-                        current_alias = ""
-                elif current_alias:
-                    if tag in ["Hostname", "Port", "User"]:
-                        aliases[current_alias][tag] = val
-                        if (tag == "Hostname") and (val == hostname):
-                            appr_alias = current_alias
-        cfile.close()
-        if appr_alias and ("User" in aliases[appr_alias]):
-            return aliases[appr_alias]["User"]
+        # If SSH port was found in the alias config, use that port and the
+        # given hostname SSH connection. Otherwise fetch the Gerrit SSH config
+        # URL to obtain the hostname and port to use.
+        if self.ssh_port:
+            self.ssh_hostname = self.hostname
         else:
-            return None
+            config_url = GERRIT_SSH_INFO_URL_TEMPLATE % self.hostname
+            try:
+                sshinfo_response = urllib.urlopen(config_url)
+                if sshinfo_response.getcode() == 200:
+                    host, port = sshinfo_response.readline().split(" ", 1)
+                    self.ssh_hostname = host
+                    self.ssh_port = int(port)
+                else:
+                    raise GerritSshConfigError("Request to fetch '%s' returned "
+                                               "status code %d." %
+                                               (config_url,
+                                                sshinfo_response.getcode()))
+            except IOError, e:
+                raise GerritSshConfigError("Error occured when fetching '%s' "
+                                           "to determine the Gerrit "
+                                           "configuration: %s" %
+                                           (config_url, e.strerror))
+            except ValueError:
+                raise GerritSshConfigError("Gerrit's configuration URL '%s' "
+                                           "contained unexpected data." %
+                                           config_url)
 
     def query(self, querystring):
         """Sends the query `querystring` to Gerrit and returns the
