@@ -26,7 +26,8 @@ C2D_MAP = {"CNBJ": "http://androidswrepo-cnbj.sonyericsson.net/",
 C2D_PATH = "pool/semc/"
 DEFAULT_PACKAGE_TYPE_LIST = ["external-packages", "pld-packages",
                              "decoupled-apps", "installable-apps",
-                             "tools-packages", "verification-packages"]
+                             "tools-packages", "verification-packages",
+                             "boot-packages"]
 RECORD_FILE = "unavailable_debs.txt"
 
 logging.basicConfig(format="%(message)s", level=logging.INFO)
