@@ -81,23 +81,24 @@ def _get_config_from_alias(hostname):
     for line in cfile:
         if line.strip():
             tag, val = line.lstrip().split()
+            tag = tag.lower()
             if not line[0].isspace():
-                if tag == "Host":
+                if tag == "host":
                     current_alias = val
                     aliases[current_alias] = {}
                 else:
                     current_alias = ""
             elif current_alias:
-                if tag in ["HostName", "Port", "User"]:
+                if tag in ["hostname", "port", "user"]:
                     aliases[current_alias][tag] = val
-                    if (tag == "HostName") and (val == hostname):
+                    if (tag == "hostname") and (val == hostname):
                         appr_alias = current_alias
     cfile.close()
     if appr_alias:
-        if "User" in aliases[appr_alias]:
-            user = aliases[appr_alias]["User"]
-        if "Port" in aliases[appr_alias]:
-            port = aliases[appr_alias]["Port"]
+        if "user" in aliases[appr_alias]:
+            user = aliases[appr_alias]["user"]
+        if "port" in aliases[appr_alias]:
+            port = aliases[appr_alias]["port"]
 
     return user, port
 
