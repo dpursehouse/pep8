@@ -93,7 +93,7 @@ for space.
 
 """
 
-__version__ = '1.3'
+__version__ = '1.3.1'
 
 import os
 import sys
@@ -110,7 +110,6 @@ try:
 except ImportError:
     from ConfigParser import RawConfigParser
 
-
 DEFAULT_EXCLUDE = '.svn,CVS,.bzr,.hg,.git'
 DEFAULT_IGNORE = 'E24'
 DEFAULT_CONFIG = os.path.join(
@@ -122,8 +121,19 @@ REPORT_FORMAT = {
     'pylint': '%(path)s:%(row)d: [%(code)s] %(text)s',
 }
 
+
 SINGLETONS = frozenset(['False', 'None', 'True'])
 KEYWORDS = frozenset(keyword.kwlist + ['print']) - SINGLETONS
+BINARY_OPERATORS = frozenset([
+    '**=', '*=', '+=', '-=', '!=', '<>',
+    '%=', '^=', '&=', '|=', '==', '/=', '//=', '<=', '>=', '<<=', '>>=',
+    '%',  '^',  '&',  '|',  '=',  '/',  '//',  '<',  '>',  '<<'])
+UNARY_OPERATORS = frozenset(['>>', '**', '*', '+', '-'])
+OPERATORS = BINARY_OPERATORS | UNARY_OPERATORS
+WHITESPACE = frozenset(' \t')
+SKIP_TOKENS = frozenset([tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE,
+                         tokenize.INDENT, tokenize.DEDENT])
+BENCHMARK_KEYS = ['directories', 'files', 'logical lines', 'physical lines']
 
 INDENT_REGEX = re.compile(r'([ \t]*)')
 RAISE_COMMA_REGEX = re.compile(r'raise\s+\w+\s*(,)')
@@ -141,17 +151,6 @@ KEYWORD_REGEX = re.compile(r'(?:[^\s])(\s*)\b(?:%s)\b(\s*)' %
 OPERATOR_REGEX = re.compile(r'(?:[^\s])(\s*)(?:[-+*/|!<=>%&^]+)(\s*)')
 LAMBDA_REGEX = re.compile(r'\blambda\b')
 HUNK_REGEX = re.compile(r'^@@ -\d+,\d+ \+(\d+),(\d+) @@.*$')
-
-WHITESPACE = frozenset(' \t')
-BINARY_OPERATORS = frozenset([
-    '**=', '*=', '+=', '-=', '!=', '<>',
-    '%=', '^=', '&=', '|=', '==', '/=', '//=', '<=', '>=', '<<=', '>>=',
-    '%',  '^',  '&',  '|',  '=',  '/',  '//',  '<',  '>',  '<<'])
-UNARY_OPERATORS = frozenset(['>>', '**', '*', '+', '-'])
-OPERATORS = BINARY_OPERATORS | UNARY_OPERATORS
-SKIP_TOKENS = frozenset([tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE,
-                         tokenize.INDENT, tokenize.DEDENT])
-BENCHMARK_KEYS = ['directories', 'files', 'logical lines', 'physical lines']
 
 # Work around Python < 2.6 behaviour, which does not generate NL after
 # a comment which is on a line by itself.
@@ -513,9 +512,8 @@ def continuation_line_indentation(logical_line, tokens, indent_level, verbose):
                            'indentation of opening bracket\'s line')
             elif visual_indent is True:
                 # visual indent is verified
-                if len(indent_chances) > 1:
+                if not indent[depth]:
                     indent[depth] = start[1]
-                    indent_chances = {start[1]: True}
             elif visual_indent in (text, str):
                 # ignore token lined up with matching one from a previous line
                 pass
@@ -528,10 +526,10 @@ def continuation_line_indentation(logical_line, tokens, indent_level, verbose):
                 pass
             else:
                 # indent is broken
-                if indent[depth]:
-                    error = 'E127', 'over-indented for visual indent'
-                elif hang <= 0:
+                if hang <= 0:
                     error = 'E122', 'missing indentation or outdented'
+                elif indent[depth]:
+                    error = 'E127', 'over-indented for visual indent'
                 elif hang % 4:
                     error = 'E121', 'indentation is not a multiple of four'
                 else:
@@ -544,9 +542,8 @@ def continuation_line_indentation(logical_line, tokens, indent_level, verbose):
             indent_chances[start[1]] = True
             if verbose >= 4:
                 print("bracket depth %s indent to %s" % (depth, start[1]))
-
         # deal with implicit string concatenation
-        if token_type == tokenize.STRING or text in ('u', 'ur', 'b', 'br'):
+        elif token_type == tokenize.STRING or text in ('u', 'ur', 'b', 'br'):
             indent_chances[start[1]] = str
 
         # keep track of bracket depth
@@ -564,17 +561,20 @@ def continuation_line_indentation(logical_line, tokens, indent_level, verbose):
                 for d in range(depth):
                     if indent[d] > prev_indent:
                         indent[d] = 0
-                if prev_indent in indent_chances:
-                    del indent_chances[prev_indent]
+                for ind in list(indent_chances):
+                    if ind >= prev_indent:
+                        del indent_chances[ind]
                 depth -= 1
-                indent_chances[indent[depth]] = True
+                if depth:
+                    indent_chances[indent[depth]] = True
                 for idx in range(row, -1, -1):
                     if parens[idx]:
                         parens[idx] -= 1
                         break
             assert len(indent) == depth + 1
-            # allow to line up tokens
-            indent_chances[start[1]] = text
+            if start[1] not in indent_chances:
+                # allow to line up tokens
+                indent_chances[start[1]] = text
 
         last_token_multiline = (start[0] != end[0])
 
@@ -1532,7 +1532,9 @@ class StyleGuide(object):
     def __init__(self, *args, **kwargs):
         # build options from the command line
         parse_argv = kwargs.pop('parse_argv', False)
-        options, self.paths = process_options(parse_argv=parse_argv)
+        config_file = kwargs.pop('config_file', None)
+        options, self.paths = process_options(parse_argv=parse_argv,
+                                              config_file=config_file)
         if args or kwargs:
             # build options from dict
             options_dict = dict(*args, **kwargs)
@@ -1548,13 +1550,9 @@ class StyleGuide(object):
 
         for index, value in enumerate(options.exclude):
             options.exclude[index] = value.rstrip('/')
-        if not options.select:
-            options.select = []
-        if not options.ignore:
-            # Ignore all checks which are not explicitly selected
-            options.ignore = [''] if options.select else []
-        options.select = tuple(options.select)
-        options.ignore = tuple(options.ignore)
+        # Ignore all checks which are not explicitly selected
+        options.select = tuple(options.select or ())
+        options.ignore = tuple(options.ignore or options.select and ('',))
         options.benchmark_keys = BENCHMARK_KEYS[:]
         options.ignore_code = self.ignore_code
         options.physical_checks = self.get_checks('physical_line')
@@ -1564,6 +1562,7 @@ class StyleGuide(object):
     def init_report(self, reporter=None):
         """Initialize the report instance."""
         self.options.report = (reporter or self.options.reporter)(self.options)
+        return self.options.report
 
     def check_files(self, paths=None):
         """Run all checks on the paths."""
@@ -1657,8 +1656,7 @@ def init_tests(pep8style):
      * Following example is conform:            #: Okay
      * Don't check these lines:                 #:
     """
-    pep8style.init_report(TestReport)
-    report = pep8style.options.report
+    report = pep8style.init_report(TestReport)
     runner = pep8style.input_file
 
     def run_tests(filename):
@@ -1758,38 +1756,48 @@ def read_config(options, args, arglist, parser):
 
     if config.has_section('pep8'):
         option_list = dict([(o.dest, o.type or o.action)
-                            for o in parser.option_list if o.dest])
+                            for o in parser.option_list])
 
-        # First, read the defaut values
-        options, _ = parser.parse_args([])
+        # First, read the default values
+        new_options, _ = parser.parse_args([])
 
         # Second, parse the configuration
         for opt in config.options('pep8'):
-            opt_type = option_list.get(opt)
-            if not opt_type:
-                print('Unknown option: %s' % opt)
-            elif opt_type in ('int', 'count'):
+            if options.verbose > 1:
+                print('  %s = %s' % (opt, config.get('pep8', opt)))
+            if opt.replace('_', '-') not in parser.config_options:
+                print('Unknown option: \'%s\'\n  not in [%s]' %
+                      (opt, ' '.join(parser.config_options)))
+                sys.exit(1)
+            normalized_opt = opt.replace('-', '_')
+            opt_type = option_list[normalized_opt]
+            if opt_type in ('int', 'count'):
                 value = config.getint('pep8', opt)
             elif opt_type == 'string':
                 value = config.get('pep8', opt)
             else:
                 assert opt_type in ('store_true', 'store_false')
                 value = config.getboolean('pep8', opt)
-            setattr(options, opt, value)
+            setattr(new_options, normalized_opt, value)
 
         # Third, overwrite with the command-line options
-        options, _ = parser.parse_args(arglist, values=options)
+        options, _ = parser.parse_args(arglist, values=new_options)
 
     return options
 
 
-def process_options(arglist=None, parse_argv=False):
+def process_options(arglist=None, parse_argv=False, config_file=None):
     """Process options passed either via arglist or via command line args."""
     if not arglist and not parse_argv:
         # Don't read the command line if the module is used as a library.
         arglist = []
+    if config_file is True:
+        config_file = DEFAULT_CONFIG
     parser = OptionParser(version=__version__,
                           usage="%prog [options] input ...")
+    parser.config_options = [
+        'exclude', 'filename', 'select', 'ignore', 'max-line-length',
+        'count', 'format', 'quiet', 'show-pep8', 'show-source', 'statistics']
     parser.add_option('-v', '--verbose', default=0, action='count',
                       help="print status messages, or debug with -vv")
     parser.add_option('-q', '--quiet', default=0, action='count',
@@ -1820,23 +1828,27 @@ def process_options(arglist=None, parse_argv=False):
                       help="print total number of errors and warnings "
                            "to standard error and set exit code to 1 if "
                            "total is not null")
-    parser.add_option('--benchmark', action='store_true',
-                      help="measure processing speed")
-    parser.add_option('--testsuite', metavar='dir',
-                      help="run regression tests from dir")
     parser.add_option('--max-line-length', type='int', metavar='n',
                       default=MAX_LINE_LENGTH,
                       help="set maximum allowed line length "
                            "(default: %default)")
-    parser.add_option('--doctest', action='store_true',
-                      help="run doctest on myself")
-    parser.add_option('--config', metavar='path', default=DEFAULT_CONFIG,
-                      help="config file location (default: %default)")
     parser.add_option('--format', metavar='format', default='default',
                       help="set the error format [default|pylint|<custom>]")
     parser.add_option('--diff', action='store_true',
                       help="report only lines changed according to the "
                            "unified diff received on STDIN")
+    group = parser.add_option_group("Testing Options")
+    group.add_option('--testsuite', metavar='dir',
+                     help="run regression tests from dir")
+    group.add_option('--doctest', action='store_true',
+                     help="run doctest on myself")
+    group.add_option('--benchmark', action='store_true',
+                     help="measure processing speed")
+    group = parser.add_option_group("Configuration", description=(
+        "The configuration options are read from the [pep8] section.  "
+        "Allowed options are: %s." % ', '.join(parser.config_options)))
+    group.add_option('--config', metavar='path', default=config_file,
+                     help="config file location (default: %default)")
 
     options, args = parser.parse_args(arglist)
     if options.show_pep8:
@@ -1861,8 +1873,8 @@ def process_options(arglist=None, parse_argv=False):
         options.select = options.select.split(',')
     if options.ignore:
         options.ignore = options.ignore.split(',')
-    elif (not options.select and DEFAULT_IGNORE and
-          not options.testsuite and not options.doctest):
+    elif not (options.select or
+              options.testsuite or options.doctest) and DEFAULT_IGNORE:
         # The default choice: ignore controversial checks
         # (for doctest and testsuite, all checks are required)
         options.ignore = DEFAULT_IGNORE.split(',')
@@ -1878,7 +1890,7 @@ def process_options(arglist=None, parse_argv=False):
 
 def _main():
     """Parse options and run checks on Python source."""
-    pep8style = StyleGuide(parse_argv=True)
+    pep8style = StyleGuide(parse_argv=True, config_file=True)
     options = pep8style.options
     if options.doctest:
         import doctest
