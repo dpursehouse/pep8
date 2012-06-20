@@ -50,66 +50,64 @@ ERROR_CODE = enum('DMS_IN_TITLE',
 
 # Error codes mapped to severity and message
 ERRORS = {ERROR_CODE.DMS_IN_TITLE:
-            [ERROR_SEVERITY.WARNING,
-               "It is not recommended to list DMS in the subject line"],
+          [ERROR_SEVERITY.WARNING,
+           "It is not recommended to list DMS in the subject line"],
           ERROR_CODE.MULTIPLE_LINES_IN_SUBJECT:
-            [ERROR_SEVERITY.ERROR,
-               "Subject should be a single line, separated from the "
-               "message body by a blank line."],
+          [ERROR_SEVERITY.ERROR,
+           "Subject should be a single line, separated from the "
+           "message body by a blank line."],
           ERROR_CODE.SUBJECT_TOO_LONG:
-            [ERROR_SEVERITY.ERROR,
-               "Subject should be limited to %d characters." %
-               MAX_SUBJECT_LENGTH],
+          [ERROR_SEVERITY.ERROR,
+           "Subject should be limited to %d characters." % MAX_SUBJECT_LENGTH],
           ERROR_CODE.DMS_WITHOUT_FIX_TAG:
-            [ERROR_SEVERITY.WARNING,
-               "DMS should be listed with FIX= tag"],
+          [ERROR_SEVERITY.WARNING,
+           "DMS should be listed with FIX= tag"],
           ERROR_CODE.MULTIPLE_DMS_ON_LINE:
-            [ERROR_SEVERITY.ERROR,
-               "DMS should be listed on a separate line, with no leading "
-               "whitespace or trailing text."],
+          [ERROR_SEVERITY.ERROR,
+           "DMS should be listed on a separate line, with no leading "
+           "whitespace or trailing text."],
           ERROR_CODE.INVALID_TAG_FORMAT:
-            [ERROR_SEVERITY.ERROR,
-               "Tag is formatted incorrectly."],
+          [ERROR_SEVERITY.ERROR,
+           "Tag is formatted incorrectly."],
           ERROR_CODE.LINE_TOO_LONG:
-            [ERROR_SEVERITY.ERROR,
-               "Length should be limited to %d characters." %
-               MAX_LINE_LENGTH],
+          [ERROR_SEVERITY.ERROR,
+           "Length should be limited to %d characters." % MAX_LINE_LENGTH],
           ERROR_CODE.NON_UTF8_CHARS:
-            [ERROR_SEVERITY.ERROR,
-               "Should not include non-UTF-8 characters."],
+          [ERROR_SEVERITY.ERROR,
+           "Should not include non-UTF-8 characters."],
           ERROR_CODE.MULTIPLE_CONFLICTS_SECTIONS:
-            [ERROR_SEVERITY.WARNING,
-               "Multiple conflicts sections found."],
+          [ERROR_SEVERITY.WARNING,
+           "Multiple conflicts sections found."],
           ERROR_CODE.INVALID_CATEGORY_TAG:
-            [ERROR_SEVERITY.ERROR,
-               "Category should be listed as 'Category: category'"],
+          [ERROR_SEVERITY.ERROR,
+           "Category should be listed as 'Category: category'"],
           ERROR_CODE.INVALID_CATEGORY:
-            [ERROR_SEVERITY.ERROR,
-               "Invalid category"],
+          [ERROR_SEVERITY.ERROR,
+           "Invalid category"],
           ERROR_CODE.MULTIPLE_CATEGORIES:
-            [ERROR_SEVERITY.ERROR,
-               "Cannot specify more than one category"],
+          [ERROR_SEVERITY.ERROR,
+           "Cannot specify more than one category"],
           ERROR_CODE.MISSING_CATEGORY:
-            [ERROR_SEVERITY.ERROR,
-               "Valid category tag was not found"],
+          [ERROR_SEVERITY.ERROR,
+           "Valid category tag was not found"],
           ERROR_CODE.INVALID_FEATURE_TAG:
-            [ERROR_SEVERITY.ERROR,
-               "Feature ID should be listed as 'Feature: FPNNNN'"],
+          [ERROR_SEVERITY.ERROR,
+           "Feature ID should be listed as 'Feature: FPNNNN'"],
           ERROR_CODE.MULTIPLE_FEATURE_TAGS:
-            [ERROR_SEVERITY.ERROR,
-               "Cannot specify same feature ID more than once"],
+          [ERROR_SEVERITY.ERROR,
+           "Cannot specify same feature ID more than once"],
           ERROR_CODE.FEATURE_BEFORE_CATEGORY:
-            [ERROR_SEVERITY.WARNING,
-               "Feature ID should be specified after the 'Category:' line"],
+          [ERROR_SEVERITY.WARNING,
+           "Feature ID should be specified after the 'Category:' line"],
           ERROR_CODE.MISSING_FEATURE_ID:
-            [ERROR_SEVERITY.ERROR,
-               "Category is 'feature' but 'Feature:'  tag was not found"],
+          [ERROR_SEVERITY.ERROR,
+           "Category is 'feature' but 'Feature:'  tag was not found"],
           ERROR_CODE.FEATURE_ID_BUT_NO_CATEGORY:
-            [ERROR_SEVERITY.ERROR,
-               "'Feature:' tag cannot be used without a 'Category:' tag"],
+          [ERROR_SEVERITY.ERROR,
+           "'Feature:' tag cannot be used without a 'Category:' tag"],
           ERROR_CODE.FEATURE_ID_BUT_NOT_FEATURE_CATEGORY:
-            [ERROR_SEVERITY.ERROR,
-               "'Feature:' tag can only be used when category is 'feature'"]}
+          [ERROR_SEVERITY.ERROR,
+           "'Feature:' tag can only be used when category is 'feature'"]}
 
 # Message submitted to Gerrit when the check fails
 FAIL_MESSAGE = """Commit message does not follow the guideline:
