@@ -67,7 +67,7 @@ MESSAGE_GREETING = "Dear uploader,"
 
 # First part of the message about multiple systems impact
 MESSAGE_MULTIPLE_SYSTEMS_PART_1 = \
-"""
+    """
 
 The commit you've uploaded will affect more than one system branch
 (aka manifest), namely the following:
@@ -76,7 +76,7 @@ The commit you've uploaded will affect more than one system branch
 
 # Second part of the message about multiple systems impact
 MESSAGE_MULTIPLE_SYSTEMS_PART_2 = \
-"""
+    """
 Before submitting this change, make sure you don't inadvertently break
 any of these branches. Depending on the branch and the nature of your
 change, you may have to verify the commit separately on each branch, or
@@ -87,7 +87,7 @@ change). Please use good judgement."""
 
 # First part of the message about DMS policy violation
 MESSAGE_DMS_VIOLATION_PART_1 = \
-"""
+    """
 
 One or more system branches (aka manifest branches) affected by this
 change have DMS-based restrictions on which changes may be submitted.
@@ -98,7 +98,7 @@ submit this change.
 
 # Second part of the message about DMS policy violation
 MESSAGE_DMS_VIOLATION_PART_2 = \
-"""
+    """
 This report is based on a configuration listing valid tags for each
 branch, maintained by CM. If tags have been recently introduced this
 configuration may be out of date. Please send an email to
@@ -112,24 +112,24 @@ https://wiki.sonyericsson.net/androiki/Commit_messages"""
 
 # Message when DMS in the commit message do not have required tag
 MESSAGE_DMS_TAG_REQUIRED = \
-"""The change will affect the %s system branch. That branch requires all
+    """The change will affect the %s system branch. That branch requires all
 issues listed in the commit message to be accepted by triage with one of the
 following tags: %s. One or more issues found for this commit (%s) did not
 conform to this."""
 
 # Message when no DMS found in the commit message
 MESSAGE_DMS_REQUIRED = \
-"""The change will affect the %s system branch. That branch requires a
+    """The change will affect the %s system branch. That branch requires a
 DMS issue to be present in the commit message."""
 
 # Message when no DMS found in the commit message and tag is required
 MESSAGE_TAG_REQUIRED = \
-""" Additionally, all issues listed must be accepted by triage with one of the
-following tags: %s."""
+    """ Additionally, all issues listed must be accepted by triage with one
+of the following tags: %s."""
 
 # Message when the commit is too large
 MESSAGE_COMMIT_TOO_LARGE = \
-"""
+    """
 
 WARNING: Your commit is very large (%s kB).
 
@@ -255,78 +255,78 @@ def _main():
     parser.add_option("-m", "--manifest-name", dest="manifest_name",
                       default="platform/manifest",
                       help="The project name of the manifest git that should "
-                          "be used to check impact of changes.")
+                           "be used to check impact of changes.")
     parser.add_option("-u", "--gerrit-user", dest="gerrit_user",
                       default=None,
                       help="The username that should be used when logging "
-                          "into the Gerrit server with SSH. If omitted, "
-                          "the SSH client will decide the username based "
-                          "on $LOGNAME and its own configuration file "
-                          "(if present).")
+                           "into the Gerrit server with SSH. If omitted, "
+                           "the SSH client will decide the username based "
+                           "on $LOGNAME and its own configuration file "
+                           "(if present).")
     parser.add_option("-v", "--verbose", dest="verbose", default=0,
                       action="count", help="Verbose logging.")
     parser.add_option("", "--dry-run", dest="dry_run", action="store_true",
                       help="Do everything except actually add the note "
-                          "to the affected change.")
+                           "to the affected change.")
     parser.add_option("", "--include-manifest-ref", dest="manifest_ref_in",
                       action="append", metavar="REGEXP", default=[],
                       help="A regular expression that will be matched "
-                          "against the fully-qualified ref names of the "
-                          "available manifest branches to include them "
-                          "in the examination. This option can be used "
-                          "multiple times to add more expressions. The "
-                          "first use of this option will clear the default "
-                          "value (%s) before appending the new expression." %
-                          ", ".join(DEFAULT_MANIFEST_REF_INCLUDES))
+                           "against the fully-qualified ref names of the "
+                           "available manifest branches to include them "
+                           "in the examination. This option can be used "
+                           "multiple times to add more expressions. The "
+                           "first use of this option will clear the default "
+                           "value (%s) before appending the new expression." %
+                           ", ".join(DEFAULT_MANIFEST_REF_INCLUDES))
     parser.add_option("", "--exclude-manifest-ref", dest="manifest_ref_ex",
                       action="append", metavar="REGEXP",
                       help="Same as --include-manifest-ref but for "
-                          "excluding refs from examination. Exclusion has "
-                          "higher precedence than inclusion. This option "
-                          "can also be used multiple times to add more "
-                          "expressions (default: <empty>).")
+                           "excluding refs from examination. Exclusion has "
+                           "higher precedence than inclusion. This option "
+                           "can also be used multiple times to add more "
+                           "expressions (default: <empty>).")
     parser.add_option("", "--include-git", dest="git_in",
                       action="append", metavar="REGEXP", default=[],
                       help="A regular expression that will be matched "
-                          "against the name of the git to which the "
-                          "change has been uploaded. This option can be "
-                          "used multiple times to add more expressions. "
-                          "The first use of this option will clear the "
-                          "default value (%s) before appending the new "
-                          "expression." % ", ".join(DEFAULT_GIT_INCLUDES))
+                           "against the name of the git to which the "
+                           "change has been uploaded. This option can be "
+                           "used multiple times to add more expressions. "
+                           "The first use of this option will clear the "
+                           "default value (%s) before appending the new "
+                           "expression." % ", ".join(DEFAULT_GIT_INCLUDES))
     parser.add_option("", "--exclude-git", dest="git_ex",
                       action="append", metavar="REGEXP",
                       help="Same as --include-git but for excluding "
-                          "gits. This option can also be used "
-                          "multiple times to add more expressions "
-                          "(default: <empty>).")
+                           "gits. This option can also be used "
+                           "multiple times to add more expressions "
+                           "(default: <empty>).")
     parser.add_option("", "--include-git-branch", dest="git_branch_in",
                       action="append", metavar="REGEXP", default=[],
                       help="A regular expression that will be matched "
-                          "against the branches of the gits found in the "
-                          "manifests to include them in the examination. "
-                          "This option can be used multiple times to add "
-                          "more expressions. The first use of this option "
-                          "will clear the default value (%s) before "
-                          "appending the new expression." %
-                          ", ".join(DEFAULT_GIT_BRANCH_INCLUDES))
+                           "against the branches of the gits found in the "
+                           "manifests to include them in the examination. "
+                           "This option can be used multiple times to add "
+                           "more expressions. The first use of this option "
+                           "will clear the default value (%s) before "
+                           "appending the new expression." %
+                           ", ".join(DEFAULT_GIT_BRANCH_INCLUDES))
     parser.add_option("", "--exclude-git-branch", dest="git_branch_ex",
                       action="append", metavar="REGEXP",
                       help="Same as --include-git-branch but for "
-                          "excluding branches on gits found in the "
-                          "manifests. This option can also be used "
-                          "multiple times to add more expressions "
-                          "(default: <empty>).")
+                           "excluding branches on gits found in the "
+                           "manifests. This option can also be used "
+                           "multiple times to add more expressions "
+                           "(default: <empty>).")
     parser.add_option("", "--change", dest="change_nr", type="int",
                       help="The change number to check.")
     parser.add_option("", "--patchset", dest="patchset_nr", type="int",
                       help="The patchset number.")
     parser.add_option("", "--project", dest="project",
                       help="The name of the project on which the "
-                          "change is uploaded.")
+                           "change is uploaded.")
     parser.add_option("", "--branch", dest="affected_branch",
                       help="The name of the branch on which the "
-                          "change is uploaded.")
+                           "change is uploaded.")
     parser.add_option("", "--revision", dest="revision",
                       help="The patchset revision.")
     parser.add_option("", "--commit-size", dest="commit_size",
@@ -414,7 +414,7 @@ def _main():
             for _ref, prettybranch, mfest in manifests:
                 if options.project in mfest and \
                         options.affected_branch == \
-                            mfest[options.project]["revision"]:
+                        mfest[options.project]["revision"]:
                     affected_manifests.append(prettybranch)
                     logging.info("- %s", prettybranch)
         except processes.ChildExecutionError, err:
