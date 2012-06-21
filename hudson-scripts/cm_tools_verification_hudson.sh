@@ -32,7 +32,7 @@ do
 
         # Run PEP-8 check on Python files
         if grep -q "\.py$" <<<$FILENAME ; then
-            python cm_tools/pep8.py --config cm_tools/.pep8rc \
+            python cm_tools/pep8.py --verbose --config cm_tools/.pep8rc \
                 $PROJNAME/$FILENAME | tee -a $WORKSPACE/out/pep8_log.txt
             STATUS=${PIPESTATUS[0]}
             if [ "$STATUS" -ne 0 ]; then
