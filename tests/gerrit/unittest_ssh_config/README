@@ -1,0 +1,1 @@
+Test the ssh config parsing in the GerritSshConnection class.

@@ -1,0 +1,4 @@
+host testhost
+  hostname testhost.sonyericsson.net
+  port 12345
+  user test.user

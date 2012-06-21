@@ -11,6 +11,8 @@ import processes
 
 GERRIT_SSH_INFO_URL_TEMPLATE = "http://%s/ssh_info"
 
+SSH_CONFIG_FILE = os.path.join(os.getenv("HOME"), ".ssh", "config")
+
 
 def escape_string(string):
     """Adds necessary escapes and surrounding double quotes to a
@@ -57,13 +59,14 @@ def get_patchset_refspec(change_nr, patchset):
     return "refs/changes/%02d/%d/%d" % (infix, int(change_nr), int(patchset))
 
 
-def _get_config_from_alias(hostname):
-    """ Parses .ssh/config to find the first alias that points to and
-    returns the user name and ssh port defined in the alias.
+def _get_config_from_alias(hostname, config_file=SSH_CONFIG_FILE):
+    """ Parses the ssh config file specified by `config_file` to find the
+    first alias that `hostname` points to, and returns the user name and ssh
+    port defined in the alias as a tuple of (username, port) either of which
+    may be None.
 
-    Return a tuple of (username, port) either of which could be None.
-
-    If no config is found, return (None, None).
+    If no config file is found, or the file could not be opened,
+    returns (None, None).
     """
 
     aliases = {}
@@ -72,7 +75,6 @@ def _get_config_from_alias(hostname):
     user = None
     port = None
 
-    config_file = os.path.join(os.getenv("HOME"), ".ssh", "config")
     try:
         cfile = open(config_file)
     except IOError:
